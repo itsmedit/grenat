@@ -395,7 +395,7 @@ Goal: `brew install grenat` on macOS, `yay -S grenat` on Arch / Omarchy, with no
 | Constraint | Decision |
 |---|---|
 | Grenat is a compiler that links a runtime | `libgrenat_host.a` (the runtime and the interpreter, linked into every executable `grenat build` produces) and `std/` are looked up **relative to the executable** (`<prefix>/bin/grenat` → `<prefix>/lib/grenat/`, `<prefix>/share/grenat/std/`), overridable with `GRENAT_HOME`. Works under `/opt/homebrew`, `/usr` and `~/.cargo`; in a Cargo build, next to `target/*/grenat` |
-| Linker | the system `cc` (Xcode CLT on macOS, `gcc` on Arch), the only runtime dependency |
+| Linker | the system `cc` (Xcode CLT on macOS, `gcc` on Arch), the only runtime dependency. Verified on macOS arm64 and on Linux (Debian, `scripts/test-linux.sh`): arm64 (the whole suite passes) and x86_64 under emulation (the JIT, both kinds of executables; only timing assertions suffer from the emulated CPU). On Linux the debug information of Rust's standard library is stripped at link time (`--strip-debug`), or it would make a native program 2.5 MB instead of 0.5 MB |
 | No system dependencies | `rustls` (no OpenSSL), bundled SQLite (`rusqlite`, `bundled` feature) |
 | LLVM is heavy (~100 MB) | **Cranelift by default**, embedded and pure Rust. LLVM as an optional feature |
 | License | MIT OR Apache-2.0 from the first commit |

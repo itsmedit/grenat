@@ -7,8 +7,12 @@ use std::process::Command;
 /// System libraries the host library (Rust's standard library) needs.
 #[cfg(target_os = "macos")]
 const SYSTEM_LIBS: &[&str] = &["-liconv", "-lSystem", "-lc", "-lm", "-Wl,-dead_strip"];
+/// Unused sections are dropped; on Linux, so is the debug information of the
+/// standard library, which the linker would otherwise copy (macOS leaves it
+/// in the object files).
 #[cfg(target_os = "linux")]
-const SYSTEM_LIBS: &[&str] = &["-lgcc_s", "-lutil", "-lrt", "-lpthread", "-lm", "-ldl", "-lc", "-Wl,--gc-sections"];
+const SYSTEM_LIBS: &[&str] =
+    &["-lgcc_s", "-lutil", "-lrt", "-lpthread", "-lm", "-ldl", "-lc", "-Wl,--gc-sections", "-Wl,--strip-debug"];
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 const SYSTEM_LIBS: &[&str] = &[];
 
