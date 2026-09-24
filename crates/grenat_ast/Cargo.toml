@@ -1,0 +1,11 @@
+[package]
+name = "grenat_ast"
+description = "Arbre syntaxique du langage Grenat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+grenat_lexer.workspace = true

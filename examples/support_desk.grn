@@ -1,0 +1,147 @@
+# support_desk.grn — un service client multi-agents complet.
+#
+#   grenat run examples/support_desk.grn -- tickets.jsonl
+#
+# Triage classe chaque ticket, Researcher cherche dans la doc,
+# Writer rédige la réponse, un humain approuve avant tout envoi.
+
+model :fast,  provider: :anthropic, name: "claude-haiku-4-5"
+model :smart, provider: :anthropic, name: "claude-opus-5-5"
+
+# ── Domaine ────────────────────────────────────────────────
+
+enum Priority
+  Low
+  Normal
+  Urgent
+end
+
+enum Category
+  Billing
+  Bug
+  Question
+  Spam
+end
+
+struct Ticket
+  id: Int
+  from: Email
+  subject: String
+  body: String
+end
+
+struct Triage
+  category: Category
+  priority: Priority
+  language: String          ## code ISO 639-1 de la langue du client
+  reason: String            ## une phrase justifiant la classification
+end
+
+struct Answer
+  body: String              ## réponse au client, dans sa langue, ton chaleureux
+  sources: Array(Path)      ## pages de doc utilisées
+  confidence: Float         ## entre 0.0 et 1.0
+end
+
+# ── Prompts ────────────────────────────────────────────────
+
+## Classe un ticket de support.
+prompt classify(t: Ticket) -> ~Triage using :fast
+  system "Tu tries les tickets d'un SaaS de facturation."
+  user "Sujet : #{t.subject}\n\n#{t.body}"
+end
+
+# ── Outils ─────────────────────────────────────────────────
+
+## Recherche plein texte dans la documentation produit.
+tool search_docs(query: String, limit: Int = 5) -> Array(Hit) uses fs.read("./docs")
+  Docs.index("./docs").search(query, limit:)
+end
+
+## Lit une page de documentation.
+tool read_doc(path: Path) -> String uses fs.read("./docs")
+  File.read(path)?
+end
+
+## Envoie la réponse au client. Toujours soumis à approbation humaine.
+tool send_reply(to: Email, body: String) -> Unit uses net("smtp.mail.com"), human
+  approve! "Envoyer à #{to} ?\n\n#{body}"
+  Smtp.send(to:, subject: "Re: votre demande", body:)
+end
+
+# ── Agents ─────────────────────────────────────────────────
+
+agent Writer
+  model :smart
+  tools search_docs, read_doc
+  budget usd: 0.30, time: 2.min
+  max_turns 12
+
+  instructions <<~I
+    Tu rédiges des réponses de support exactes. N'invente jamais une
+    fonctionnalité : si la doc ne répond pas, dis-le et propose un rappel.
+  I
+
+  on Draft(ticket: Ticket, triage: Triage) -> ~Answer
+    run <<~T
+      Réponds en #{triage.language} au ticket suivant (#{triage.category}) :
+      #{ticket.body}
+    T
+  end
+end
+
+agent Dispatcher
+  @handled: Int = 0
+  @writers = spawn_pool(Writer, size: 4)
+
+  on Handle(ticket: Ticket) -> Outcome
+    triage = classify(ticket).check { |t| t.reason.size > 0 }?
+
+    case triage
+    in Triage(category: Spam)
+      return Outcome.skipped(ticket.id)
+    in Triage(priority: Urgent)
+      Pager.notify("Ticket urgent ##{ticket.id}")
+    else
+    end
+
+    answer = @writers.ask(Draft(ticket:, triage:))
+
+    # Une réponse ~Answer ne peut pas aller vers send_reply (effet net + human)
+    # sans validation : le compilateur refuserait `send_reply(..., answer.body)`.
+    safe = answer
+      .check { |a| a.confidence >= 0.7 && a.sources.any? }
+      .or_else { answer.approve(by: :human) }
+
+    send_reply(ticket.from, safe.body)
+    @handled += 1
+    Outcome.sent(ticket.id, cost: budget.spent)
+  end
+end
+
+supervisor Desk, strategy: :one_for_one, max_restarts: 3, within: 1.min
+  child Dispatcher
+end
+
+# ── Workflow durable : survit à un crash pendant l'attente humaine ──
+
+workflow process_ticket(ticket: Ticket) -> Outcome
+  step(:handle) { Desk[Dispatcher].ask(Handle(ticket:)) }
+end
+
+# ── Point d'entrée ─────────────────────────────────────────
+
+def main(args: Array(String)) uses llm, net("smtp.mail.com"), fs.read, human
+  tickets = File.lines(args.first).map { |l| Ticket.from_json(l)? }
+
+  Runtime.on_approval { |req| Cli.confirm(req.message) }   # humain = le terminal
+
+  within budget(usd: 5.00, time: 30.min) do
+    outcomes = tickets.parallel_map(limit: 8) { |t| process_ticket(t) }
+
+    sent, skipped = outcomes.partition(&.sent?)
+    puts "✓ #{sent.size} envoyés, #{skipped.size} ignorés — coût #{budget.spent}"
+  rescue BudgetExceeded => e
+    warn "Budget épuisé après #{e.spent} : reprise possible, le journal est intact."
+  end
+end

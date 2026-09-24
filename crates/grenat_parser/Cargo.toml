@@ -1,0 +1,12 @@
+[package]
+name = "grenat_parser"
+description = "Parser du langage Grenat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+grenat_lexer.workspace = true
+grenat_ast.workspace = true

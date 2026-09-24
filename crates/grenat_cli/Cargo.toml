@@ -1,0 +1,16 @@
+[package]
+name = "grenat_cli"
+description = "Compilateur et outils en ligne de commande du langage Grenat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "grenat"
+path = "src/main.rs"
+
+[dependencies]
+grenat_lexer.workspace = true
+grenat_parser.workspace = true
