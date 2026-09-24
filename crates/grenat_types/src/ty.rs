@@ -1,11 +1,11 @@
-//! Types vus par le vérificateur.
+//! Types as seen by the checker.
 
 use std::fmt;
 
 use grenat_ast::Span;
 
-/// Type statique. `Unknown` est compatible avec tout : le vérificateur est
-/// graduel et ne signale jamais ce qu'il ne peut pas prouver.
+/// Static type. `Unknown` is compatible with everything: the checker is
+/// gradual and never reports what it cannot prove.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ty {
     Unknown,
@@ -23,9 +23,9 @@ pub enum Ty {
     Hash(Box<Ty>, Box<Ty>),
     Opt(Box<Ty>),
     Result(Box<Ty>, Box<Ty>),
-    /// Type déclaré : struct, class, module, enum, agent, erreur, message.
+    /// Declared type: struct, class, module, enum, agent, error, message.
     User(String),
-    /// Un type utilisé comme valeur : `Researcher`, `File`.
+    /// A type used as a value: `Researcher`, `File`.
     Type(String),
 }
 
@@ -45,7 +45,7 @@ impl Ty {
         Ty::User(name.to_string())
     }
 
-    /// Type sous-jacent d'un optionnel (accès membres tolérants sur `T?`).
+    /// Underlying type of an optional (lenient member access on `T?`).
     pub fn base(&self) -> &Ty {
         match self {
             Ty::Opt(inner) => inner.base(),
@@ -81,12 +81,12 @@ impl fmt::Display for Ty {
             Ty::Opt(t) => write!(f, "{t}?"),
             Ty::Result(t, e) => write!(f, "Result({t}, {e})"),
             Ty::User(n) => f.write_str(n),
-            Ty::Type(n) => write!(f, "le type {n}"),
+            Ty::Type(n) => write!(f, "type {n}"),
         }
     }
 }
 
-/// Valeur abstraite : un type et, si elle vient d'un LLM, l'endroit d'où vient sa teinte.
+/// Abstract value: a type and, if it comes from an LLM, where its taint comes from.
 #[derive(Debug, Clone, PartialEq)]
 pub struct V {
     pub ty: Ty,
@@ -110,7 +110,7 @@ impl V {
     }
 }
 
-/// Type commun à deux branches.
+/// Common type of two branches.
 pub fn join(a: &Ty, b: &Ty) -> Ty {
     match (a, b) {
         (a, b) if a == b => a.clone(),

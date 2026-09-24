@@ -1,4 +1,4 @@
-//! Portées de variables, partagées par les fermetures.
+//! Variable scopes, shared by closures.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -25,7 +25,7 @@ pub fn scope_get<'p>(scope: &Scope<'p>, name: &str) -> Option<Value<'p>> {
     }
 }
 
-/// Affecte la variable là où elle existe déjà (fermetures), sinon la crée ici.
+/// Assigns the variable where it already exists (closures), otherwise creates it here.
 pub fn scope_set<'p>(scope: &Scope<'p>, name: &str, value: Value<'p>) {
     fn find<'p>(scope: &Scope<'p>, name: &str) -> Option<Scope<'p>> {
         let data = scope.borrow();

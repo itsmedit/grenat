@@ -42,9 +42,9 @@ fn predicate_and_bang_methods() {
         kinds("a.empty? b.save! c != d"),
         vec![ident("a"), Dot, ident("empty?"), ident("b"), Dot, ident("save!"), ident("c"), NotEq, ident("d"), Eof]
     );
-    // constante suivie de `?` : type optionnel
+    // constant followed by `?`: optional type
     assert_eq!(kinds("User?"), vec![Const("User".into()), Question, Eof]);
-    // `?` après `)` : opérateur d'essai
+    // `?` after `)`: the try operator
     assert_eq!(kinds("f(x)?"), vec![ident("f"), LParen, ident("x"), RParen, Question, Eof]);
 }
 
@@ -77,34 +77,34 @@ fn escapes() {
 
 #[test]
 fn squiggly_heredoc_dedents_and_resumes_after_terminator() {
-    let src = "run <<~T, 1\n    Bonjour #{nom}\n      indenté\n  T\nnext_line\n";
+    let src = "run <<~T, 1\n    Hello #{name}\n      indented\n  T\nnext_line\n";
     let toks = kinds(src);
     let Str(parts) = &toks[1] else { panic!("{toks:?}") };
-    assert_eq!(parts[0], lit("Bonjour "));
+    assert_eq!(parts[0], lit("Hello "));
     assert!(matches!(parts[1], StrPart::Interp(..)));
-    assert_eq!(parts[2], lit("\n  indenté\n"));
+    assert_eq!(parts[2], lit("\n  indented\n"));
     assert_eq!(&toks[2..], &[Comma, Int(1), Newline, ident("next_line"), Newline, Eof]);
 }
 
 #[test]
 fn raw_heredoc_does_not_interpolate() {
-    let toks = kinds("x = <<~'SQL'\n  #{pas_interpolé}\nSQL\n");
-    assert_eq!(toks[2], Str(vec![lit("#{pas_interpolé}\n")]));
+    let toks = kinds("x = <<~'SQL'\n  #{not_interpolated}\nSQL\n");
+    assert_eq!(toks[2], Str(vec![lit("#{not_interpolated}\n")]));
 }
 
 #[test]
 fn leading_dot_continues_previous_line() {
     assert_eq!(
-        kinds("a\n  .b\n  # commentaire\n  &.c\nd"),
+        kinds("a\n  .b\n  # comment\n  &.c\nd"),
         vec![ident("a"), Dot, ident("b"), SafeDot, ident("c"), Newline, ident("d"), Eof]
     );
 }
 
 #[test]
 fn comments_are_split_into_docs_and_trailing() {
-    let lexed = lex("## Doc de l'outil\ntool x\n  title: String ## Titre\n# simple\n");
+    let lexed = lex("## The tool's doc\ntool x\n  title: String ## Title\n# simple\n");
     let docs: Vec<_> = lexed.comments.iter().map(|c| (c.text.as_str(), c.doc, c.trailing)).collect();
-    assert_eq!(docs, vec![("Doc de l'outil", true, false), ("Titre", true, true), ("simple", false, false)]);
+    assert_eq!(docs, vec![("The tool's doc", true, false), ("Title", true, true), ("simple", false, false)]);
 }
 
 #[test]

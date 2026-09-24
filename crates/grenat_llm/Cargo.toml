@@ -1,6 +1,6 @@
 [package]
 name = "grenat_llm"
-description = "Accès aux modèles de langage pour le runtime Grenat"
+description = "Language model access for the Grenat runtime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

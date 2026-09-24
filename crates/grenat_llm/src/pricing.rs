@@ -1,8 +1,8 @@
-//! Tarifs par modèle et coût d'un appel.
+//! Per-model prices and the cost of a call.
 
 use crate::*;
 
-/// Prix en dollars par million de tokens (entrée, sortie).
+/// Price in dollars per million tokens (input, output).
 pub(crate) fn price_per_mtok(model: &str) -> Option<(f64, f64)> {
     const PRICES: &[(&str, f64, f64)] = &[
         ("claude-fable-5", 10.0, 50.0),
@@ -17,7 +17,7 @@ pub(crate) fn price_per_mtok(model: &str) -> Option<(f64, f64)> {
     PRICES.iter().find(|(prefix, ..)| model.starts_with(prefix)).map(|&(_, input, output)| (input, output))
 }
 
-/// Coût d'un appel en dollars ; `None` pour un modèle dont le prix est inconnu.
+/// Cost of a call in dollars; `None` for a model with an unknown price.
 pub fn cost_usd(model: &str, usage: &Usage) -> Option<f64> {
     let (input, output) = price_per_mtok(model)?;
     let input_equiv = usage.input_tokens as f64

@@ -1,10 +1,10 @@
-//! Format de l'API Messages : corps des requêtes, lecture des réponses.
+//! Messages API wire format: request bodies and response parsing.
 
 use serde_json::{Value as Json, json};
 
 use crate::*;
 
-/// Corps JSON d'une requête `POST /v1/messages`.
+/// JSON body of a `POST /v1/messages` request.
 pub fn request_body(request: &Request) -> Json {
     let model = request.model;
     let mut body = json!({
@@ -42,7 +42,7 @@ pub fn request_body(request: &Request) -> Json {
 }
 
 pub(crate) fn parse_response(body: &Json) -> Result<Response, LlmError> {
-    let content = body["content"].as_array().cloned().ok_or_else(|| LlmError::new("réponse sans `content`"))?;
+    let content = body["content"].as_array().cloned().ok_or_else(|| LlmError::new("response without `content`"))?;
     let usage = &body["usage"];
     let tokens = |field: &str| usage[field].as_u64().unwrap_or(0);
     Ok(Response {

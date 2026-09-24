@@ -1,4 +1,4 @@
-//! Contrôle d'exécution (exceptions, `return`, `break`…) et arguments d'appel.
+//! Control flow (exceptions, `return`, `break`…) and call arguments.
 
 use std::sync::Arc;
 
@@ -13,7 +13,7 @@ pub(crate) enum Ctrl<'p> {
 }
 
 impl Ctrl<'_> {
-    /// Erreur Grenat portée par ce contrôle, s'il s'agit d'une exception.
+    /// Grenat error carried by this control value, if it is an exception.
     pub fn error_type(&self) -> Option<&str> {
         match self {
             Ctrl::Raise(e) => Some(&e.ty),

@@ -1,19 +1,19 @@
-//! Arbre syntaxique de Grenat, tel que produit par le parser.
+//! Grenat's syntax tree, as produced by the parser.
 //!
-//! L'AST reste proche du source : les appels sans parenthèses, les blocs et
-//! les arguments nommés « punnés » (`topic:`) sont conservés tels quels.
-//! Le désucrage se fera dans le HIR (phase 1).
+//! The AST stays close to the source: parenthesis-free calls, blocks and
+//! punned named arguments (`topic:`) are kept as written.
+//! Desugaring happens later, in the HIR.
 
 pub use grenat_lexer::Span;
 
-/// Erreur rapportée par une étape du compilateur (parser, vérificateur).
+/// An error reported by a compiler stage (parser, checker).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
     pub span: Span,
     pub message: String,
-    /// Code stable, par exemple `E0412` pour une valeur teintée.
+    /// Stable code, e.g. `E0412` for a tainted value.
     pub code: Option<&'static str>,
-    /// Emplacements secondaires (« `def` ouvert ici »).
+    /// Secondary locations ("`def` opened here").
     pub notes: Vec<(Span, String)>,
     pub help: Option<String>,
 }
@@ -55,30 +55,30 @@ pub enum Item {
     Fn(Box<FnDef>),
     Type(TypeDef),
     Model(ModelDecl),
-    /// Code de script au niveau supérieur (`test "…" do`, affectations…).
+    /// Top-level script code (`test "…" do`, assignments…).
     Stmt(Expr),
 }
 
-// ── Fonctions ────────────────────────────────────────────────
+// ── Functions ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FnKind {
     Def,
-    /// Implémentée par un LLM : `prompt summarize(…) -> ~Summary using :fast`.
+    /// Implemented by an LLM: `prompt summarize(…) -> ~Summary using :fast`.
     Prompt,
-    /// Appelable par un LLM, frontière de confiance.
+    /// Callable by an LLM; a trust boundary.
     Tool,
-    /// Durable : chaque `step` est journalisé.
+    /// Durable: every `step` is journaled.
     Workflow,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnDef {
     pub kind: FnKind,
-    /// Commentaires `##` qui précèdent la définition.
+    /// `##` comments preceding the definition.
     pub doc: Option<String>,
     pub is_abstract: bool,
-    /// `def self.nom` : méthode de classe.
+    /// `def self.name`: class method.
     pub on_self: bool,
     pub name: Ident,
     pub params: Vec<Param>,
@@ -88,7 +88,7 @@ pub struct FnDef {
     /// `using :fast` (prompts)
     pub model: Option<Expr>,
     pub body: Body,
-    /// Forme courte `def nom = expr`.
+    /// Short form `def name = expr`.
     pub short: bool,
     pub span: Span,
 }
@@ -110,7 +110,7 @@ pub struct Effect {
     pub span: Span,
 }
 
-// ── Types nommés : struct, class, module, enum, agent, supervisor ──
+// ── Named types: struct, class, module, enum, agent, supervisor ──
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeKind {
@@ -138,11 +138,11 @@ pub enum Member {
     Field(Field),
     Method(FnDef),
     Include(Type),
-    /// Variante d'enum : `Circle(radius: Float)`.
+    /// Enum variant: `Circle(radius: Float)`.
     Variant(Variant),
     /// Agent : `on Research(topic: String) -> ~Report … end`.
     Handler(Handler),
-    /// Configuration déclarative : `model :smart`, `tools a, b`, `child Writer, count: 4`.
+    /// Declarative configuration: `model :smart`, `tools a, b`, `child Writer, count: 4`.
     Directive(Directive),
 }
 
@@ -150,7 +150,7 @@ pub enum Member {
 pub struct Field {
     pub doc: Option<String>,
     pub name: Ident,
-    /// `@count` (état de classe / d'agent) plutôt que `count:` (champ de struct).
+    /// `@count` (class/agent state) rather than `count:` (struct field).
     pub is_ivar: bool,
     pub ty: Option<Type>,
     pub default: Option<Expr>,
@@ -197,7 +197,7 @@ pub enum Type {
     Named { path: Vec<Ident>, args: Vec<Type>, span: Span },
     /// `User?`
     Optional(Box<Type>, Span),
-    /// `~Summary` : produit par un LLM, non validé.
+    /// `~Summary`: produced by an LLM, not validated.
     Tainted(Box<Type>, Span),
 }
 
@@ -209,10 +209,10 @@ impl Type {
     }
 }
 
-// ── Corps, blocs, arguments ──────────────────────────────────
+// ── Bodies, blocks, arguments ────────────────────────────────
 
-/// Suite d'instructions avec clauses `rescue`/`ensure` optionnelles
-/// (corps de `def`, de bloc `do … end`, de `begin`).
+/// Statement list with optional `rescue`/`ensure` clauses
+/// (body of a `def`, of a `do … end` block, of `begin`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Body {
     pub stmts: Vec<Expr>,
@@ -245,7 +245,7 @@ pub struct Block {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Arg {
     Pos(Expr),
-    /// `topic: t`, ou `topic:` seul (valeur = variable du même nom).
+    /// `topic: t`, or bare `topic:` (value = the variable of the same name).
     Named {
         name: Ident,
         value: Option<Expr>,
@@ -322,11 +322,11 @@ pub enum ExprKind {
         inclusive: bool,
     },
 
-    /// Identifiant nu : variable locale ou appel sans argument (résolu plus tard).
+    /// Bare identifier: local variable or argument-less call (resolved later).
     Var(String),
     Const(Vec<Ident>),
     IVar(String),
-    /// Paramètre implicite d'un bloc court `&.sent?`.
+    /// Implicit parameter of a short block `&.sent?`.
     It,
 
     Call {
@@ -336,7 +336,7 @@ pub enum ExprKind {
         block: Option<Box<Block>>,
         /// `&.`
         safe: bool,
-        /// Appel écrit avec parenthèses.
+        /// Call written with parentheses.
         parens: bool,
     },
     Index {
@@ -352,7 +352,7 @@ pub enum ExprKind {
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     },
-    /// `expr?` : propage l'erreur.
+    /// `expr?`: propagates the error.
     Try(Box<Expr>),
 
     Assign {
@@ -429,7 +429,7 @@ pub enum PatternKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PatField {
-    /// `None` : champ positionnel.
+    /// `None`: positional field.
     pub name: Option<Ident>,
     pub pattern: Pattern,
 }

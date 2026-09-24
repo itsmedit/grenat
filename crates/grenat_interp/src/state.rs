@@ -1,4 +1,4 @@
-//! État d'une exécution : ce qui est partagé entre tâches et ce qui est propre à chacune.
+//! Execution state: what tasks share and what belongs to each one.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Deref;
@@ -11,7 +11,7 @@ use grenat_llm::{ModelConfig, Provider};
 use crate::value::{AgentRef, Budget, Object, Scope, Value, new_scope};
 use crate::*;
 
-/// Capacités déclarées par `uses` : (effet, restriction évaluée).
+/// Capabilities declared by `uses`: (effect, evaluated restriction).
 pub(crate) type Capabilities = Vec<(String, Option<String>)>;
 
 pub(crate) struct Frame<'p> {
@@ -22,67 +22,67 @@ pub(crate) struct Frame<'p> {
 #[derive(Default)]
 pub(crate) struct PromptCtx {
     pub system: Vec<String>,
-    /// (rôle, texte)
+    /// (role, text)
     pub messages: Vec<(&'static str, String)>,
 }
 
 #[derive(Clone)]
 pub(crate) struct AgentFrame<'p> {
-    /// État de l'agent (l'objet `self` du handler).
+    /// Agent state (the handler's `self` object).
     pub agent: Arc<Object<'p>>,
     pub handler: &'p Handler,
 }
 
-/// Profondeur d'appel maximale (l'interpréteur tourne sur une pile de 512 Mo).
+/// Maximum call depth (the interpreter runs on a 512 MB stack).
 pub(crate) const MAX_DEPTH: usize = 20_000;
 
-/// État partagé par toutes les tâches d'une exécution.
+/// State shared by every task of a run.
 pub(crate) struct Shared<'p> {
     pub program: &'p Program,
     pub fns: HashMap<&'p str, &'p FnDef>,
     pub types: HashMap<&'p str, TypeInfo<'p>>,
-    /// Nom de variante → nom de l'enum.
+    /// Variant name → enum name.
     pub variants: HashMap<&'p str, &'p str>,
-    /// Noms des messages gérés par au moins un agent (`on Research`).
+    /// Names of the messages handled by at least one agent (`on Research`).
     pub messages: HashSet<&'p str>,
     pub models: Mutex<Vec<(String, ModelConfig)>>,
     pub provider: Mutex<Option<Arc<dyn Provider>>>,
-    /// Compteur global de dépense (premier budget de chaque tâche).
+    /// Global spending counter (first budget of every task).
     pub total: Arc<Budget>,
-    /// Enfants de superviseur démarrés : (superviseur, agent) → instance.
+    /// Started supervisor children: (supervisor, agent) → instance.
     pub children: Mutex<HashMap<(String, String), Arc<AgentRef<'p>>>>,
     pub approver: Mutex<Option<Value<'p>>>,
     pub tests: Mutex<Vec<(String, Value<'p>)>>,
     pub output: Output,
     pub input: Mutex<Option<VecDeque<String>>>,
-    /// Une seule question posée à l'humain à la fois.
+    /// Only one question is asked to the human at a time.
     pub human: Mutex<()>,
     pub log: bool,
     pub llm_calls: AtomicU64,
     pub spawner: Spawner<'p>,
     pub next_id: AtomicU64,
-    /// Choix d'un agent dans un pool (choix et réservation atomiques).
+    /// Picking an agent in a pool (atomic pick and reservation).
     pub pool_pick: Mutex<()>,
-    /// Détection d'interblocage : tâche → agent qu'elle attend.
+    /// Deadlock detection: task → agent it waits for.
     pub waits: Mutex<HashMap<u64, Arc<AgentRef<'p>>>>,
-    /// Tâches secondaires en cours.
+    /// Secondary tasks in flight.
     pub active: Mutex<usize>,
     pub idle: Condvar,
 }
 
-/// Une tâche d'exécution : sa pile d'appels, ses budgets, ses capacités.
+/// An execution task: its call stack, budgets and capabilities.
 pub(crate) struct Interp<'p> {
     pub shared: Arc<Shared<'p>>,
     pub frames: Vec<Frame<'p>>,
     pub prompts: Vec<PromptCtx>,
     pub agents: Vec<AgentFrame<'p>>,
-    /// Budgets actifs ; le premier compte toute l'exécution.
+    /// Active budgets; the first one counts the whole run.
     pub budgets: Vec<Arc<Budget>>,
-    /// Capacités déclarées par les fonctions en cours d'exécution : (fonction, [(effet, restriction)]).
+    /// Capabilities declared by the running functions: (function, [(effect, restriction)]).
     pub capabilities: Vec<(String, Capabilities)>,
     pub depth: usize,
     pub max_depth: usize,
-    /// Drapeaux d'annulation de cette tâche et de ses ancêtres (`race`, `parallel_map`).
+    /// Cancellation flags of this task and its ancestors (`race`, `parallel_map`).
     pub cancel: Vec<Arc<AtomicBool>>,
     pub task_id: u64,
 }

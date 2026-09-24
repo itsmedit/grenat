@@ -1,4 +1,4 @@
-//! Pont entre le langage et les LLM, un module par responsabilité.
+//! Bridge between the language and LLMs, one module per responsibility.
 
 mod agent_loop;
 mod json;

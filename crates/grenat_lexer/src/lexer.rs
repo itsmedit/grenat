@@ -1,4 +1,4 @@
-//! La machine de lecture : parcours du source, identifiants, nombres, ponctuation, commentaires.
+//! The scanning machine: walks the source; reads identifiers, numbers, punctuation and comments.
 
 use crate::*;
 
@@ -9,7 +9,7 @@ pub fn lex(src: &str) -> Lexed {
     Lexed { tokens: join_continuations(lx.tokens), comments: lx.comments, errors: lx.errors }
 }
 
-/// Supprime les fins de ligne suivies d'un `.` ou `&.` : `answer\n  .check { … }`.
+/// Drops newlines followed by `.` or `&.`: `answer\n  .check { … }`.
 pub(crate) fn join_continuations(tokens: Vec<Token>) -> Vec<Token> {
     let mut out: Vec<Token> = Vec::with_capacity(tokens.len());
     let mut iter = tokens.into_iter().peekable();
@@ -37,9 +37,9 @@ pub(crate) struct Lexer<'s> {
     pub(crate) tokens: Vec<Token>,
     pub(crate) comments: Vec<Comment>,
     pub(crate) errors: Vec<LexError>,
-    /// Après un heredoc, où reprendre à la prochaine fin de ligne (après son terminateur).
+    /// After a heredoc, where to resume at the next newline (past its terminator).
     pub(crate) heredoc_resume: Option<usize>,
-    /// Sous-lexer d'une interpolation : s'arrête sur la `}` fermante.
+    /// Sub-lexer of an interpolation: stops at the closing `}`.
     pub(crate) in_interp: bool,
     pub(crate) brace_depth: u32,
     pub(crate) space_before: bool,
@@ -141,7 +141,7 @@ impl<'s> Lexer<'s> {
         }
     }
 
-    /// Espaces, tabulations et continuation `\` en fin de ligne.
+    /// Spaces, tabs and `\` line continuations.
     pub(crate) fn skip_blanks(&mut self) -> bool {
         let before = self.pos;
         loop {
@@ -196,7 +196,7 @@ impl<'s> Lexer<'s> {
         }
     }
 
-    /// `?`/`!` final d'un nom de méthode, sauf `a!=b` ou `a?=…`.
+    /// Trailing `?`/`!` of a method name, except in `a!=b` or `a?=…`.
     pub(crate) fn take_predicate_suffix(&mut self) {
         if matches!(self.peek(), Some('?' | '!')) && self.peek_at(1) != Some('=') {
             self.bump();
@@ -234,7 +234,7 @@ impl<'s> Lexer<'s> {
         let name_start = self.pos;
         self.take_ident_chars();
         if self.pos == name_start {
-            self.error(start, self.pos, "nom de variable d'instance attendu après `@`");
+            self.error(start, self.pos, "expected an instance variable name after `@`");
             return;
         }
         let name = self.src[name_start..self.pos].to_string();
@@ -249,7 +249,7 @@ impl<'s> Lexer<'s> {
             return;
         }
 
-        // `:nom` est un symbole s'il commence un terme : `f :x`, `(:x`, `[:x`, `, :x`
+        // `:name` is a symbol when it starts a term: `f :x`, `(:x`, `[:x`, `, :x`
         let after_opener = matches!(
             self.tokens.last().map(|t| &t.kind),
             None | Some(
@@ -283,7 +283,7 @@ impl<'s> Lexer<'s> {
             let digits = self.src[digits_start..self.pos].replace('_', "");
             match i64::from_str_radix(&digits, 16) {
                 Ok(n) => self.push(TokenKind::Int(n), start, self.pos),
-                Err(_) => self.error(start, self.pos, "nombre hexadécimal invalide"),
+                Err(_) => self.error(start, self.pos, "invalid hexadecimal number"),
             }
             return;
         }
@@ -295,7 +295,7 @@ impl<'s> Lexer<'s> {
         };
         digits(self);
         let mut is_float = false;
-        // `3.days` est un appel de méthode, `3.5` un flottant
+        // `3.days` is a method call, `3.5` a float
         if self.peek() == Some('.') && self.peek_at(1).is_some_and(|c| c.is_ascii_digit()) {
             self.bump();
             digits(self);
@@ -316,14 +316,14 @@ impl<'s> Lexer<'s> {
             if is_float { text.parse().map(TokenKind::Float).ok() } else { text.parse().map(TokenKind::Int).ok() };
         match kind {
             Some(kind) => self.push(kind, start, self.pos),
-            None => self.error(start, self.pos, "nombre hors limites"),
+            None => self.error(start, self.pos, "number out of range"),
         }
     }
 
     pub(crate) fn punct(&mut self) {
         use TokenKind::*;
         let start = self.pos;
-        let c = self.bump().expect("punct appelé en fin de source");
+        let c = self.bump().expect("punct called at end of source");
         let kind = match c {
             '(' => LParen,
             ')' => RParen,
@@ -400,7 +400,7 @@ impl<'s> Lexer<'s> {
             '/' if self.eat('=') => SlashEq,
             '/' => Slash,
             other => {
-                self.error(start, self.pos, format!("caractère inattendu `{other}`"));
+                self.error(start, self.pos, format!("unexpected character `{other}`"));
                 return;
             }
         };

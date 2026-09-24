@@ -1,7 +1,7 @@
-//! Valeurs manipulées par l'interpréteur.
+//! Values handled by the interpreter.
 //!
-//! `'p` est la durée de vie du programme : les fermetures pointent directement
-//! vers les blocs de l'AST, sans copie.
+//! `'p` is the lifetime of the program: closures point straight at the AST's
+//! blocks, without copying them.
 
 mod agent;
 mod budget;
@@ -35,31 +35,31 @@ pub enum Value<'p> {
     Bool(bool),
     Int(i64),
     Float(f64),
-    /// Montant en dollars (coûts LLM).
+    /// Amount in dollars (LLM costs).
     Money(f64),
-    /// Durée en secondes (`10.min`).
+    /// Duration in seconds (`10.min`).
     Duration(f64),
     Str(Arc<str>),
     Symbol(Arc<str>),
     Array(Arc<Mutex<Vec<Value<'p>>>>),
     Hash(Arc<Mutex<Vec<(Value<'p>, Value<'p>)>>>),
     Range(i64, i64, bool),
-    /// Instance de `struct` ou message d'agent : valeur immuable.
+    /// `struct` instance or agent message: immutable value.
     Record(Arc<Record<'p>>),
-    /// Instance de `class` ou d'`agent` : référence mutable.
+    /// `class` or `agent` instance: mutable reference.
     Object(Arc<Object<'p>>),
-    /// Variante d'`enum` (dont `Ok` / `Err`).
+    /// `enum` variant (including `Ok` / `Err`).
     Variant(Arc<Variant<'p>>),
     Closure(Arc<Closure<'p>>),
-    /// Un type ou module utilisé comme valeur (`Researcher`, `File`).
+    /// A type or module used as a value (`Researcher`, `File`).
     Type(Arc<str>),
     Error(Arc<ErrorVal<'p>>),
     Budget(Arc<Budget>),
-    /// Référence vers un agent-acteur (`spawn Writer`).
+    /// Reference to an actor agent (`spawn Writer`).
     Agent(Arc<AgentRef<'p>>),
-    /// Groupe d'agents interchangeables (`spawn_pool(Writer, size: 4)`).
+    /// Group of interchangeable agents (`spawn_pool(Writer, size: 4)`).
     Pool(Arc<Vec<Arc<AgentRef<'p>>>>),
-    /// Produit par un LLM, non validé : `~T`.
+    /// Produced by an LLM, not validated: `~T`.
     Tainted(Arc<Value<'p>>),
 }
 
@@ -85,7 +85,7 @@ pub struct Closure<'p> {
     pub body: &'p Body,
     pub scope: Scope<'p>,
     pub self_val: Option<Value<'p>>,
-    /// Bloc appelé sur une valeur teintée : ses arguments le sont aussi.
+    /// Block called on a tainted value: its arguments are tainted too.
     pub taint_args: bool,
 }
 
@@ -130,7 +130,7 @@ impl<'p> Value<'p> {
         matches!(self, Value::Tainted(_))
     }
 
-    /// Teinte présente n'importe où dans la valeur (tableaux, champs…).
+    /// Taint anywhere inside the value (arrays, fields…).
     pub fn contains_taint(&self) -> bool {
         match self {
             Value::Tainted(_) => true,

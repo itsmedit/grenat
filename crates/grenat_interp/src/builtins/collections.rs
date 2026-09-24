@@ -1,4 +1,4 @@
-//! Méthodes de `Array` et `Hash` (et `Range`, vu comme un tableau).
+//! Methods of `Array` and `Hash` (and `Range`, seen as an array).
 
 use crate::prelude::*;
 
@@ -59,7 +59,7 @@ pub(crate) fn array_method<'p>(
                 Some(Value::Int(n)) if n >= 1 => n as usize,
                 None => 8,
                 Some(other) => {
-                    return raise("TypeError", format!("`limit:` attend un entier positif, reçu {}", other.inspect()));
+                    return raise("TypeError", format!("`limit:` expects a positive integer, got {}", other.inspect()));
                 }
             };
             interp.parallel_map(snapshot(), block(args, name)?, limit)
@@ -168,7 +168,7 @@ pub(crate) fn array_method<'p>(
                                 o.is_gt()
                             }
                         }
-                        None => return Some(raise("TypeError", format!("`{name}` : valeurs non comparables"))),
+                        None => return Some(raise("TypeError", format!("`{name}`: values are not comparable"))),
                     },
                 };
                 if better {
@@ -195,7 +195,7 @@ pub(crate) fn array_method<'p>(
                 })
             });
             if incomparable {
-                return raise("TypeError", format!("`{name}` : valeurs non comparables"));
+                return raise("TypeError", format!("`{name}`: values are not comparable"));
             }
             Ok(match name {
                 "min_by" => indexed.first().map_or(Value::Nil, |&i| all[i].clone()),
@@ -248,7 +248,7 @@ pub(crate) fn array_method<'p>(
         }
         "zip" => (|| {
             let Value::Array(other) = arg(args, 0, name)? else {
-                return raise("TypeError", "`zip` attend un tableau");
+                return raise("TypeError", "`zip` expects an array");
             };
             let other = other.borrow().clone();
             Ok(Value::array(
@@ -313,7 +313,7 @@ pub(crate) fn hash_method<'p>(
             match (get(&key), args.pos.get(1)) {
                 (Some(v), _) => Ok(v),
                 (None, Some(default)) => Ok(default.clone()),
-                (None, None) => raise("KeyError", format!("clé absente : {}", key.inspect())),
+                (None, None) => raise("KeyError", format!("missing key: {}", key.inspect())),
             }
         })(),
         "delete" => arg(args, 0, name).map(|k| {
@@ -323,7 +323,7 @@ pub(crate) fn hash_method<'p>(
         }),
         "merge" => (|| {
             let Value::Hash(other) = arg(args, 0, name)? else {
-                return raise("TypeError", "`merge` attend un Hash");
+                return raise("TypeError", "`merge` expects a Hash");
             };
             let mut merged = snapshot();
             for (k, v) in other.borrow().iter() {
@@ -339,7 +339,7 @@ pub(crate) fn hash_method<'p>(
         | "max_by" => {
             let Value::Array(list) = pairs() else { unreachable!() };
             let result = array_method(interp, &list, name, args)?;
-            // `select`/`reject` sur un Hash renvoient un Hash
+            // `select`/`reject` on a Hash return a Hash
             Ok(match (name, result) {
                 ("select" | "filter" | "reject", Ok(Value::Array(kept))) => {
                     let kept = kept

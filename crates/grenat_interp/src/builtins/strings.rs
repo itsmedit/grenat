@@ -1,4 +1,4 @@
-//! Méthodes de `String`.
+//! Methods of `String`.
 
 use crate::prelude::*;
 

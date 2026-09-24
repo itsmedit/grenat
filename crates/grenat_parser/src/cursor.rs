@@ -1,4 +1,4 @@
-//! Le parser : curseur sur les tokens, attentes, erreurs et récupération.
+//! The parser: token cursor, expectations, errors and recovery.
 
 use grenat_ast::*;
 use grenat_lexer::{Keyword as K, Token, TokenKind as T};
@@ -14,7 +14,7 @@ pub(crate) struct Parser<'d> {
     pub(crate) pos: usize,
     pub(crate) diags: Vec<Diagnostic>,
     pub(crate) docs: &'d DocTable,
-    /// Vrai dans les arguments d'un appel sans parenthèses : `do` y appartient à l'appel englobant.
+    /// True inside the arguments of a parenthesis-free call: `do` there belongs to the enclosing call.
     pub(crate) no_do: bool,
 }
 
@@ -56,7 +56,7 @@ impl<'d> Parser<'d> {
         self.kind() == kind
     }
 
-    /// Token collé au précédent : `f(x)` et non `f (x)`.
+    /// Token glued to the previous one: `f(x)`, not `f (x)`.
     pub(crate) fn at_tight(&self, kind: &T) -> bool {
         self.at(kind) && !self.peek().space_before
     }
@@ -117,7 +117,7 @@ impl<'d> Parser<'d> {
     }
 
     pub(crate) fn unexpected<X>(&mut self, expected: &str) -> PResult<X> {
-        let message = format!("attendu : {expected} ; trouvé : {}", self.kind().describe());
+        let message = format!("expected {expected}, found {}", self.kind().describe());
         self.fail(self.span(), message)
     }
 
@@ -129,8 +129,8 @@ impl<'d> Parser<'d> {
         if self.at_kw(K::End) {
             return Ok(self.bump().span);
         }
-        let message = format!("`end` attendu pour fermer `{what}` ; trouvé : {}", self.kind().describe());
-        self.report(Diagnostic::new(self.span(), message).with_note(opener, format!("`{what}` ouvert ici")));
+        let message = format!("expected `end` to close `{what}`, found {}", self.kind().describe());
+        self.report(Diagnostic::new(self.span(), message).with_note(opener, format!("`{what}` opened here")));
         Err(())
     }
 
@@ -148,12 +148,12 @@ impl<'d> Parser<'d> {
         }
     }
 
-    /// Après `.` : les mots-clés sont des noms de méthode valides (`x.class`).
+    /// After `.`: keywords are valid method names (`x.class`).
     pub(crate) fn method_name(&mut self) -> PResult<Ident> {
         let name = match self.kind() {
             T::Ident(s) | T::Const(s) => s.clone(),
             T::Kw(k) => k.as_str().to_string(),
-            _ => return self.unexpected("un nom de méthode"),
+            _ => return self.unexpected("a method name"),
         };
         Ok(Ident { name, span: self.bump().span })
     }

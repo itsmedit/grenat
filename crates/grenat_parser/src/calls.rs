@@ -1,4 +1,4 @@
-//! Appels : avec ou sans parenthèses, arguments nommés, blocs courts `&.`.
+//! Calls: with or without parentheses, named arguments, `&.` short blocks.
 
 use grenat_ast::*;
 use grenat_lexer::{Keyword as K, TokenKind as T};
@@ -29,7 +29,7 @@ pub(crate) fn attach_block(e: Expr, block: Block) -> Expr {
         ExprKind::Call { recv, name, args, safe, parens, .. } => {
             ExprKind::Call { recv, name, args, block, safe, parens }
         }
-        _ => unreachable!("attach_block sur une expression qui ne prend pas de bloc"),
+        _ => unreachable!("attach_block on an expression that takes no block"),
     };
     Expr::new(kind, span)
 }
@@ -51,7 +51,7 @@ impl<'d> Parser<'d> {
         Ok(Expr::new(kind, span))
     }
 
-    /// Un identifiant suivi, après un blanc, d'un de ces tokens est un appel sans parenthèses.
+    /// An identifier followed, after whitespace, by one of these tokens is a parenthesis-free call.
     pub(crate) fn can_start_command_arg(&self) -> bool {
         let tok = self.peek();
         tok.space_before
@@ -71,7 +71,7 @@ impl<'d> Parser<'d> {
             )
     }
 
-    /// Arguments sans parenthèses : `do` n'y est pas consommé et revient à cet appel.
+    /// Parenthesis-free arguments: `do` is not consumed inside them and goes to this call.
     pub(crate) fn command_args(&mut self) -> PResult<(Vec<Arg>, Option<Block>)> {
         let (args, mut block) = self.with_do(false, |p| p.arg_list())?;
         if block.is_none() {
@@ -139,7 +139,7 @@ impl<'d> Parser<'d> {
                 self.bump();
                 Ok(ArgOrBlock::Arg(Arg::BlockPass(self.unary()?)))
             }
-            // `&.sent?` : bloc court sur le paramètre implicite `it`
+            // `&.sent?`: short block over the implicit parameter `it`
             T::SafeDot => {
                 let start = self.bump().span;
                 let call = self.method_call(Expr::new(ExprKind::It, start), false)?;

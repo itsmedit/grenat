@@ -1,11 +1,11 @@
-//! Concurrence structurée : `parallel_map` et `race`.
+//! Structured concurrency: `parallel_map` and `race`.
 
 use crate::prelude::*;
 
 impl<'p> Interp<'p> {
-    // ── Concurrence ──────────────────────────────────────────
+    // ── Concurrency ──────────────────────────────────────────
 
-    /// `xs.parallel_map(limit: n) { |x| … }` : au plus `limit` tâches à la fois, résultats dans l'ordre.
+    /// `xs.parallel_map(limit: n) { |x| … }`: at most `limit` tasks at once, results in order.
     pub(crate) fn parallel_map(&mut self, items: Vec<Value<'p>>, block: Value<'p>, limit: usize) -> R<'p> {
         if items.len() <= 1 || limit <= 1 {
             let results =
@@ -31,7 +31,7 @@ impl<'p> Interp<'p> {
                     let result = task.call_block(&block, vec![items[i].clone()]);
                     let failed = result.is_err();
                     if sender.send((i, result)).is_err() || failed {
-                        // la première erreur annule le reste
+                        // the first error cancels the rest
                         stop.store(true, AtomicOrdering::Relaxed);
                         break;
                     }

@@ -1,4 +1,4 @@
-//! Structures de contrôle : `if`/`unless`, `while`/`until`, `case`.
+//! Control structures: `if`/`unless`, `while`/`until`, `case`.
 
 use grenat_ast::*;
 use grenat_lexer::{Keyword as K, TokenKind as T};
@@ -13,7 +13,7 @@ impl<'d> Parser<'d> {
         Ok(Expr { span: start.to(end), ..e })
     }
 
-    /// Condition, branche `then`, puis `elsif`/`else` ; ne consomme pas le `end`.
+    /// Condition, `then` branch, then `elsif`/`else`; does not consume the `end`.
     pub(crate) fn if_rest(&mut self, start: Span, negate: bool) -> PResult<Expr> {
         let cond = self.expr_stmt()?;
         let cond = if negate { not(cond) } else { cond };
@@ -73,7 +73,7 @@ impl<'d> Parser<'d> {
             arms.push(CaseArm { test, guard, body, span: arm_start.to(self.prev_span()) });
         }
         if arms.is_empty() {
-            self.report(Diagnostic::new(self.span(), "au moins une branche `in` ou `when` attendue"));
+            self.report(Diagnostic::new(self.span(), "expected at least one `in` or `when` branch"));
         }
         let else_ = if self.eat_kw(K::Else) { Some(self.stmts(&[K::End])) } else { None };
         let end = self.expect_end(start, "case")?;

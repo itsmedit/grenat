@@ -1,8 +1,8 @@
-//! Requêtes, réponses et configuration des modèles ; le trait [`Provider`].
+//! Requests, responses and model configuration; the [`Provider`] trait.
 
 use serde_json::{Value as Json, json};
 
-/// Configuration d'un modèle, issue d'une déclaration `model :nom, …`.
+/// Model configuration, from a `model :name, …` declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModelConfig {
     pub provider: String,
@@ -11,14 +11,14 @@ pub struct ModelConfig {
     pub temperature: Option<f64>,
     /// `low` … `max` (`output_config.effort`).
     pub effort: Option<String>,
-    /// Repli côté serveur quand le modèle refuse (`fallbacks: "default"`).
+    /// Server-side fallback when the model refuses (`fallbacks: "default"`).
     pub fallbacks: bool,
 }
 
 impl ModelConfig {
     pub fn new(provider: impl Into<String>, name: impl Into<String>) -> Self {
         let name = name.into();
-        // recommandé pour les modèles dont les classifieurs peuvent refuser une requête
+        // recommended for models whose classifiers may refuse a request
         let fallbacks = matches!(name.as_str(), "claude-opus-5" | "claude-fable-5-1");
         ModelConfig { provider: provider.into(), name, max_tokens: 16_000, temperature: None, effort: None, fallbacks }
     }
@@ -35,10 +35,10 @@ pub struct ToolSpec {
 pub struct Request<'a> {
     pub model: &'a ModelConfig,
     pub system: Option<String>,
-    /// Messages au format de l'API (`{"role": …, "content": …}`).
+    /// Messages in API format (`{"role": …, "content": …}`).
     pub messages: Vec<Json>,
     pub tools: Vec<ToolSpec>,
-    /// Sortie structurée : JSON Schema de la réponse attendue.
+    /// Structured output: JSON Schema of the expected reply.
     pub output_schema: Option<Json>,
 }
 
@@ -65,7 +65,7 @@ pub struct ToolUse {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Response {
-    /// Blocs de contenu bruts, à renvoyer tels quels dans l'historique.
+    /// Raw content blocks, to be sent back unchanged in the history.
     pub content: Vec<Json>,
     pub stop_reason: String,
     pub usage: Usage,
@@ -73,7 +73,7 @@ pub struct Response {
 }
 
 impl Response {
-    /// Concaténation des blocs `text`.
+    /// Concatenation of the `text` blocks.
     pub fn text(&self) -> String {
         self.content.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str()).collect()
     }
@@ -90,7 +90,7 @@ impl Response {
             .collect()
     }
 
-    // ── Constructeurs pour les tests ──
+    // ── Constructors for tests ──
 
     pub fn text_reply(text: impl Into<String>) -> Self {
         Response::from_content(vec![json!({"type": "text", "text": text.into()})], "end_turn")
@@ -130,7 +130,7 @@ impl LlmError {
     }
 }
 
-/// Partagé entre les tâches concurrentes de l'interpréteur.
+/// Shared between the interpreter's concurrent tasks.
 pub trait Provider: Send + Sync {
     fn complete(&self, request: &Request) -> Result<Response, LlmError>;
 }

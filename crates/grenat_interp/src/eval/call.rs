@@ -1,8 +1,8 @@
-//! Appels de fonctions, de méthodes et de blocs ; liaison des paramètres ; méthodes des valeurs teintées.
+//! Function, method and block calls; parameter binding; methods of tainted values.
 
 use crate::prelude::*;
 
-/// Effet qui interdit de recevoir une valeur teintée.
+/// Effect that forbids receiving a tainted value.
 fn dangerous_effect(def: &FnDef) -> Option<String> {
     def.effects.iter().find_map(|effect| {
         let path: Vec<&str> = effect.path.iter().map(|i| i.name.as_str()).collect();
@@ -12,7 +12,7 @@ fn dangerous_effect(def: &FnDef) -> Option<String> {
 }
 
 impl<'p> Interp<'p> {
-    // ── Appels ───────────────────────────────────────────────
+    // ── Calls ───────────────────────────────────────────────
 
     pub(crate) fn eval_call(
         &mut self,
@@ -48,7 +48,7 @@ impl<'p> Interp<'p> {
             None => self.call_function(&name.name, call_args),
         };
         match result {
-            // `break` dans un bloc termine l'appel qui l'a reçu
+            // `break` in a block ends the call that received it
             Err(Ctrl::Break(v)) if block.is_some() => Ok(v),
             other => other,
         }
@@ -87,7 +87,7 @@ impl<'p> Interp<'p> {
         match block {
             Value::Closure(c) => {
                 let scope = new_scope(Some(c.scope.clone()));
-                // `|k, v|` sur une paire : déstructuration, comme en Ruby
+                // `|k, v|` on a pair: destructuring, as in Ruby
                 let args = match args.as_slice() {
                     [single] if c.params.len() > 1 => match single.untainted() {
                         Value::Array(items) => {
@@ -115,12 +115,12 @@ impl<'p> Interp<'p> {
                 let receiver = args.into_iter().next().unwrap_or(Value::Nil);
                 self.call_method(receiver, name, Args::default())
             }
-            other => raise("TypeError", format!("bloc attendu, reçu {}", other.type_name())),
+            other => raise("TypeError", format!("expected a block, got {}", other.type_name())),
         }
     }
 
-    /// `race do … end` : chaque instruction dans sa tâche ; la première qui réussit
-    /// gagne, les autres sont annulées à leur prochain point de contrôle.
+    /// `race do … end`: each statement in its own task; the first to succeed
+    /// wins, the others are cancelled at their next checkpoint.
     pub(crate) fn call_function(&mut self, name: &str, args: Args<'p>) -> R<'p> {
         if name.starts_with(|c: char| c.is_uppercase()) {
             return self.construct(name, args);
@@ -139,7 +139,7 @@ impl<'p> Interp<'p> {
         if let Some(result) = builtins::call_global(self, name, args) {
             return result;
         }
-        raise("NameError", format!("fonction inconnue `{name}`"))
+        raise("NameError", format!("unknown function `{name}`"))
     }
 
     pub(crate) fn in_current_agent(&self) -> bool {
@@ -161,10 +161,10 @@ impl<'p> Interp<'p> {
 
     pub(crate) fn call_fn(&mut self, def: &'p FnDef, args: Args<'p>, self_val: Option<Value<'p>>) -> R<'p> {
         if def.is_abstract {
-            return raise("NotImplementedError", format!("`{}` est abstraite", def.name.name));
+            return raise("NotImplementedError", format!("`{}` is abstract", def.name.name));
         }
         if args.block.is_some() {
-            return raise("ArgumentError", format!("`{}` ne prend pas de bloc", def.name.name));
+            return raise("ArgumentError", format!("`{}` does not take a block", def.name.name));
         }
         if let Some(effect) = dangerous_effect(def) {
             let tainted = args
@@ -177,8 +177,8 @@ impl<'p> Interp<'p> {
                 return raise(
                     "TaintError",
                     format!(
-                        "une valeur produite par un LLM atteint `{}` (effet `{effect}`) sans validation ; \
-                         validez-la avec `.check {{ … }}`, `.approve(by: :human)` ou `.trust!`",
+                        "an LLM-produced value reaches `{}` (effect `{effect}`) without validation; \
+                         validate it with `.check {{ … }}`, `.approve(by: :human)` or `.trust!`",
                         def.name.name
                     ),
                 );
@@ -204,7 +204,7 @@ impl<'p> Interp<'p> {
                 Err(Ctrl::Raise(e))
             }
             Err(Ctrl::Break(_) | Ctrl::Next(_)) => {
-                raise("LocalJumpError", format!("`break`/`next` hors d'une boucle dans `{}`", def.name.name))
+                raise("LocalJumpError", format!("`break`/`next` outside a loop in `{}`", def.name.name))
             }
             Err(other) => Err(other),
         }
@@ -226,15 +226,15 @@ impl<'p> Interp<'p> {
             } else if let Some(default) = &param.default {
                 self.eval(default)?
             } else {
-                return raise("ArgumentError", format!("argument `{}` manquant pour `{owner}`", param.name.name));
+                return raise("ArgumentError", format!("missing argument `{}` for `{owner}`", param.name.name));
             };
             scope_define(self.scope(), &param.name.name, value);
         }
         if pos.next().is_some() {
-            return raise("ArgumentError", format!("trop d'arguments pour `{owner}` ({} attendus)", params.len()));
+            return raise("ArgumentError", format!("too many arguments for `{owner}` (expected {})", params.len()));
         }
         if let Some((name, _)) = named.first() {
-            return raise("ArgumentError", format!("argument nommé inconnu `{name}:` pour `{owner}`"));
+            return raise("ArgumentError", format!("unknown named argument `{name}:` for `{owner}`"));
         }
         Ok(())
     }
@@ -255,7 +255,7 @@ impl<'p> Interp<'p> {
             return self.call_fn(def, args, Some(receiver));
         }
         if matches!(receiver, Value::Agent(_) | Value::Pool(_)) && matches!(name, "ask" | "tell") {
-            return self.send(&receiver, name, args).expect("agent ou pool");
+            return self.send(&receiver, name, args).expect("agent or pool");
         }
         if args.is_empty() {
             let found = match &receiver {
@@ -271,7 +271,7 @@ impl<'p> Interp<'p> {
         builtins::call_method(self, receiver, name, args)
     }
 
-    /// Méthodes d'une valeur `~T` : validation, sinon propagation de la teinte.
+    /// Methods of a `~T` value: validation, otherwise taint propagation.
     pub(crate) fn tainted_method(
         &mut self,
         receiver: Value<'p>,
@@ -285,26 +285,26 @@ impl<'p> Interp<'p> {
             "inspect" => Ok(Value::str(receiver.inspect())),
             "check" => {
                 let Some(block) = args.block else {
-                    return raise("ArgumentError", "`check` attend un bloc de validation");
+                    return raise("ArgumentError", "`check` expects a validation block");
                 };
                 if self.call_block(&block, vec![inner.clone()])?.truthy() {
                     Ok(Value::ok(inner))
                 } else {
-                    let error = ErrorVal::new("CheckError", format!("validation refusée pour {}", inner.inspect()));
+                    let error = ErrorVal::new("CheckError", format!("validation failed for {}", inner.inspect()));
                     Ok(Value::err(Value::Error(Arc::new(error))))
                 }
             }
             "approve" => {
-                let message = format!("Valeur produite par un LLM :\n{}", inner.inspect());
+                let message = format!("LLM-produced value:\n{}", inner.inspect());
                 if self.ask_human(&message)? {
                     Ok(inner)
                 } else {
-                    raise("ApprovalDenied", "valeur refusée par l'humain")
+                    raise("ApprovalDenied", "value rejected by the human")
                 }
             }
-            // méthode utilisateur : `self` reste teinté, ses champs aussi
+            // user method: `self` stays tainted, and so do its fields
             _ if self.method_of(&inner, name).is_some() => {
-                let def = self.method_of(&inner, name).expect("vérifié");
+                let def = self.method_of(&inner, name).expect("checked above");
                 self.call_fn(def, args, Some(receiver))
             }
             _ => {

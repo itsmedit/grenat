@@ -1,4 +1,4 @@
-//! Construction : structs, classes, variantes, erreurs, messages d'agent.
+//! Construction: structs, classes, variants, errors, agent messages.
 
 use grenat_ast::{Diagnostic, Field, Span, TypeKind};
 
@@ -6,7 +6,7 @@ use crate::ty::{Ty, V};
 use crate::*;
 
 impl<'p> Checker<'p> {
-    /// `Nom(…)` : struct, variante, erreur, message d'agent, `Ok`/`Err`.
+    /// `Name(…)`: struct, variant, error, agent message, `Ok`/`Err`.
     pub(crate) fn construct(&mut self, span: Span, name: &str, argv: Vec<ArgV>) -> V {
         let taint = argv.iter().find_map(|a| a.v.taint);
         match name {
@@ -46,17 +46,17 @@ impl<'p> Checker<'p> {
                     }
                 },
                 TypeKind::Agent => self.report(
-                    Diagnostic::new(span, format!("`{name}` est un agent"))
+                    Diagnostic::new(span, format!("`{name}` is an agent"))
                         .with_code(E_TYPE)
-                        .with_help(format!("démarrez-le avec `spawn {name}`")),
+                        .with_help(format!("start it with `spawn {name}`")),
                 ),
-                _ => self.error(E_TYPE, span, format!("`{name}` ne peut pas être instancié")),
+                _ => self.error(E_TYPE, span, format!("`{name}` cannot be instantiated")),
             }
             return V { ty: Ty::user(name), taint };
         }
         if let Some(enum_name) = self.variants.get(name).copied() {
             let variant =
-                self.types[enum_name].variants.iter().find(|v| v.name.name == name).copied().expect("variante");
+                self.types[enum_name].variants.iter().find(|v| v.name.name == name).copied().expect("variant");
             let fields: Vec<&'p Field> = variant.fields.iter().collect();
             self.bind_args(name, &Slot::fields(&fields), &argv, span);
             return V { ty: Ty::user(enum_name), taint };
@@ -71,7 +71,7 @@ impl<'p> Checker<'p> {
         }
         let known: Vec<&str> =
             self.types.keys().chain(self.variants.keys()).chain(self.messages.keys()).copied().collect();
-        self.error_help(E_NAME, span, format!("type inconnu `{name}`"), suggest(name, known));
+        self.error_help(E_NAME, span, format!("unknown type `{name}`"), suggest(name, known));
         V { ty: Ty::Unknown, taint }
     }
 }

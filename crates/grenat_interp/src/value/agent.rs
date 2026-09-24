@@ -1,4 +1,4 @@
-//! Agents-acteurs et leur supervision.
+//! Actor agents and their supervision.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -8,11 +8,11 @@ use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Strategy {
-    /// Seul l'agent qui a planté redémarre.
+    /// Only the crashed agent restarts.
     OneForOne,
-    /// Tous les enfants du superviseur redémarrent.
+    /// Every child of the supervisor restarts.
     OneForAll,
-    /// L'agent et les enfants déclarés après lui redémarrent.
+    /// The agent and the children declared after it restart.
     RestForOne,
 }
 
@@ -21,26 +21,26 @@ pub struct Supervision {
     pub supervisor: String,
     pub strategy: Strategy,
     pub max_restarts: usize,
-    /// Fenêtre de comptage des redémarrages, en secondes.
+    /// Window over which restarts are counted, in seconds.
     pub within: f64,
 }
 
-/// Un agent-acteur : son état et le verrou qui garantit qu'il traite un message à la fois.
+/// An actor agent: its state and the lock that makes it handle one message at a time.
 pub struct AgentRef<'p> {
     pub id: u64,
     pub ty: Arc<str>,
-    /// Remplacé par un état neuf quand le superviseur redémarre l'agent.
+    /// Replaced by a fresh state when the supervisor restarts the agent.
     pub state: Mutex<Arc<Object<'p>>>,
-    /// Tenu pendant le traitement d'un message.
+    /// Held while a message is being handled.
     pub turn: Mutex<()>,
-    /// Tâche en train de traiter un message (détection d'interblocage).
+    /// Task currently handling a message (deadlock detection).
     pub owner: Mutex<Option<u64>>,
-    /// Messages en attente (répartition dans un pool).
+    /// Pending messages (pool load balancing).
     pub queued: AtomicUsize,
     pub budget: Option<Arc<Budget>>,
     pub supervision: Option<Supervision>,
     pub restarts: Mutex<Vec<Instant>>,
-    /// Raison de l'arrêt définitif (trop de redémarrages).
+    /// Why the agent was stopped for good (too many restarts).
     pub down: Mutex<Option<String>>,
 }
 

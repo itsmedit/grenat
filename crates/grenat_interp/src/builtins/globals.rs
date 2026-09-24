@@ -1,4 +1,4 @@
-//! Fonctions globales : `puts`, `raise`, `spawn`, `budget`, `within`, `test`…
+//! Global functions: `puts`, `raise`, `spawn`, `budget`, `within`, `test`…
 
 use crate::prelude::*;
 
@@ -13,7 +13,7 @@ pub(crate) fn budget_from_args<'p>(args: &Args<'p>) -> Result<Budget, Ctrl<'p>> 
             ("time", Value::Duration(s)) => budget.max_seconds = Some(*s),
             ("time", Value::Int(n)) => budget.max_seconds = Some(*n as f64),
             (option, v) => {
-                return raise("ArgumentError", format!("option de budget invalide `{option}: {}`", v.inspect()));
+                return raise("ArgumentError", format!("invalid budget option `{option}: {}`", v.inspect()));
             }
         }
     }
@@ -33,7 +33,7 @@ pub(crate) fn puts<'p>(interp: &mut Interp<'p>, value: &Value<'p>) -> Result<(),
     Ok(())
 }
 
-/// `None` si `name` n'est pas une fonction intégrée.
+/// `None` if `name` is not a built-in function.
 pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p>) -> Option<R<'p>> {
     Some(match name {
         "puts" => (|| {
@@ -80,27 +80,27 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
                 Some(Value::Int(n)) => n,
                 None => 1,
                 Some(other) => {
-                    return raise("TypeError", format!("`size:` attend un entier, reçu {}", other.inspect()));
+                    return raise("TypeError", format!("`size:` expects an integer, got {}", other.inspect()));
                 }
             };
             interp.spawn_pool(&arg(&args, 0, name)?, size)
         })(),
-        "budget" if args.is_empty() => Ok(Value::Budget(interp.budgets.last().expect("budget global").clone())),
+        "budget" if args.is_empty() => Ok(Value::Budget(interp.budgets.last().expect("global budget").clone())),
         "budget" => budget_from_args(&args).map(|b| Value::Budget(Arc::new(b))),
         "within" => (|| {
             let Value::Budget(budget) = arg(&args, 0, "within")? else {
-                return raise("TypeError", "`within` attend un budget : `within budget(usd: 1.00) do … end`");
+                return raise("TypeError", "`within` expects a budget: `within budget(usd: 1.00) do … end`");
             };
             interp.within(budget, &block(&args, "within")?)
         })(),
-        // Phase 1 : pas encore de journal durable, le bloc est exécuté directement.
+        // No durable journal yet (phase 5): the block runs directly.
         "step" => block(&args, "step").and_then(|b| interp.call_block(&b, Vec::new())),
         "approve!" => (|| {
             let message = arg(&args, 0, "approve!")?.to_display();
             if interp.ask_human(&message)? {
                 Ok(Value::Nil)
             } else {
-                raise("ApprovalDenied", format!("refusé par l'humain : {message}"))
+                raise("ApprovalDenied", format!("rejected by the human: {message}"))
             }
         })(),
         "with_human" => (|| {
@@ -122,7 +122,7 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             if arg(&args, 0, "assert")?.truthy() {
                 return Ok(Value::Nil);
             }
-            let message = args.pos.get(1).map_or("assertion échouée".into(), Value::to_display);
+            let message = args.pos.get(1).map_or("assertion failed".into(), Value::to_display);
             raise("AssertionError", message)
         })(),
         "assert_equal" => (|| {
@@ -130,17 +130,17 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             if equal(&expected, &actual) {
                 Ok(Value::Nil)
             } else {
-                raise("AssertionError", format!("attendu {}, obtenu {}", expected.inspect(), actual.inspect()))
+                raise("AssertionError", format!("expected {}, got {}", expected.inspect(), actual.inspect()))
             }
         })(),
         "assert_raises" => (|| {
             let Value::Type(expected) = arg(&args, 0, name)? else {
-                return raise("TypeError", "`assert_raises` attend un type d'erreur");
+                return raise("TypeError", "`assert_raises` expects an error type");
             };
             match interp.call_block(&block(&args, name)?, Vec::new()) {
                 Err(Ctrl::Raise(e)) if error_is_a(&e.ty, &expected) => Ok(Value::Error(e)),
                 Err(other) => Err(other),
-                Ok(_) => raise("AssertionError", format!("`{expected}` attendue, aucune erreur levée")),
+                Ok(_) => raise("AssertionError", format!("expected `{expected}`, but nothing was raised")),
             }
         })(),
         "loop" => (|| {
@@ -151,7 +151,7 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
         })(),
         "sleep" => (|| {
             let seconds = number(&arg(&args, 0, "sleep")?).unwrap_or(0.0).max(0.0);
-            // par tranches, pour qu'une tâche annulée (`race`, `parallel_map`) s'arrête vite
+            // in slices, so that a cancelled task (`race`, `parallel_map`) stops quickly
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs_f64(seconds);
             while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()) {
                 interp.check_cancel()?;
@@ -168,7 +168,7 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
 pub(crate) fn raise_value<'p>(args: Args<'p>) -> R<'p> {
     let mut pos = args.pos.into_iter();
     let error = match pos.next() {
-        None => ErrorVal::new("RuntimeError", "erreur"),
+        None => ErrorVal::new("RuntimeError", "error"),
         Some(Value::Error(e)) => return Err(Ctrl::Raise(e)),
         Some(Value::Type(ty)) => {
             let message = pos.next().map_or_else(|| ty.to_string(), |m| m.to_display());

@@ -1,6 +1,6 @@
-//! Suggestions « vouliez-vous … ? » pour les fautes de frappe.
+//! "Did you mean …?" suggestions for typos.
 
-/// Distance de Damerau-Levenshtein (une inversion de deux lettres compte pour une erreur).
+/// Damerau-Levenshtein distance (swapping two adjacent letters counts as one edit).
 pub(crate) fn edit_distance(a: &str, b: &str) -> usize {
     let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
     let mut d = vec![vec![0usize; b.len() + 1]; a.len() + 1];
@@ -22,7 +22,7 @@ pub(crate) fn edit_distance(a: &str, b: &str) -> usize {
     d[a.len()][b.len()]
 }
 
-/// Le nom le plus proche, s'il est assez proche pour être une faute de frappe.
+/// The closest name, if it is close enough to be a typo.
 pub(crate) fn suggest<'a>(name: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<String> {
     let limit = (name.chars().count() / 3).max(1);
     candidates
@@ -31,5 +31,5 @@ pub(crate) fn suggest<'a>(name: &str, candidates: impl IntoIterator<Item = &'a s
         .map(|c| (edit_distance(name, c), c))
         .filter(|(d, _)| *d <= limit)
         .min_by_key(|(d, _)| *d)
-        .map(|(_, c)| format!("vouliez-vous `{c}` ?"))
+        .map(|(_, c)| format!("did you mean `{c}`?"))
 }

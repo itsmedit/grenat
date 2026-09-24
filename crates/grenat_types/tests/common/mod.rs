@@ -1,4 +1,4 @@
-//! Outils partagés par les tests du vérificateur.
+//! Helpers shared by the checker tests.
 #![allow(dead_code)]
 
 use grenat_types::{Diagnostic, check};
@@ -11,13 +11,13 @@ pub fn diags(src: &str) -> Vec<Diagnostic> {
 
 pub fn clean(src: &str) {
     let d = diags(src);
-    assert!(d.is_empty(), "diagnostics inattendus :\n{}", render(src, &d));
+    assert!(d.is_empty(), "unexpected diagnostics:\n{}", render(src, &d));
 }
 
-/// Un seul diagnostic, avec ce code, sur ce texte du source.
+/// Exactly one diagnostic, with this code, on this source text.
 pub fn single(src: &str, code: &str, at: &str) -> Diagnostic {
     let d = diags(src);
-    assert_eq!(d.len(), 1, "un seul diagnostic attendu :\n{}", render(src, &d));
+    assert_eq!(d.len(), 1, "expected exactly one diagnostic:\n{}", render(src, &d));
     let diag = d.into_iter().next().unwrap();
     assert_eq!(diag.code, Some(code), "{}", render(src, std::slice::from_ref(&diag)));
     assert_eq!(&src[diag.span.range()], at, "{}", diag.message);
@@ -27,7 +27,7 @@ pub fn single(src: &str, code: &str, at: &str) -> Diagnostic {
 pub fn render(src: &str, diags: &[Diagnostic]) -> String {
     diags
         .iter()
-        .map(|d| format!("  [{}] {} « {} »", d.code.unwrap_or("-"), d.message, &src[d.span.range()]))
+        .map(|d| format!("  [{}] {} `{}`", d.code.unwrap_or("-"), d.message, &src[d.span.range()]))
         .collect::<Vec<_>>()
         .join("\n")
 }

@@ -1,4 +1,4 @@
-//! Client HTTP de l'API Messages, contre un serveur local qui joue l'API.
+//! Messages API HTTP client, tested against a local server that plays the API.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -9,17 +9,17 @@ use std::time::Duration;
 use grenat_llm::{Anthropic, ModelConfig, Provider, Request, ToolSpec};
 use serde_json::{Value as Json, json};
 
-/// Requête reçue par le faux serveur.
+/// Request received by the fake server.
 struct Received {
     path: String,
     headers: HashMap<String, String>,
     body: Json,
 }
 
-/// Réponse du faux serveur : statut, en-têtes supplémentaires, corps.
+/// Fake server reply: status, extra headers, body.
 type Reply = (u16, Vec<(&'static str, &'static str)>, Json);
 
-/// Démarre un serveur qui répond, dans l'ordre, par les `replies`.
+/// Starts a server that answers with the `replies`, in order.
 fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<Received>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
@@ -79,11 +79,11 @@ fn error(kind: &str, text: &str) -> Json {
 fn request(model: &ModelConfig) -> Request<'_> {
     Request {
         model,
-        system: Some("sois bref".into()),
-        messages: vec![json!({"role": "user", "content": "Bonjour"})],
+        system: Some("be brief".into()),
+        messages: vec![json!({"role": "user", "content": "Hello"})],
         tools: vec![ToolSpec {
-            name: "lire".into(),
-            description: "Lit".into(),
+            name: "read".into(),
+            description: "Reads".into(),
             input_schema: json!({"type": "object"}),
         }],
         output_schema: None,
@@ -96,10 +96,10 @@ fn client(url: &str) -> Anthropic {
 
 #[test]
 fn sends_a_well_formed_request_and_parses_the_reply() {
-    let (url, received) = serve(vec![(200, vec![], message("Salut"))]);
+    let (url, received) = serve(vec![(200, vec![], message("Hi"))]);
     let model = ModelConfig::new("anthropic", "claude-opus-5");
     let response = client(&url).complete(&request(&model)).unwrap();
-    assert_eq!(response.text(), "Salut");
+    assert_eq!(response.text(), "Hi");
     assert_eq!(response.usage.input_tokens, 12);
 
     let received = received.lock().unwrap();
@@ -107,10 +107,10 @@ fn sends_a_well_formed_request_and_parses_the_reply() {
     assert_eq!(r.path, "/v1/messages");
     assert_eq!(r.headers["x-api-key"], "sk-test");
     assert_eq!(r.headers["anthropic-version"], "2023-06-01");
-    // repli côté serveur : activé par défaut pour claude-opus-5, avec son en-tête bêta
+    // server-side fallback: on by default for claude-opus-5, with its beta header
     assert_eq!(r.headers["anthropic-beta"], "server-side-fallback-2026-07-01");
     assert_eq!(r.body["fallbacks"], "default");
-    assert_eq!(r.body["system"], "sois bref");
+    assert_eq!(r.body["system"], "be brief");
     assert_eq!(r.body["tools"][0]["strict"], true);
 }
 
@@ -127,39 +127,39 @@ fn no_beta_header_without_fallbacks() {
 #[test]
 fn retries_rate_limits_and_overload() {
     let (url, received) = serve(vec![
-        (429, vec![("retry-after", "0")], error("rate_limit_error", "trop vite")),
-        (529, vec![], error("overloaded_error", "surchargé")),
-        (200, vec![], message("enfin")),
+        (429, vec![("retry-after", "0")], error("rate_limit_error", "too fast")),
+        (529, vec![], error("overloaded_error", "overloaded")),
+        (200, vec![], message("finally")),
     ]);
     let model = ModelConfig::new("anthropic", "claude-haiku-4-5");
-    assert_eq!(client(&url).complete(&request(&model)).unwrap().text(), "enfin");
+    assert_eq!(client(&url).complete(&request(&model)).unwrap().text(), "finally");
     assert_eq!(received.lock().unwrap().len(), 3);
 }
 
 #[test]
 fn client_errors_are_not_retried() {
-    let (url, received) = serve(vec![(400, vec![], error("invalid_request_error", "schéma invalide"))]);
+    let (url, received) = serve(vec![(400, vec![], error("invalid_request_error", "invalid schema"))]);
     let model = ModelConfig::new("anthropic", "claude-haiku-4-5");
     let e = client(&url).complete(&request(&model)).unwrap_err();
-    assert_eq!(e.message, "HTTP 400 : schéma invalide");
+    assert_eq!(e.message, "HTTP 400: invalid schema");
     assert_eq!(received.lock().unwrap().len(), 1);
 }
 
 #[test]
 fn gives_up_after_the_last_attempt() {
-    let overloaded = || (529, vec![], error("overloaded_error", "surchargé"));
+    let overloaded = || (529, vec![], error("overloaded_error", "overloaded"));
     let (url, received) = serve(vec![overloaded(), overloaded(), overloaded(), overloaded()]);
     let model = ModelConfig::new("anthropic", "claude-haiku-4-5");
     let e = client(&url).complete(&request(&model)).unwrap_err();
-    assert_eq!(e.message, "HTTP 529 : surchargé");
+    assert_eq!(e.message, "HTTP 529: overloaded");
     assert_eq!(received.lock().unwrap().len(), 4);
 }
 
 #[test]
 fn connection_failures_are_reported() {
-    // port fermé : personne n'écoute
+    // closed port: nobody is listening
     let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
     let model = ModelConfig::new("anthropic", "claude-haiku-4-5");
     let e = client(&format!("http://127.0.0.1:{port}")).complete(&request(&model)).unwrap_err();
-    assert!(e.message.starts_with("connexion impossible"), "{}", e.message);
+    assert!(e.message.starts_with("connection failed"), "{}", e.message);
 }

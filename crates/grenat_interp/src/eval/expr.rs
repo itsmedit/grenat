@@ -1,18 +1,18 @@
-//! Évaluation des instructions et des expressions, résolution des noms.
+//! Evaluation of statements and expressions, name resolution.
 
 use crate::prelude::*;
 
-/// Modules et types intégrés utilisables comme valeurs.
+/// Built-in modules and types usable as values.
 const BUILTIN_TYPES: &[&str] = &[
     "File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Int", "Float", "String", "Bool", "Array", "Hash",
     "Symbol", "Nil", "Range", "Money", "Duration",
 ];
 
 impl<'p> Interp<'p> {
-    // ── Contexte ─────────────────────────────────────────────
+    // ── Context ─────────────────────────────────────────────
 
     pub(crate) fn scope(&self) -> &crate::value::Scope<'p> {
-        &self.frames.last().expect("au moins une frame").scope
+        &self.frames.last().expect("at least one frame").scope
     }
 
     pub(crate) fn self_val(&self) -> Option<Value<'p>> {
@@ -22,7 +22,7 @@ impl<'p> Interp<'p> {
     pub(crate) fn self_object(&self, ivar: &str) -> Result<Arc<Object<'p>>, Ctrl<'p>> {
         match self.self_val() {
             Some(Value::Object(o)) => Ok(o),
-            _ => raise("NameError", format!("`@{ivar}` utilisé hors d'une classe ou d'un agent")),
+            _ => raise("NameError", format!("`@{ivar}` used outside a class or an agent")),
         }
     }
 
@@ -32,7 +32,7 @@ impl<'p> Interp<'p> {
         scope: crate::value::Scope<'p>,
     ) -> Result<(), Ctrl<'p>> {
         if self.depth >= self.max_depth {
-            return raise("StackOverflow", "récursion trop profonde");
+            return raise("StackOverflow", "recursion too deep");
         }
         self.depth += 1;
         self.frames.push(Frame { self_val, scope });
@@ -44,7 +44,7 @@ impl<'p> Interp<'p> {
         self.frames.pop();
     }
 
-    // ── Instructions ─────────────────────────────────────────
+    // ── Statements ─────────────────────────────────────────
 
     pub(crate) fn eval_stmts(&mut self, stmts: &'p [Expr]) -> R<'p> {
         let mut last = Value::Nil;
@@ -98,7 +98,7 @@ impl<'p> Interp<'p> {
             ExprKind::Str(segs) => self.string(segs),
             ExprKind::SelfRef => match self.self_val() {
                 Some(v) => Ok(v),
-                None => raise("NameError", "`self` utilisé hors d'une méthode"),
+                None => raise("NameError", "`self` used outside a method"),
             },
             ExprKind::Array(items) => {
                 let values = items.iter().map(|item| self.eval(item)).collect::<Result<_, _>>()?;
@@ -115,7 +115,7 @@ impl<'p> Interp<'p> {
                 let (lo, hi) = (self.eval(lo)?, self.eval(hi)?);
                 match (lo.untainted(), hi.untainted()) {
                     (Value::Int(a), Value::Int(b)) => Ok(Value::Range(*a, *b, *inclusive)),
-                    _ => raise("TypeError", "les bornes d'un intervalle doivent être des entiers"),
+                    _ => raise("TypeError", "range bounds must be integers"),
                 }
             }
             ExprKind::Var(name) => self.lookup_var(name),
@@ -141,11 +141,13 @@ impl<'p> Interp<'p> {
                         let result = match value.untainted() {
                             Value::Int(n) => match n.checked_neg() {
                                 Some(n) => Value::Int(n),
-                                None => return raise("OverflowError", "dépassement d'entier"),
+                                None => return raise("OverflowError", "integer overflow"),
                             },
                             Value::Float(f) => Value::Float(-f),
                             Value::Money(m) => Value::Money(-m),
-                            other => return raise("TypeError", format!("`-` non défini pour {}", other.type_name())),
+                            other => {
+                                return raise("TypeError", format!("`-` is not defined for {}", other.type_name()));
+                            }
                         };
                         Ok(if tainted { result.taint() } else { result })
                     }
@@ -235,7 +237,7 @@ impl<'p> Interp<'p> {
         Ok(if tainted { v.taint() } else { v })
     }
 
-    /// `to_s`, en tenant compte d'une méthode `to_s` définie par l'utilisateur.
+    /// `to_s`, honouring a user-defined `to_s` method.
     pub(crate) fn display(&mut self, v: &Value<'p>) -> Result<String, Ctrl<'p>> {
         if let Some(def) = self.method_of(v.untainted(), "to_s") {
             return Ok(self.call_fn(def, Args::default(), Some(v.untainted().clone()))?.to_display());
@@ -257,7 +259,7 @@ impl<'p> Interp<'p> {
                     }
                 }
             }
-            Value::Nil => raise("NilError", "`?` appliqué à nil"),
+            Value::Nil => raise("NilError", "`?` applied to nil"),
             _ => Ok(value),
         }
     }
@@ -280,16 +282,16 @@ impl<'p> Interp<'p> {
         if let Some(result) = builtins::call_global(self, name, Args::default()) {
             return result;
         }
-        // `r?` : le lexer lit un nom de prédicat ; sur une variable, c'est l'opérateur `?`
+        // `r?`: the lexer reads a predicate name; on a variable, it is the `?` operator
         if let Some(base) = name.strip_suffix('?')
             && let Some(value) = scope_get(self.scope(), base)
         {
             return self.try_unwrap(value);
         }
-        raise("NameError", format!("variable ou fonction inconnue `{name}`"))
+        raise("NameError", format!("unknown variable or function `{name}`"))
     }
 
-    /// Champ de `self` ; teinté si `self` l'est (méthode appelée sur une valeur `~T`).
+    /// Field of `self`; tainted if `self` is (method called on a `~T` value).
     pub(crate) fn self_field(&self, receiver: &Value<'p>, name: &str) -> Option<Value<'p>> {
         let found = match receiver.untainted() {
             Value::Record(r) => field(&r.fields, name).cloned(),
@@ -300,7 +302,7 @@ impl<'p> Interp<'p> {
     }
 
     pub(crate) fn resolve_const(&mut self, path: &'p [Ident]) -> R<'p> {
-        let name = path.last().expect("chemin non vide").name.as_str();
+        let name = path.last().expect("non-empty path").name.as_str();
         if path.len() >= 2 {
             let owner = path[path.len() - 2].name.as_str();
             if self.variants.get(name) == Some(&owner) {
@@ -317,10 +319,10 @@ impl<'p> Interp<'p> {
         if self.variants.contains_key(name) {
             return self.variant_value(name);
         }
-        raise("NameError", format!("constante inconnue `{name}`"))
+        raise("NameError", format!("unknown constant `{name}`"))
     }
 
-    /// Variante sans champ (`Positive`) ; une variante à champs se construit avec `Nom(…)`.
+    /// Field-less variant (`Positive`); a variant with fields is built with `Name(…)`.
     pub(crate) fn variant_value(&mut self, name: &str) -> R<'p> {
         let enum_name = self.variants[name];
         let has_fields = self.types[enum_name].variants.iter().any(|v| v.name.name == name && !v.fields.is_empty());

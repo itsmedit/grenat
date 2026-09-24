@@ -1,4 +1,4 @@
-//! Alignement de l'exécution sur le vérificateur : self teinté, validation, capacités disque.
+//! Runtime aligned with the checker: tainted self, validation, filesystem capabilities.
 
 mod common;
 
@@ -23,7 +23,7 @@ fn validation_methods_accept_clean_values() {
 fn filesystem_capabilities_are_enforced() {
     let src = "def load(path: String) -> String uses fs.read(\"./src\")\n  File.read(path)\nend\nputs load(\"src/lib.rs\").lines.first\nload(\"Cargo.toml\")\n";
     let r = run_with(src, vec![], &[]);
-    assert!(r.output.starts_with("//! Interpréteur"), "{}", r.output);
+    assert!(r.output.starts_with("//! Grenat interpreter"), "{}", r.output);
     let e = r.result.unwrap_err();
     assert_eq!(e.ty, "CapabilityError");
     assert!(e.message.contains("`load` (uses fs.read(\"./src\"))"), "{}", e.message);

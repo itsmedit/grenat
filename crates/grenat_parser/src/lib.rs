@@ -1,16 +1,15 @@
-//! Parser de Grenat : descente récursive pour les instructions et les
-//! déclarations, Pratt pour les opérateurs binaires.
+//! The Grenat parser: recursive descent for statements and declarations,
+//! Pratt parsing for binary operators.
 //!
-//! Règles « à la Ruby » implémentées ici :
-//! - un appel sans parenthèses (`puts x`, `spawn Researcher`) est reconnu quand
-//!   un identifiant est suivi, après un blanc, d'un token qui peut commencer
-//!   un argument ;
-//! - dans les arguments d'un tel appel, `do … end` appartient à l'appel
-//!   englobant (`within budget(usd: 1) do … end`), `{ … }` à l'appel le plus proche ;
-//! - `if`/`unless`/`while`/`until`/`rescue` après une instruction sont des modificateurs.
+//! Ruby-style rules implemented here:
+//! - a parenthesis-free call (`puts x`, `spawn Researcher`) is recognized when an
+//!   identifier is followed, after whitespace, by a token that can start an argument;
+//! - in the arguments of such a call, `do … end` belongs to the enclosing call
+//!   (`within budget(usd: 1) do … end`), `{ … }` to the nearest one;
+//! - `if`/`unless`/`while`/`until`/`rescue` after a statement are modifiers.
 //!
-//! Le parser récupère après une erreur (en sautant à la ligne suivante) pour
-//! signaler plusieurs problèmes en une passe.
+//! The parser recovers from errors (by skipping to the next line) so it can
+//! report several problems in one pass.
 
 mod blocks;
 mod calls;
@@ -36,7 +35,7 @@ pub use grenat_ast::Diagnostic;
 #[derive(Debug)]
 pub struct Parsed {
     pub program: Program,
-    /// Erreurs du lexer puis du parser.
+    /// Lexer errors, then parser errors.
     pub diagnostics: Vec<Diagnostic>,
 }
 

@@ -1,4 +1,4 @@
-//! Expressions, instructions, variables, constantes, affectation, indexation.
+//! Expressions, statements, variables, constants, assignment, indexing.
 
 use std::collections::HashMap;
 
@@ -29,7 +29,7 @@ impl<'p> Checker<'p> {
             for t in &rescue.types {
                 let name = type_name(t);
                 if !is_error_name(name) && !self.types.contains_key(name) {
-                    self.error(E_NAME, t.span(), format!("type d'erreur inconnu `{name}`"));
+                    self.error(E_NAME, t.span(), format!("unknown error type `{name}`"));
                 }
             }
             let r = self.stmts(cx, &rescue.body);
@@ -84,7 +84,7 @@ impl<'p> Checker<'p> {
             ExprKind::SelfRef => match &cx.self_ty {
                 Some(ty) => V { ty: ty.clone(), taint: cx.self_taint },
                 None => {
-                    self.error(E_NAME, e.span, "`self` utilisé hors d'une méthode");
+                    self.error(E_NAME, e.span, "`self` used outside a method");
                     V::unknown()
                 }
             },
@@ -115,11 +115,7 @@ impl<'p> Checker<'p> {
                 for bound in [lo, hi] {
                     let v = self.expr(cx, bound);
                     if !self.compat(&v.ty, &Ty::Int) {
-                        self.error(
-                            E_TYPE,
-                            bound.span,
-                            format!("les bornes d'un intervalle sont des `Int`, reçu `{}`", v.ty),
-                        );
+                        self.error(E_TYPE, bound.span, format!("range bounds must be `Int`, got `{}`", v.ty));
                     }
                 }
                 V::new(Ty::Range)
@@ -142,7 +138,7 @@ impl<'p> Checker<'p> {
                     UnOp::Not => V { ty: Ty::Bool, taint: v.taint },
                     UnOp::Neg => {
                         if !matches!(v.ty, Ty::Int | Ty::Float | Ty::Money | Ty::Unknown) {
-                            self.error(E_TYPE, e.span, format!("`-` non défini pour `{}`", v.ty));
+                            self.error(E_TYPE, e.span, format!("`-` is not defined for `{}`", v.ty));
                         }
                         v
                     }
@@ -271,7 +267,7 @@ impl<'p> Checker<'p> {
         if let Some(base) = name.strip_suffix('?')
             && let Some(v) = cx.lookup(base)
         {
-            // `r?` : opérateur `?` sur une variable
+            // `r?`: the `?` operator applied to a variable
             let ty = match v.ty {
                 Ty::Result(t, _) | Ty::Opt(t) => *t,
                 other => other,
@@ -283,14 +279,14 @@ impl<'p> Checker<'p> {
         self.error_help(
             E_NAME,
             span,
-            format!("variable ou fonction inconnue `{name}`"),
+            format!("unknown variable or function `{name}`"),
             suggest(name, candidates.iter().map(String::as_str)),
         );
         V::unknown()
     }
 
     pub(crate) fn constant(&mut self, path: &'p [Ident], span: Span) -> V {
-        let name = path.last().expect("chemin").name.as_str();
+        let name = path.last().expect("path").name.as_str();
         if path.len() >= 2 {
             let owner = path[path.len() - 2].name.as_str();
             if self.variants.get(name) == Some(&owner) {
@@ -310,7 +306,7 @@ impl<'p> Checker<'p> {
         }
         let known: Vec<&str> =
             self.types.keys().chain(self.variants.keys()).copied().chain(builtins::MODULES.iter().copied()).collect();
-        self.error_help(E_NAME, span, format!("constante inconnue `{name}`"), suggest(name, known));
+        self.error_help(E_NAME, span, format!("unknown constant `{name}`"), suggest(name, known));
         V::unknown()
     }
 
@@ -322,7 +318,7 @@ impl<'p> Checker<'p> {
 
     pub(crate) fn ivar(&mut self, cx: &Ctx<'p>, name: &str, span: Span) -> V {
         let Some(Ty::User(owner)) = &cx.self_ty else {
-            self.error(E_NAME, span, format!("`@{name}` utilisé hors d'une classe ou d'un agent"));
+            self.error(E_NAME, span, format!("`@{name}` used outside a class or an agent"));
             return V::unknown();
         };
         let Some(field) =
@@ -336,8 +332,8 @@ impl<'p> Checker<'p> {
             self.error_help(
                 E_NAME,
                 span,
-                format!("état `@{name}` non déclaré dans `{owner}`"),
-                suggest(name, known).or_else(|| Some(format!("déclarez-le : `@{name}: Type = valeur`"))),
+                format!("state `@{name}` is not declared in `{owner}`"),
+                suggest(name, known).or_else(|| Some(format!("declare it: `@{name}: Type = value`"))),
             );
             return V::unknown();
         };
@@ -355,11 +351,7 @@ impl<'p> Checker<'p> {
             ExprKind::IVar(name) => {
                 let current = self.ivar(cx, name, target.span);
                 if !self.compat(&value.ty, &current.ty) {
-                    self.error(
-                        E_TYPE,
-                        target.span,
-                        format!("`@{name}` est de type `{}`, reçu `{}`", current.ty, value.ty),
-                    );
+                    self.error(E_TYPE, target.span, format!("`@{name}` has type `{}`, got `{}`", current.ty, value.ty));
                 }
                 if let (Some(origin), Some(Ty::User(owner))) = (value.taint, &cx.self_ty) {
                     self.ivar_taint.entry((owner.clone(), name.clone())).or_insert(origin);
@@ -378,9 +370,9 @@ impl<'p> Checker<'p> {
                     && self.types.get(t.as_str()).is_some_and(|d| d.def.kind == TypeKind::Struct)
                 {
                     self.report(
-                        Diagnostic::new(target.span, format!("`{t}` est une struct immuable"))
+                        Diagnostic::new(target.span, format!("`{t}` is an immutable struct"))
                             .with_code(E_TYPE)
-                            .with_help(format!("créez une copie : `.with({}: …)`", name.name)),
+                            .with_help(format!("make a copy: `.with({}: …)`", name.name)),
                     );
                 }
             }
@@ -405,18 +397,18 @@ impl<'p> Checker<'p> {
                         })
                 });
                 if !declared {
-                    self.error(E_NAME, span, format!("`{agent}` n'est pas un enfant du superviseur `{sup}`"));
+                    self.error(E_NAME, span, format!("`{agent}` is not a child of supervisor `{sup}`"));
                 }
                 Ty::user(agent)
             }
-            // indice déjà signalé (constante inconnue…) : pas d'erreur en cascade
+            // index already reported (unknown constant…): no cascading error
             (Ty::Unknown, _) | (_, Ty::Unknown) => Ty::Unknown,
             (Ty::Type(name), _) => {
-                self.error(E_TYPE, span, format!("`{name}` ne peut pas être indexé"));
+                self.error(E_TYPE, span, format!("`{name}` cannot be indexed"));
                 Ty::Unknown
             }
             (other, _) => {
-                self.error(E_TYPE, span, format!("`{other}` ne peut pas être indexé"));
+                self.error(E_TYPE, span, format!("`{other}` cannot be indexed"));
                 Ty::Unknown
             }
         };

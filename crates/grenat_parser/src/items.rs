@@ -1,4 +1,4 @@
-//! Déclarations : fonctions, `prompt`, `tool`, types, agents, superviseurs, modèles.
+//! Declarations: functions, `prompt`, `tool`, types, agents, supervisors, models.
 
 use grenat_ast::*;
 use grenat_lexer::{Keyword as K, TokenKind as T};
@@ -18,7 +18,7 @@ impl<'d> Parser<'d> {
                 Ok(item) => {
                     items.push(item);
                     if !self.at_line_end() {
-                        let _ = self.unexpected::<()>("une fin de ligne");
+                        let _ = self.unexpected::<()>("end of line");
                         self.recover_line();
                     }
                 }
@@ -67,7 +67,7 @@ impl<'d> Parser<'d> {
             self.bump();
             self.bump();
         }
-        let name = self.ident("un nom de fonction")?;
+        let name = self.ident("a function name")?;
         let params = if self.at_tight(&T::LParen) { self.params()? } else { Vec::new() };
         let ret = if self.eat(&T::Arrow) { Some(self.ty()?) } else { None };
 
@@ -133,7 +133,7 @@ impl<'d> Parser<'d> {
         Ok(params)
     }
 
-    /// `nom: Type = défaut` ou `nom = défaut`.
+    /// `name: Type = default` or `name = default`.
     pub(crate) fn param(&mut self) -> PResult<Param> {
         let start = self.span();
         let (name, ty) = match self.kind().clone() {
@@ -145,7 +145,7 @@ impl<'d> Parser<'d> {
                 self.bump();
                 (name, None)
             }
-            _ => return self.unexpected("un paramètre `nom: Type`"),
+            _ => return self.unexpected("a parameter `name: Type`"),
         };
         let default = if self.eat(&T::Eq) { Some(self.expr()?) } else { None };
         Ok(Param { name: Ident { name, span: start }, ty, default, span: start.to(self.prev_span()) })
@@ -155,12 +155,12 @@ impl<'d> Parser<'d> {
     pub(crate) fn effects(&mut self) -> PResult<Vec<Effect>> {
         let mut effects = Vec::new();
         loop {
-            let first = self.ident("un effet (`llm`, `net`, `fs.read`…)")?;
+            let first = self.ident("an effect (`llm`, `net`, `fs.read`…)")?;
             let start = first.span;
             let mut path = vec![first];
             while self.at(&T::Dot) && matches!(self.nth(1), T::Ident(_)) {
                 self.bump();
-                path.push(self.ident("un effet")?);
+                path.push(self.ident("an effect")?);
             }
             let mut args = Vec::new();
             if self.at_tight(&T::LParen) {
@@ -168,9 +168,9 @@ impl<'d> Parser<'d> {
                     match arg {
                         Arg::Pos(e) => args.push(e),
                         Arg::Named { name, .. } => {
-                            return self.fail(name.span, "les restrictions d'effet sont positionnelles");
+                            return self.fail(name.span, "effect restrictions are positional");
                         }
-                        Arg::BlockPass(e) => return self.fail(e.span, "bloc inattendu dans un effet"),
+                        Arg::BlockPass(e) => return self.fail(e.span, "unexpected block in an effect"),
                     }
                 }
             }
@@ -187,7 +187,7 @@ impl<'d> Parser<'d> {
         let start = self.bump().span;
         let name = match self.kind().clone() {
             T::Symbol(name) => Ident { name, span: self.bump().span },
-            _ => return self.unexpected("un symbole (`:fast`)"),
+            _ => return self.unexpected("a symbol (`:fast`)"),
         };
         let options = if self.eat(&T::Comma) {
             self.skip_newlines();
@@ -200,7 +200,7 @@ impl<'d> Parser<'d> {
 
     pub(crate) fn type_def(&mut self, kind: TypeKind, doc: Option<String>) -> PResult<TypeDef> {
         let keyword = self.bump();
-        let name = self.const_name("un nom en majuscule")?;
+        let name = self.const_name("a capitalized name")?;
         let options = if self.eat(&T::Comma) {
             self.skip_newlines();
             self.arg_list()?.0
@@ -228,7 +228,7 @@ impl<'d> Parser<'d> {
                 Ok(member) => {
                     members.push(member);
                     if !self.at_line_end() && !self.at_kw(K::End) {
-                        let _ = self.unexpected::<()>("une fin de ligne");
+                        let _ = self.unexpected::<()>("end of line");
                         self.recover_line();
                     }
                 }
@@ -251,7 +251,8 @@ impl<'d> Parser<'d> {
                 let ty = if self.eat(&T::Colon) { Some(self.ty()?) } else { None };
                 let default = if self.eat(&T::Eq) { Some(self.expr()?) } else { None };
                 if ty.is_none() && default.is_none() {
-                    return self.fail(start, format!("`@{name}` : type (`@{name}: Type`) ou valeur initiale attendus"));
+                    return self
+                        .fail(start, format!("`@{name}`: expected a type (`@{name}: Type`) or an initial value"));
                 }
                 let span = start.to(self.prev_span());
                 Ok(Member::Field(Field { doc, name: Ident { name, span: start }, is_ivar: true, ty, default, span }))
@@ -264,24 +265,24 @@ impl<'d> Parser<'d> {
             T::Ident(name) if name == "on" && kind == TypeKind::Agent => self.handler(doc).map(Member::Handler),
             T::Const(_) if kind == TypeKind::Enum => self.variant(doc).map(Member::Variant),
             T::Ident(_) if matches!(kind, TypeKind::Agent | TypeKind::Supervisor) => {
-                let name = self.ident("une directive")?;
+                let name = self.ident("a directive")?;
                 let args = if self.at_line_end() { Vec::new() } else { self.command_args()?.0 };
                 Ok(Member::Directive(Directive { name, args, span: start.to(self.prev_span()) }))
             }
             _ => self.unexpected(match kind {
-                TypeKind::Enum => "une variante, une méthode ou `end`",
-                TypeKind::Agent => "une directive, `@état`, `on Message`, une méthode ou `end`",
-                TypeKind::Supervisor => "une directive (`child …`) ou `end`",
-                _ => "un champ `nom: Type`, une méthode ou `end`",
+                TypeKind::Enum => "a variant, a method or `end`",
+                TypeKind::Agent => "a directive, `@state`, `on Message`, a method or `end`",
+                TypeKind::Supervisor => "a directive (`child …`) or `end`",
+                _ => "a field `name: Type`, a method or `end`",
             }),
         }
     }
 
-    /// `nom: Type = défaut`
+    /// `name: Type = default`
     pub(crate) fn field(&mut self, doc: Option<String>) -> PResult<Field> {
         let start = self.span();
         let T::Label(name) = self.kind().clone() else {
-            return self.unexpected("un champ `nom: Type`");
+            return self.unexpected("a field `name: Type`");
         };
         self.bump();
         let ty = self.ty()?;
@@ -291,7 +292,7 @@ impl<'d> Parser<'d> {
     }
 
     pub(crate) fn variant(&mut self, doc: Option<String>) -> PResult<Variant> {
-        let name = self.const_name("une variante")?;
+        let name = self.const_name("a variant")?;
         let mut fields = Vec::new();
         if self.at_tight(&T::LParen) {
             self.bump();
@@ -316,7 +317,7 @@ impl<'d> Parser<'d> {
 
     pub(crate) fn handler(&mut self, doc: Option<String>) -> PResult<Handler> {
         let start = self.bump().span;
-        let message = self.const_name("un nom de message en majuscule")?;
+        let message = self.const_name("a capitalized message name")?;
         let params = if self.at_tight(&T::LParen) { self.params()? } else { Vec::new() };
         let ret = if self.eat(&T::Arrow) { Some(self.ty()?) } else { None };
         let body = self.body(&[])?;

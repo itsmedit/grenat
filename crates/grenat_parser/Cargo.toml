@@ -1,6 +1,6 @@
 [package]
 name = "grenat_parser"
-description = "Parser du langage Grenat"
+description = "Parser for the Grenat language"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

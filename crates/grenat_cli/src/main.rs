@@ -1,4 +1,4 @@
-//! `grenat` : point d'entrée de la chaîne d'outils.
+//! `grenat`: entry point of the toolchain.
 
 mod report;
 
@@ -9,20 +9,20 @@ use std::{env, fs};
 use grenat_lexer::{StrPart, TokenKind};
 
 const USAGE: &str = "\
-grenat — langage de programmation agentique
+grenat — an agentic programming language
 
-Usage :
-  grenat run [--log] [--unchecked] <fichier.grn> [args…]
-                                   vérifie puis exécute le programme (puis `main`)
-  grenat test <fichier.grn>...               exécute les blocs `test \"…\" do … end`
-  grenat check <fichier.grn>...   vérifie noms, types, effets et teinte
-  grenat parse <fichier.grn>      affiche l'arbre syntaxique
-  grenat tokens <fichier.grn>     affiche les tokens
+Usage:
+  grenat run [--log] [--unchecked] <file.grn> [args…]
+                                 check, then run the program (and `main`)
+  grenat test <file.grn>...      run the `test \"…\" do … end` blocks
+  grenat check <file.grn>...     check names, types, effects and taint
+  grenat parse <file.grn>        print the syntax tree
+  grenat tokens <file.grn>       print the tokens
   grenat --version
 
-Variables d'environnement :
-  ANTHROPIC_API_KEY   clé de l'API Claude (prompts et agents)
-  GRENAT_LOG=1        journalise chaque appel LLM et d'outil (comme --log)
+Environment variables:
+  ANTHROPIC_API_KEY   Claude API key (prompts and agents)
+  GRENAT_LOG=1        log every LLM and tool call (same as --log)
 ";
 
 fn main() -> ExitCode {
@@ -34,7 +34,7 @@ fn main() -> ExitCode {
         Some("run") if args.len() > 1 => run(&args[1..]),
         Some("test") if args.len() > 1 => test(&args[1..]),
         Some(cmd @ ("build" | "eval" | "fmt")) => {
-            eprintln!("`grenat {cmd}` arrive dans une prochaine phase (voir SPEC.md, feuille de route)");
+            eprintln!("`grenat {cmd}` is coming in a later phase (see the roadmap in SPEC.md)");
             ExitCode::FAILURE
         }
         Some("-V" | "--version") => {
@@ -53,14 +53,14 @@ fn main() -> ExitCode {
 }
 
 fn read(path: &str) -> Option<String> {
-    fs::read_to_string(path).map_err(|e| eprintln!("erreur : lecture de {path} impossible : {e}")).ok()
+    fs::read_to_string(path).map_err(|e| eprintln!("error: cannot read {path}: {e}")).ok()
 }
 
 fn use_color() -> bool {
     std::io::stderr().is_terminal() && env::var_os("NO_COLOR").is_none()
 }
 
-/// Affiche les diagnostics ; renvoie `true` si le fichier est valide.
+/// Prints the diagnostics; returns `true` if the file is valid.
 fn report(path: &str, src: &str, diagnostics: &[grenat_parser::Diagnostic]) -> bool {
     let color = use_color();
     for diag in diagnostics {
@@ -78,15 +78,15 @@ fn check(paths: &[String]) -> ExitCode {
     }
     let total = paths.len();
     if failed == 0 {
-        eprintln!("✓ {total} fichier(s) valide(s)");
+        eprintln!("✓ {total} file(s) OK");
         ExitCode::SUCCESS
     } else {
-        eprintln!("✗ {failed} fichier(s) en erreur sur {total}");
+        eprintln!("✗ {failed} of {total} file(s) failed");
         ExitCode::FAILURE
     }
 }
 
-/// Parse et vérifie `path` (sauf `unchecked`) ; `None` si le fichier est invalide.
+/// Parses and checks `path` (unless `unchecked`); `None` if the file is invalid.
 fn load(path: &str, unchecked: bool) -> Option<(String, grenat_ast::Program)> {
     let src = read(path)?;
     let parsed = grenat_parser::parse(&src);
@@ -99,7 +99,7 @@ fn load(path: &str, unchecked: bool) -> Option<(String, grenat_ast::Program)> {
     Some((src, parsed.program))
 }
 
-/// L'interpréteur parcourt l'AST récursivement : il tourne sur une grande pile.
+/// The interpreter walks the AST recursively: it runs on a large stack.
 fn with_big_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
     std::thread::scope(|s| {
         std::thread::Builder::new()
@@ -107,15 +107,15 @@ fn with_big_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
             .spawn_scoped(s, f)
             .expect("thread")
             .join()
-            .expect("interpréteur")
+            .expect("interpreter thread")
     })
 }
 
 fn render_runtime_error(path: &str, src: &str, error: &grenat_interp::RuntimeError) {
     let mut diag =
-        grenat_parser::Diagnostic::new(error.span.unwrap_or_default(), format!("{} : {}", error.ty, error.message));
+        grenat_parser::Diagnostic::new(error.span.unwrap_or_default(), format!("{}: {}", error.ty, error.message));
     for (function, span) in &error.trace {
-        diag = diag.with_note(*span, format!("dans `{function}`"));
+        diag = diag.with_note(*span, format!("in `{function}`"));
     }
     eprint!("{}", report::render(path, src, &diag, use_color()));
 }
@@ -128,7 +128,7 @@ fn run(args: &[String]) -> ExitCode {
             "--log" => log = true,
             "--unchecked" => unchecked = true,
             other => {
-                eprintln!("option inconnue {other}");
+                eprintln!("unknown option {other}");
                 return ExitCode::from(2);
             }
         }
@@ -145,7 +145,7 @@ fn run(args: &[String]) -> ExitCode {
         Ok(summary) => {
             if summary.llm_calls > 0 {
                 let line = format!(
-                    "— {} appel(s) LLM · {} tokens · ${:.4}",
+                    "— {} LLM call(s) · {} tokens · ${:.4}",
                     summary.llm_calls, summary.tokens, summary.cost_usd
                 );
                 eprintln!("{}", if use_color() { format!("\x1b[2m{line}\x1b[0m") } else { line });
@@ -188,7 +188,7 @@ fn test(paths: &[String]) -> ExitCode {
             }
         }
     }
-    eprintln!("\n{passed} réussi(s), {failed} échoué(s)");
+    eprintln!("\n{passed} passed, {failed} failed");
     if failed == 0 { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }
 
@@ -220,5 +220,5 @@ fn describe(kind: &TokenKind) -> String {
             StrPart::Interp(..) => "#{…}".into(),
         })
         .collect();
-    format!("chaîne \"{text}\"")
+    format!("string \"{text}\"")
 }

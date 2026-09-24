@@ -1,4 +1,4 @@
-//! Teinte `~T` à l'exécution : puits dangereux, validation, approbation humaine.
+//! `~T` taint at runtime: dangerous sinks, validation, human approval.
 
 mod common;
 
@@ -6,10 +6,10 @@ use common::*;
 
 #[test]
 fn tainted_values_cannot_reach_dangerous_effects() {
-    let src = format!("{SUMMARY}{MAILER}s = summarize(\"x\")\nsend(\"a@b.c\", \"Titre : #{{s.title}}\")\n");
+    let src = format!("{SUMMARY}{MAILER}s = summarize(\"x\")\nsend(\"a@b.c\", \"Title: #{{s.title}}\")\n");
     let e = run_err(&src, vec![summary_reply()]);
     assert_eq!(e.ty, "TaintError");
-    assert!(e.message.contains("`send` (effet `net`)"), "{}", e.message);
+    assert!(e.message.contains("`send` (effect `net`)"), "{}", e.message);
 }
 
 #[test]
@@ -19,7 +19,7 @@ fn validated_values_can() {
     );
     let r = run_with(&src, vec![summary_reply()], &[]);
     r.result.unwrap();
-    assert_eq!(r.output, "envoyé à a@b.c : Chat\n");
+    assert_eq!(r.output, "sent to a@b.c: Cat\n");
 }
 
 #[test]
@@ -41,9 +41,9 @@ fn blocks_on_tainted_collections_see_tainted_items() {
 #[test]
 fn human_approval_untaints_or_denies() {
     let src = format!("{SUMMARY}{MAILER}s = summarize(\"x\").approve(by: :human)\nsend(\"a@b.c\", s.title)\n");
-    let approved = run_with(&src, vec![summary_reply()], &["o"]);
+    let approved = run_with(&src, vec![summary_reply()], &["y"]);
     approved.result.unwrap();
-    assert!(approved.output.ends_with("envoyé à a@b.c : Chat\n"), "{}", approved.output);
+    assert!(approved.output.ends_with("sent to a@b.c: Cat\n"), "{}", approved.output);
 
     let denied = run_with(&src, vec![summary_reply()], &["n"]);
     assert_eq!(denied.result.unwrap_err().ty, "ApprovalDenied");

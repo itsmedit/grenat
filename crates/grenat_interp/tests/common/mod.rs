@@ -1,4 +1,4 @@
-//! Outils partagés par les tests d'exécution : lancement scripté, fixtures.
+//! Helpers shared by the runtime tests: scripted runs and fixtures.
 #![allow(dead_code)]
 
 use std::collections::VecDeque;
@@ -16,23 +16,23 @@ pub struct Run {
 }
 
 impl Run {
-    /// Sortie d'une exécution qui doit réussir.
+    /// Output of a run that must succeed.
     pub fn ok(self) -> String {
         if let Err(e) = &self.result {
-            panic!("erreur : {e:?}\nsortie :\n{}", self.output);
+            panic!("error: {e:?}\noutput:\n{}", self.output);
         }
         self.output
     }
 
     pub fn err(self) -> RuntimeError {
         match self.result {
-            Ok(_) => panic!("une erreur était attendue\nsortie :\n{}", self.output),
+            Ok(_) => panic!("expected an error\noutput:\n{}", self.output),
             Err(e) => e,
         }
     }
 }
 
-/// Exécute `src` avec un fournisseur donné, sur une pile de 512 Mo comme la CLI.
+/// Runs `src` with the given provider, on a 512 MB stack like the CLI.
 pub fn run_provider(src: &str, provider: Scripted, input: &[&str], args: &[&str]) -> Run {
     let src = src.to_string();
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
@@ -86,29 +86,29 @@ pub fn example(name: &str) -> String {
 pub const SUMMARY: &str = "\
 model :fast, provider: :anthropic, name: \"claude-haiku-4-5\", temperature: 0.2
 enum Sentiment
-  Positive ## Ton favorable
+  Positive ## Favourable tone
   Negative
 end
-## Un résumé.
+## A summary.
 struct Summary
-  title: String ## Titre court
+  title: String ## Short title
   bullets: Array(String)
   sentiment: Sentiment
 end
-## Résume un article.
+## Summarizes an article.
 prompt summarize(article: String) -> ~Summary using :fast
-  system \"Sois concis.\"
-  user \"Article : #{article}\"
+  system \"Be concise.\"
+  user \"Article: #{article}\"
 end
 ";
 
 pub fn summary_reply() -> Response {
-    Response::json_reply(json!({"title": "Chat", "bullets": ["dort"], "sentiment": "Positive"}))
+    Response::json_reply(json!({"title": "Cat", "bullets": ["sleeps"], "sentiment": "Positive"}))
 }
 
 pub const MAILER: &str = "\
 tool send(to: String, body: String) -> Unit uses net(\"smtp.example.com\")
-  puts \"envoyé à #{to} : #{body}\"
+  puts \"sent to #{to}: #{body}\"
 end
 ";
 
@@ -118,19 +118,19 @@ struct Report
   answer: String
   files: Array(String)
 end
-## Lit un fichier.
+## Reads a file.
 tool read_file(path: String, max_lines: Int = 10) -> String uses fs.read
-  \"contenu de #{path} (#{max_lines} lignes)\"
+  \"contents of #{path} (#{max_lines} lines)\"
 end
 agent Reader
   model :smart
   tools read_file
   max_turns 4
-  instructions \"Tu lis des fichiers.\"
+  instructions \"You read files.\"
   @asked: Int = 0
   on Ask(question: String) -> ~Report
     @asked += 1
-    run \"Question : #{question}\"
+    run \"Question: #{question}\"
   end
   on Asked -> Int
     @asked

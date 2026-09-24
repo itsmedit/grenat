@@ -1,4 +1,4 @@
-//! `case` : filtrage par motifs (`in`) et par valeurs (`when`).
+//! `case`: pattern matching (`in`) and value matching (`when`).
 
 use crate::prelude::*;
 
@@ -16,7 +16,7 @@ impl<'p> Interp<'p> {
             let matched = match &arm.test {
                 ArmTest::In(pattern) => match &subject {
                     Some(s) => self.match_pattern(pattern, s)?,
-                    None => return raise("SyntaxError", "`case … in` exige une valeur à filtrer"),
+                    None => return raise("SyntaxError", "`case … in` requires a value to match"),
                 },
                 ArmTest::When(values) => {
                     let mut any = false;
@@ -47,7 +47,7 @@ impl<'p> Interp<'p> {
             Some(stmts) => self.eval_stmts(stmts),
             None if arms.iter().any(|a| matches!(a.test, ArmTest::In(_))) => raise(
                 "NoMatchingPattern",
-                format!("aucun motif ne correspond à {}", subject.map_or("nil".into(), |s| s.inspect())),
+                format!("no pattern matches {}", subject.map_or("nil".into(), |s| s.inspect())),
             ),
             None => Ok(Value::Nil),
         }
@@ -90,7 +90,7 @@ impl<'p> Interp<'p> {
                 Ok(equal(&lit, &inner))
             }
             PatternKind::Const { path, fields } => {
-                let name = path.last().expect("chemin non vide").name.as_str();
+                let name = path.last().expect("non-empty path").name.as_str();
                 let (type_ok, value_fields): (bool, Option<Fields<'p>>) = match &inner {
                     Value::Record(r) => (&*r.ty == name, Some(r.fields.clone())),
                     Value::Variant(v) => {

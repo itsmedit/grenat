@@ -1,4 +1,4 @@
-//! Budgets de dépense (dollars, tokens, temps).
+//! Spending budgets (dollars, tokens, time).
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use super::*;
 
-/// Plafond de dépense : tokens, dollars, temps. Partagé par les tâches qui le consomment.
+/// Spending cap: tokens, dollars, time. Shared by the tasks that consume it.
 pub struct Budget {
     pub max_usd: Option<f64>,
     pub max_tokens: Option<u64>,
@@ -45,22 +45,22 @@ impl Budget {
         *self.started.borrow_mut() = Instant::now();
     }
 
-    /// Description du dépassement, s'il y en a un.
+    /// Description of the overrun, if any.
     pub fn exceeded(&self) -> Option<String> {
         if let Some(max) = self.max_usd
             && self.spent() > max
         {
-            return Some(format!("{} dépensés, plafond {}", money(self.spent()), money(max)));
+            return Some(format!("{} spent, limit {}", money(self.spent()), money(max)));
         }
         if let Some(max) = self.max_tokens
             && self.tokens() > max
         {
-            return Some(format!("{} tokens consommés, plafond {max}", self.tokens()));
+            return Some(format!("{} tokens used, limit {max}", self.tokens()));
         }
         if let Some(max) = self.max_seconds
             && self.started.borrow().elapsed().as_secs_f64() > max
         {
-            return Some(format!("temps écoulé, plafond {}", duration(max)));
+            return Some(format!("time elapsed, limit {}", duration(max)));
         }
         None
     }

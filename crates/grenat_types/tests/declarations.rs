@@ -1,4 +1,4 @@
-//! Déclarations : agents, prompts, superviseurs (E0100, E0500).
+//! Declarations: agents, prompts, supervisors (E0100, E0500).
 
 mod common;
 
@@ -24,7 +24,7 @@ fn prompt_output_must_be_serializable() {
     single(src, "E0500", "~Hash(String, Int)");
 }
 
-// ── Phase 3 : concurrence et supervision ─────────────────────
+// ── Phase 3: concurrency and supervision ─────────────────────
 
 const DESK: &str = "\
 agent Worker
@@ -55,11 +55,11 @@ fn supervisor_options_are_checked() {
     clean(&valid);
 
     let d = single(&valid.replace(":rest_for_one", ":one_for_al"), "E0500", ":one_for_al");
-    assert_eq!(d.help.as_deref(), Some("vouliez-vous `one_for_all` ?"));
+    assert_eq!(d.help.as_deref(), Some("did you mean `one_for_all`?"));
     single(&valid.replace("max_restarts: 2", "max_restarts: \"deux\""), "E0200", "\"deux\"");
     single(&valid.replace("within: 30.s", "within: \"30s\""), "E0200", "\"30s\"");
     let d = single(&valid.replace("max_restarts:", "max_restart:"), "E0500", "max_restart:");
-    assert_eq!(d.help.as_deref(), Some("vouliez-vous `max_restarts` ?"));
+    assert_eq!(d.help.as_deref(), Some("did you mean `max_restarts`?"));
 }
 
 #[test]

@@ -1,6 +1,6 @@
 [package]
 name = "grenat_interp"
-description = "Interpréteur du langage Grenat (phase 1)"
+description = "Interpreter and concurrent runtime for the Grenat language"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

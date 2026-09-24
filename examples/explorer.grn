@@ -1,0 +1,69 @@
+# explorer.grn — an agent that explores a code directory and reports on it.
+#
+#   export ANTHROPIC_API_KEY=…
+#   grenat run --log examples/explorer.grn crates/grenat_parser
+
+model :smart, provider: :anthropic, name: "claude-opus-5", effort: :low
+model :fast,  provider: :anthropic, name: "claude-haiku-4-5"
+
+enum Maturity
+  Prototype   ## exploratory code, few or no tests
+  Solid       ## well structured and tested
+  Production  ## ready to be deployed and maintained
+end
+
+## Exploration report for a code directory.
+struct Report
+  summary: String            ## what this code does, in three sentences at most
+  files_read: Array(String)  ## paths actually read
+  maturity: Maturity
+  next_steps: Array(String)  ## two or three concrete suggestions
+end
+
+## Lists a directory; subdirectories end with `/`.
+tool list_dir(path: String) -> Array(String) uses fs.read
+  entries = Dir.list(path).reject { |name| name.start_with?(".") || name == "target" }
+  entries.map { |name| if File.directory?("#{path}/#{name}") then "#{name}/" else name end }
+end
+
+## Reads a text file (its first `max_lines` lines).
+tool read_file(path: String, max_lines: Int = 200) -> String uses fs.read
+  File.lines(path).take(max_lines).join("\n")
+end
+
+agent Explorer
+  model :smart
+  tools list_dir, read_file
+  max_turns 15
+  budget usd: 0.50
+
+  instructions <<~I
+    You explore a source code directory to write an accurate report about it.
+    Only read the useful files: README, manifests, entry points, tests.
+    Make nothing up: every statement must come from a file you read.
+  I
+
+  on Explore(path: String) -> ~Report
+    run "Explore the `#{path}` directory and write your report."
+  end
+end
+
+## Pitches a project in one punchy sentence.
+prompt pitch(summary: String) -> ~String using :fast
+  user "Write a single sentence (200 characters max) that makes people want to discover this project: #{summary}"
+end
+
+def main(args: Array(String)) uses llm, fs.read
+  path = args.first || "."
+  report = spawn(Explorer).ask(Explore(path:))
+
+  puts "## #{path} — #{report.maturity}"
+  puts report.summary
+  puts
+  puts "Files read: #{report.files_read.join(", ")}"
+  report.next_steps.each { |step| puts "- #{step}" }
+  puts
+  puts "> #{pitch(report.summary)}"
+rescue BudgetExceeded => e
+  warn "Budget exhausted: #{e.message}"
+end

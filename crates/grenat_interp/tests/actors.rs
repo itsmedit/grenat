@@ -1,4 +1,4 @@
-//! Agents-acteurs : un message à la fois, pools, `tell`, interblocages.
+//! Actor agents: one message at a time, pools, `tell`, deadlocks.
 
 mod common;
 
@@ -22,7 +22,7 @@ end
 
 #[test]
 fn an_agent_handles_one_message_at_a_time() {
-    // sans exclusion mutuelle, les lectures-écritures concurrentes perdraient des incréments
+    // without mutual exclusion, concurrent read-modify-writes would lose increments
     let src = format!(
         "{COUNTER}c = spawn Counter\n(1..10).to_a.parallel_map(limit: 10) {{ |_| c.ask(Incr()) }}\np c.ask(Get())\n"
     );
@@ -61,7 +61,7 @@ pool = spawn_pool(Worker, size: 4)
 p (1..4).to_a.parallel_map(limit: 4) { |_| pool.ask(Work()) }
 ";
     let r = run_with(src, vec![], &[]);
-    // chaque agent n'a reçu qu'un message ; un seul agent aurait répondu 1, 2, 3, 4
+    // each agent got a single message; a single agent would have answered 1, 2, 3, 4
     assert_eq!(r.output, "[1, 1, 1, 1]\n");
     assert!(r.elapsed < Duration::from_millis(700), "{:?}", r.elapsed);
 }
@@ -72,14 +72,14 @@ fn tell_runs_in_the_background_and_the_program_waits_for_it() {
 agent Logger
   on Log(text: String)
     sleep 0.2
-    puts \"journal : #{text}\"
+    puts \"log: #{text}\"
   end
 end
 l = spawn Logger
 l.tell(Log(text: \"a\"))
-puts \"après tell\"
+puts \"after tell\"
 ";
-    assert_eq!(run(src), "après tell\njournal : a\n");
+    assert_eq!(run(src), "after tell\nlog: a\n");
 }
 
 #[test]
@@ -87,12 +87,12 @@ fn tell_failures_are_reported() {
     let src = "\
 agent Fragile
   on Break
-    raise ArgumentError, \"boum\"
+    raise ArgumentError, \"boom\"
   end
 end
 spawn(Fragile).tell(Break())
 ";
-    assert!(run(src).contains("[tell] l'agent `Fragile` a échoué : ArgumentError : boum"));
+    assert!(run(src).contains("[tell] agent `Fragile` failed: ArgumentError: boom"));
 }
 
 #[test]
@@ -111,7 +111,7 @@ e.ask(Loop(me: e))
 ";
     let e = run_err(src, vec![]);
     assert_eq!(e.ty, "DeadlockError");
-    assert!(e.message.contains("`Echo` s'envoie un message à lui-même"), "{}", e.message);
+    assert!(e.message.contains("`Echo` sends a message to itself"), "{}", e.message);
 }
 
 #[test]
@@ -136,7 +136,7 @@ a.ask(Start(b:, me: a))
 ";
     let e = run_err(src, vec![]);
     assert_eq!(e.ty, "DeadlockError");
-    assert_eq!(e.message, "cycle d'attente entre agents : A → B → A");
+    assert_eq!(e.message, "waiting cycle between agents: A → B → A");
 }
 
 #[test]
@@ -169,7 +169,7 @@ rescue DeadlockError => e
 end
 ";
     let out = run(src);
-    assert!(out.starts_with("cycle d'attente entre agents : "), "{out}");
+    assert!(out.starts_with("waiting cycle between agents: "), "{out}");
 }
 
 #[test]
@@ -181,7 +181,7 @@ agent Worker
     @n += 1
   end
   on Crash
-    raise ArgumentError, \"boum\"
+    raise ArgumentError, \"boom\"
   end
 end
 w = spawn Worker

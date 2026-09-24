@@ -1,4 +1,4 @@
-//! Bibliothèque intégrée, un module par famille de fonctions.
+//! Standard library, one module per family of functions.
 
 mod args;
 mod collections;

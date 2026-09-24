@@ -1,4 +1,4 @@
-//! Blocs `{ |x| … }` et `do |x| … end`.
+//! `{ |x| … }` and `do |x| … end` blocks.
 
 use grenat_ast::*;
 use grenat_lexer::TokenKind as T;
@@ -23,7 +23,7 @@ impl<'d> Parser<'d> {
         Ok(Block { params, body, span: start.to(end) })
     }
 
-    /// `|a, b|`, `|x: Int|` ou rien.
+    /// `|a, b|`, `|x: Int|` or nothing.
     pub(crate) fn block_params(&mut self) -> PResult<Vec<Param>> {
         if self.eat(&T::OrOr) || !self.eat(&T::Pipe) {
             return Ok(Vec::new());
@@ -40,7 +40,7 @@ impl<'d> Parser<'d> {
                     self.bump();
                     (name, Some(self.ty()?))
                 }
-                _ => return self.unexpected("un paramètre de bloc"),
+                _ => return self.unexpected("a block parameter"),
             };
             params.push(Param {
                 name: Ident { name, span: start },

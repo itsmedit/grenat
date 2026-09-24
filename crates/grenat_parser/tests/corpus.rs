@@ -1,5 +1,5 @@
-//! Tout le code Grenat du dépôt doit parser sans erreur :
-//! les programmes de `examples/` et chaque bloc ```ruby de `SPEC.md`.
+//! All Grenat code in the repository must parse without errors:
+//! the programs in `examples/` and every ```ruby block of `SPEC.md`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,15 +12,15 @@ fn assert_parses(name: &str, src: &str) {
     let parsed = grenat_parser::parse(src);
     assert!(
         parsed.diagnostics.is_empty(),
-        "{name} ne parse pas :\n{}",
+        "{name} does not parse:\n{}",
         parsed
             .diagnostics
             .iter()
-            .map(|d| format!("  - {} (octets {:?}) : « {} »", d.message, d.span.range(), &src[d.span.range()]))
+            .map(|d| format!("  - {} (bytes {:?}): \"{}\"", d.message, d.span.range(), &src[d.span.range()]))
             .collect::<Vec<_>>()
             .join("\n")
     );
-    assert!(!parsed.program.items.is_empty(), "{name} est vide");
+    assert!(!parsed.program.items.is_empty(), "{name} is empty");
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn examples_parse() {
             count += 1;
         }
     }
-    assert!(count > 0, "aucun exemple trouvé");
+    assert!(count > 0, "no example found");
 }
 
 #[test]
@@ -52,13 +52,13 @@ fn spec_code_blocks_parse() {
             _ => {}
         }
     }
-    assert!(blocks.len() >= 10, "seulement {} blocs trouvés", blocks.len());
+    assert!(blocks.len() >= 10, "only {} blocks found", blocks.len());
     for (line, code) in blocks {
-        assert_parses(&format!("SPEC.md, bloc ligne {line}"), &code);
+        assert_parses(&format!("SPEC.md, block at line {line}"), &code);
     }
 }
 
-/// Du code en cours de frappe ne doit jamais faire paniquer ni boucler le parser.
+/// Code being typed must never make the parser panic or loop.
 #[test]
 fn every_prefix_of_the_examples_parses_without_panicking() {
     let src = fs::read_to_string(repo_root().join("examples/support_desk.grn")).unwrap();

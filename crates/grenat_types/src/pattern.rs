@@ -1,4 +1,4 @@
-//! Motifs de `case … in`.
+//! `case … in` patterns.
 
 use grenat_ast::{Pattern, PatternKind, TypeKind};
 
@@ -14,7 +14,7 @@ impl<'p> Checker<'p> {
                 self.expr(cx, e);
             }
             PatternKind::Const { path, fields } => {
-                let name = path.last().expect("chemin").name.as_str();
+                let name = path.last().expect("path").name.as_str();
                 let slots: Option<Vec<Slot<'p>>> = if let Some(enum_name) = self.variants.get(name).copied() {
                     if let Ty::User(subject_enum) = subject.ty.base()
                         && self.types.get(subject_enum.as_str()).is_some_and(|t| t.def.kind == TypeKind::Enum)
@@ -23,11 +23,11 @@ impl<'p> Checker<'p> {
                         self.error(
                             E_TYPE,
                             pattern.span,
-                            format!("`{name}` est une variante de `{enum_name}`, pas de `{subject_enum}`"),
+                            format!("`{name}` is a variant of `{enum_name}`, not of `{subject_enum}`"),
                         );
                     }
                     let variant =
-                        self.types[enum_name].variants.iter().find(|v| v.name.name == name).copied().expect("variante");
+                        self.types[enum_name].variants.iter().find(|v| v.name.name == name).copied().expect("variant");
                     Some(Slot::fields(&variant.fields.iter().collect::<Vec<_>>()))
                 } else if let Some(decl) = self.types.get(name) {
                     Some(Slot::fields(&decl.fields))
@@ -35,7 +35,7 @@ impl<'p> Checker<'p> {
                     None
                 } else {
                     let known: Vec<&str> = self.variants.keys().chain(self.types.keys()).copied().collect();
-                    self.error_help(E_NAME, pattern.span, format!("motif inconnu `{name}`"), suggest(name, known));
+                    self.error_help(E_NAME, pattern.span, format!("unknown pattern `{name}`"), suggest(name, known));
                     None
                 };
                 let Some(fields) = fields else { return };
@@ -47,7 +47,7 @@ impl<'p> Checker<'p> {
                                 self.error_help(
                                     E_NAME,
                                     n.span,
-                                    format!("`{name}` n'a pas de champ `{}`", n.name),
+                                    format!("`{name}` has no field `{}`", n.name),
                                     suggest(&n.name, slots.iter().map(|s| s.name)),
                                 );
                             }

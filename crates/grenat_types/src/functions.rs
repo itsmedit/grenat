@@ -1,4 +1,4 @@
-//! Vérification des fonctions et des handlers, pour une teinte donnée de leurs arguments.
+//! Checking functions and handlers for a given taint of their arguments.
 
 use grenat_ast::{FnDef, FnKind, Handler, Param, Span};
 
@@ -6,7 +6,7 @@ use crate::ty::{Ty, V, join_v};
 use crate::*;
 
 impl<'p> Checker<'p> {
-    /// Vérifie `def` pour une teinte donnée de ses arguments (analyse sensible au contexte).
+    /// Checks `def` for a given taint of its arguments (context-sensitive analysis).
     pub(crate) fn check_fn(
         &mut self,
         def: &'p FnDef,
@@ -40,11 +40,11 @@ impl<'p> Checker<'p> {
                 let checkable = !def.is_abstract && *ty != Ty::Nil;
                 if checkable && !self.compat(&ret.ty, ty) {
                     let span = def.body.stmts.last().map_or(def.span, |e| e.span);
-                    self.error(E_TYPE, span, format!("`{}` doit renvoyer `{ty}`, renvoie `{}`", def.name.name, ret.ty));
+                    self.error(E_TYPE, span, format!("`{}` must return `{ty}`, returns `{}`", def.name.name, ret.ty));
                 }
                 ret.ty = ty.clone();
                 if *tainted {
-                    ret.taint = ret.taint.or(Some(def.ret.as_ref().expect("déclaré").span()));
+                    ret.taint = ret.taint.or(Some(def.ret.as_ref().expect("declared").span()));
                 }
             }
             (None, _) => {}
@@ -107,7 +107,7 @@ impl<'p> Checker<'p> {
                 self.error(
                     E_TYPE,
                     span,
-                    format!("`on {}` doit renvoyer `{ty}`, renvoie `{}`", handler.message.name, ret.ty),
+                    format!("`on {}` must return `{ty}`, returns `{}`", handler.message.name, ret.ty),
                 );
             }
             ret.ty = ty.clone();

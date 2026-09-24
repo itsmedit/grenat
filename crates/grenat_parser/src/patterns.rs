@@ -1,4 +1,4 @@
-//! Motifs de `case … in`.
+//! `case … in` patterns.
 
 use grenat_ast::*;
 use grenat_lexer::{Keyword as K, TokenKind as T};
@@ -31,9 +31,9 @@ impl<'d> Parser<'d> {
             }
             T::Minus => PatternKind::Lit(self.unary()?),
             T::Const(_) => {
-                let mut path = vec![self.const_name("une constante")?];
+                let mut path = vec![self.const_name("a constant")?];
                 while self.eat(&T::ColonColon) {
-                    path.push(self.const_name("une constante")?);
+                    path.push(self.const_name("a constant")?);
                 }
                 let fields = if self.at_tight(&T::LParen) { Some(self.pattern_fields()?) } else { None };
                 PatternKind::Const { path, fields }
@@ -55,7 +55,7 @@ impl<'d> Parser<'d> {
                 self.expect(T::RBracket, "`]`")?;
                 PatternKind::Array(items)
             }
-            _ => return self.unexpected("un motif"),
+            _ => return self.unexpected("a pattern"),
         };
         Ok(Pattern { kind, span: start.to(self.prev_span()) })
     }

@@ -1,8 +1,8 @@
-//! Capacités déclarées par `uses` et leur application aux accès disque.
+//! Capabilities declared by `uses` and their enforcement on file system access.
 
 use crate::prelude::*;
 
-/// Normalisation lexicale d'un chemin : `./docs/../docs/a` → `docs/a`.
+/// Lexical path normalization: `./docs/../docs/a` → `docs/a`.
 fn path_components(path: &str) -> (bool, Vec<String>) {
     let absolute = path.starts_with('/');
     let mut parts: Vec<String> = Vec::new();
@@ -18,7 +18,7 @@ fn path_components(path: &str) -> (bool, Vec<String>) {
     (absolute, parts)
 }
 
-/// `declared` (restriction de `uses`) autorise-t-il l'accès à `path` ?
+/// Does `declared` (a `uses` restriction) allow access to `path`?
 fn path_allowed(declared: &str, path: &str) -> bool {
     let (d_abs, d) = path_components(declared);
     let (p_abs, p) = path_components(path);
@@ -26,7 +26,7 @@ fn path_allowed(declared: &str, path: &str) -> bool {
 }
 
 impl<'p> Interp<'p> {
-    /// Capacités déclarées par `uses` (restrictions évaluées) ; `None` si rien n'est déclaré.
+    /// Capabilities declared by `uses` (evaluated restrictions); `None` if nothing is declared.
     pub(crate) fn declared_capabilities(&mut self, def: &'p FnDef) -> Result<Option<crate::Capabilities>, Ctrl<'p>> {
         if def.effects.is_empty() {
             return Ok(None);
@@ -43,7 +43,7 @@ impl<'p> Interp<'p> {
         Ok(Some(caps))
     }
 
-    /// Vérifie qu'un accès disque est couvert par chaque fonction de la pile qui déclare ses effets.
+    /// Checks that a file system access is covered by every function on the stack that declares its effects.
     pub(crate) fn check_fs(&self, effect: &str, path: &str) -> Result<(), Ctrl<'p>> {
         for (owner, caps) in &self.capabilities {
             let allowed = caps.iter().any(|(declared, arg)| {
@@ -55,7 +55,7 @@ impl<'p> Interp<'p> {
                     caps.iter().map(|(p, a)| a.as_ref().map_or(p.clone(), |a| format!("{p}(\"{a}\")"))).collect();
                 return raise(
                     "CapabilityError",
-                    format!("`{effect}` sur `{path}` n'est pas autorisé par `{owner}` (uses {})", declared.join(", ")),
+                    format!("`{effect}` on `{path}` is not allowed by `{owner}` (uses {})", declared.join(", ")),
                 );
             }
         }

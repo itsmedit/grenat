@@ -1,15 +1,15 @@
-//! Agents-acteurs : démarrage, pools, messages (`ask`/`tell`), interblocages, supervision.
+//! Actor agents: spawning, pools, messages (`ask`/`tell`), deadlocks, supervision.
 
 use crate::prelude::*;
 
 impl<'p> Interp<'p> {
     // ── Agents ───────────────────────────────────────────────
 
-    /// État neuf d'un agent : son `@…` initialisé.
+    /// Fresh state of an agent: its `@…` initialized.
     pub(crate) fn agent_state(&mut self, ty: &'p str) -> Result<Arc<Object<'p>>, Ctrl<'p>> {
         match self.new_object(ty, Args::default(), true)? {
             Value::Object(obj) => Ok(obj),
-            _ => unreachable!("new_object renvoie un objet"),
+            _ => unreachable!("new_object returns an object"),
         }
     }
 
@@ -23,14 +23,14 @@ impl<'p> Interp<'p> {
         supervision: Option<Supervision>,
     ) -> Result<Arc<AgentRef<'p>>, Ctrl<'p>> {
         let Value::Type(name) = target else {
-            return raise("TypeError", format!("`spawn` attend un type d'agent, reçu {}", target.inspect()));
+            return raise("TypeError", format!("`spawn` expects an agent type, got {}", target.inspect()));
         };
         let shared = self.shared.clone();
         let Some(info) = shared.types.get(&**name) else {
-            return raise("NameError", format!("agent inconnu `{name}`"));
+            return raise("NameError", format!("unknown agent `{name}`"));
         };
         if !info.is(TypeKind::Agent) {
-            return raise("TypeError", format!("`{name}` n'est pas un agent"));
+            return raise("TypeError", format!("`{name}` is not an agent"));
         }
         let ty: &'p str = info.def.name.name.as_str();
         let budget = match info.directives.iter().find(|d| d.name.name == "budget") {
@@ -58,7 +58,7 @@ impl<'p> Interp<'p> {
     /// `spawn_pool(Writer, size: 4)`
     pub(crate) fn spawn_pool(&mut self, target: &Value<'p>, size: i64) -> R<'p> {
         if size < 1 {
-            return raise("ArgumentError", "un pool contient au moins un agent");
+            return raise("ArgumentError", "a pool holds at least one agent");
         }
         let agents = (0..size).map(|_| self.spawn_agent(target, None)).collect::<Result<Vec<_>, _>>()?;
         Ok(Value::Pool(Arc::new(agents)))
@@ -81,7 +81,7 @@ impl<'p> Interp<'p> {
                         "one_for_all" => Strategy::OneForAll,
                         "rest_for_one" => Strategy::RestForOne,
                         other => {
-                            return raise("ArgumentError", format!("stratégie de supervision inconnue `:{other}`"));
+                            return raise("ArgumentError", format!("unknown supervision strategy `:{other}`"));
                         }
                     }
                 }
@@ -92,7 +92,7 @@ impl<'p> Interp<'p> {
                 (option, value) => {
                     return raise(
                         "ArgumentError",
-                        format!("option de superviseur invalide `{option}: {}`", value.inspect()),
+                        format!("invalid supervisor option `{option}: {}`", value.inspect()),
                     );
                 }
             }
@@ -100,7 +100,7 @@ impl<'p> Interp<'p> {
         Ok(supervision)
     }
 
-    /// Enfants déclarés d'un superviseur, dans l'ordre des `child`.
+    /// Declared children of a supervisor, in `child` order.
     pub(crate) fn declared_children(info: &TypeInfo<'p>) -> Vec<&'p str> {
         info.directives
             .iter()
@@ -115,10 +115,10 @@ impl<'p> Interp<'p> {
     pub(crate) fn supervisor_child(&mut self, sup: &str, agent: &str) -> R<'p> {
         let shared = self.shared.clone();
         let Some(info) = shared.types.get(sup).filter(|i| i.is(TypeKind::Supervisor)) else {
-            return raise("TypeError", format!("`{sup}` n'est pas un superviseur"));
+            return raise("TypeError", format!("`{sup}` is not a supervisor"));
         };
         if !Self::declared_children(info).contains(&agent) {
-            return raise("NameError", format!("`{agent}` n'est pas un enfant de `{sup}`"));
+            return raise("NameError", format!("`{agent}` is not a child of `{sup}`"));
         }
         let key = (sup.to_string(), agent.to_string());
         if let Some(existing) = self.children.borrow().get(&key) {
@@ -131,14 +131,14 @@ impl<'p> Interp<'p> {
         Ok(Value::Agent(child))
     }
 
-    /// Message à un agent ou à un pool : `ask` attend la réponse, `tell` non.
+    /// Message to an agent or a pool: `ask` waits for the reply, `tell` does not.
     pub(crate) fn send(&mut self, target: &Value<'p>, method: &str, args: Args<'p>) -> Option<R<'p>> {
         let agent = match target {
             Value::Agent(a) => a.clone(),
-            // pool : l'agent le moins chargé, choisi et réservé d'un seul geste
+            // pool: the least busy agent, picked and reserved in one step
             Value::Pool(pool) => {
                 let _pick = self.pool_pick.borrow();
-                pool.iter().min_by_key(|a| a.load()).expect("pool non vide").clone()
+                pool.iter().min_by_key(|a| a.load()).expect("non-empty pool").clone()
             }
             _ => return None,
         };
@@ -151,7 +151,7 @@ impl<'p> Interp<'p> {
                     if let Err(ctrl) = task.agent_ask(agent.clone(), args) {
                         let error = task.runtime_error(ctrl);
                         task.write_err(&format!(
-                            "[tell] l'agent `{}` a échoué : {} : {}\n",
+                            "[tell] agent `{}` failed: {}: {}\n",
                             agent.ty, error.ty, error.message
                         ));
                     }
@@ -162,27 +162,26 @@ impl<'p> Interp<'p> {
         }
     }
 
-    /// Enregistre que cette tâche attend `target` ; échoue si l'attente formerait un cycle.
-    /// Enregistre que cette tâche attend `target` ; échoue si l'attente formerait un cycle.
+    /// Records that this task waits for `target`; fails if the wait would form a cycle.
     pub(crate) fn wait_for(&self, target: &Arc<AgentRef<'p>>) -> Result<(), Ctrl<'p>> {
         let mut waits = self.waits.borrow_mut();
-        // agents dont cette tâche exécute actuellement un handler, du plus ancien au plus récent
+        // agents whose handler this task is currently running, oldest first
         let mine: Vec<&str> = self.agents.iter().map(|f| &*f.agent.ty).collect();
-        let me = mine.last().copied().unwrap_or("la tâche");
+        let me = mine.last().copied().unwrap_or("the task");
         let mut chain = vec![me.to_string(), target.ty.to_string()];
         let mut agent = target.clone();
         for _ in 0..1_000 {
             let Some(owner) = *agent.owner.borrow() else { break };
             if owner == self.task_id {
-                // cycle refermé dans cette tâche : on repart de l'agent concerné
+                // cycle closed within this task: start again from the agent involved
                 let state = agent.state.borrow().clone();
                 let from = self.agents.iter().rposition(|f| Arc::ptr_eq(&f.agent, &state)).unwrap_or(0);
                 let mut cycle: Vec<String> = mine[from..].iter().map(|t| t.to_string()).collect();
                 cycle.extend(chain.drain(1..));
                 let message = if cycle.len() == 2 && cycle[0] == cycle[1] {
-                    format!("`{}` s'envoie un message à lui-même et attendrait sa propre réponse", target.ty)
+                    format!("`{}` sends a message to itself and would wait for its own reply", target.ty)
                 } else {
-                    format!("cycle d'attente entre agents : {}", cycle.join(" → "))
+                    format!("waiting cycle between agents: {}", cycle.join(" → "))
                 };
                 return raise("DeadlockError", message);
             }
@@ -199,13 +198,13 @@ impl<'p> Interp<'p> {
     }
 
     pub(crate) fn agent_ask(&mut self, agent: Arc<AgentRef<'p>>, args: Args<'p>) -> R<'p> {
-        // la place réservée par `send` est rendue quand le tour commence, ou si l'envoi échoue avant
+        // the slot reserved by `send` is released when the turn starts, or if sending fails before that
         let reservation = Reservation(&agent);
         let Some(message) = args.pos.into_iter().next() else {
-            return raise("ArgumentError", "`ask` attend un message, par exemple `ask(Research(topic: t))`");
+            return raise("ArgumentError", "`ask` expects a message, e.g. `ask(Research(topic: t))`");
         };
         let Value::Record(record) = message.untainted().clone() else {
-            return raise("TypeError", format!("message attendu, reçu {}", message.inspect()));
+            return raise("TypeError", format!("expected a message, got {}", message.inspect()));
         };
         let shared = self.shared.clone();
         let info = &shared.types[&*agent.ty];
@@ -213,7 +212,7 @@ impl<'p> Interp<'p> {
             let known: Vec<_> = info.handlers.keys().copied().collect();
             return raise(
                 "NoMethodError",
-                format!("l'agent `{}` ne gère pas `{}` (messages : {})", agent.ty, record.ty, known.join(", ")),
+                format!("agent `{}` does not handle `{}` (messages: {})", agent.ty, record.ty, known.join(", ")),
             );
         };
         let mut call_args = Args::default();
@@ -225,10 +224,10 @@ impl<'p> Interp<'p> {
             }
         }
         if let Some(reason) = agent.down.borrow().clone() {
-            return raise("AgentDown", format!("l'agent `{}` est arrêté : {reason}", agent.ty));
+            return raise("AgentDown", format!("agent `{}` is down: {reason}", agent.ty));
         }
 
-        // un message à la fois : on attend le tour de l'agent
+        // one message at a time: wait for the agent's turn
         self.wait_for(&agent)?;
         let turn = agent.turn.borrow();
         self.waits.borrow_mut().remove(&self.task_id);
@@ -266,8 +265,8 @@ impl<'p> Interp<'p> {
         result
     }
 
-    /// Un handler a levé une erreur : le superviseur redémarre l'agent (état neuf),
-    /// ou l'arrête s'il plante trop souvent.
+    /// A handler raised an error: the supervisor restarts the agent (fresh state),
+    /// or stops it if it crashes too often.
     pub(crate) fn on_crash(&mut self, agent: &Arc<AgentRef<'p>>, error: &ErrorVal<'p>) -> Result<(), Ctrl<'p>> {
         let Some(sup) = &agent.supervision else { return Ok(()) };
         if &*error.ty == "Cancelled" {
@@ -278,9 +277,8 @@ impl<'p> Interp<'p> {
             let mut restarts = agent.restarts.borrow_mut();
             restarts.retain(|t| now.duration_since(*t).as_secs_f64() <= sup.within);
             if restarts.len() >= sup.max_restarts {
-                let reason =
-                    format!("{} plantages en moins de {}", restarts.len() + 1, crate::value::duration(sup.within));
-                self.write_err(&format!("[superviseur {}] `{}` arrêté : {reason}\n", sup.supervisor, agent.ty));
+                let reason = format!("{} crashes within {}", restarts.len() + 1, crate::value::duration(sup.within));
+                self.write_err(&format!("[supervisor {}] `{}` stopped: {reason}\n", sup.supervisor, agent.ty));
                 *agent.down.borrow_mut() = Some(reason);
                 return Ok(());
             }
@@ -302,11 +300,11 @@ impl<'p> Interp<'p> {
             }
         };
         for target in targets {
-            let ty = self.types.get(&*target.ty).map(|t| t.def.name.name.as_str()).expect("agent déclaré");
+            let ty = self.types.get(&*target.ty).map(|t| t.def.name.name.as_str()).expect("declared agent");
             let fresh = self.agent_state(ty)?;
             *target.state.borrow_mut() = fresh;
             self.write_err(&format!(
-                "[superviseur {}] `{}` redémarré après {} : {}\n",
+                "[supervisor {}] `{}` restarted after {}: {}\n",
                 sup.supervisor, target.ty, error.ty, error.message
             ));
         }
@@ -314,7 +312,7 @@ impl<'p> Interp<'p> {
     }
 }
 
-/// Place réservée dans la file d'un agent (répartition des pools).
+/// Slot reserved in an agent's queue (pool load balancing).
 struct Reservation<'a, 'p>(&'a AgentRef<'p>);
 
 impl Drop for Reservation<'_, '_> {

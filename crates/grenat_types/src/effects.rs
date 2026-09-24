@@ -1,4 +1,4 @@
-//! Effets : représentation, couverture par une déclaration `uses`, effets exportés d'une fonction.
+//! Effects: representation, coverage by a `uses` declaration, and a function's exported effects.
 
 use std::collections::HashSet;
 
@@ -9,7 +9,7 @@ use crate::*;
 pub(crate) const KNOWN_EFFECTS: &[&str] =
     &["llm", "net", "fs", "fs.read", "fs.write", "shell", "human", "time", "random", "env"];
 
-/// Effet inféré ou déclaré : `fs.read("./docs")`.
+/// Inferred or declared effect: `fs.read("./docs")`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Eff {
     pub(crate) path: String,
@@ -31,7 +31,7 @@ pub(crate) fn normalize_path(p: &str) -> String {
     if trimmed.is_empty() { ".".into() } else { trimmed.to_string() }
 }
 
-/// `declared` autorise-t-il `used` ? Une restriction dynamique est vérifiée à l'exécution.
+/// Does `declared` allow `used`? A dynamic restriction is checked at runtime.
 pub(crate) fn covers(declared: &Eff, used: &Eff) -> bool {
     let path_ok = declared.path == used.path || used.path.starts_with(&format!("{}.", declared.path));
     path_ok
@@ -63,7 +63,7 @@ impl<'p> Checker<'p> {
         self.prev_effects.values().map(Vec::len).sum()
     }
 
-    /// Effets exportés : les déclarés (vérifiés), sinon les inférés.
+    /// Exported effects: the declared ones (checked), otherwise the inferred ones.
     pub(crate) fn finish_effects(&mut self, def: &'p FnDef, cx: &Ctx<'p>) -> Vec<Eff> {
         let mut inferred = cx.effects.clone();
         if def.kind == FnKind::Prompt {
@@ -72,7 +72,7 @@ impl<'p> Checker<'p> {
         let is_main = def.name.name == "main" && self.fns.get("main").is_some_and(|m| std::ptr::eq(*m, def));
         if def.effects.is_empty() {
             if (def.kind == FnKind::Tool || is_main) && !inferred.is_empty() {
-                let what = if is_main { "`main` est la racine des capacités" } else { "un outil" };
+                let what = if is_main { "`main` is the capability root" } else { "a tool" };
                 let list: Vec<String> =
                     inferred.iter().map(|e| e.path.clone()).collect::<HashSet<_>>().into_iter().collect();
                 let mut list = list;
@@ -80,11 +80,11 @@ impl<'p> Checker<'p> {
                 self.report(
                     Diagnostic::new(
                         inferred[0].origin,
-                        format!("`{}` utilise l'effet `{}` sans le déclarer", def.name.name, inferred[0].label()),
+                        format!("`{}` uses effect `{}` without declaring it", def.name.name, inferred[0].label()),
                     )
                     .with_code(E_EFFECT)
-                    .with_note(def.name.span, format!("{what} : ses effets doivent être déclarés"))
-                    .with_help(format!("ajoutez `uses {}`", list.join(", "))),
+                    .with_note(def.name.span, format!("{what}: its effects must be declared"))
+                    .with_help(format!("add `uses {}`", list.join(", "))),
                 );
             }
             return inferred;
@@ -104,11 +104,11 @@ impl<'p> Checker<'p> {
                 self.report(
                     Diagnostic::new(
                         used.origin,
-                        format!("`{}` utilise l'effet `{}` sans le déclarer", def.name.name, used.label()),
+                        format!("`{}` uses effect `{}` without declaring it", def.name.name, used.label()),
                     )
                     .with_code(E_EFFECT)
-                    .with_note(def.name.span, format!("`{}` déclare : uses {}", def.name.name, list.join(", ")))
-                    .with_help(format!("ajoutez `{}` à `uses`", used.label())),
+                    .with_note(def.name.span, format!("`{}` declares: uses {}", def.name.name, list.join(", ")))
+                    .with_help(format!("add `{}` to `uses`", used.label())),
                 );
             }
         }

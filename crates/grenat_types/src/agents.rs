@@ -1,4 +1,4 @@
-//! Agents : `ask` et la boucle `run`.
+//! Agents: `ask` and the `run` loop.
 
 use grenat_ast::{Arg, Diagnostic, Expr, ExprKind, FnDef, FnKind, Handler, Span};
 
@@ -8,7 +8,7 @@ use crate::*;
 impl<'p> Checker<'p> {
     pub(crate) fn ask(&mut self, cx: &mut Ctx<'p>, span: Span, agent: &str, argv: Vec<ArgV>) -> V {
         let Some(message) = argv.first() else {
-            self.error(E_TYPE, span, "`ask` attend un message : `ask(Research(topic: t))`");
+            self.error(E_TYPE, span, "`ask` expects a message: `ask(Research(topic: t))`");
             return V::unknown();
         };
         let Ty::User(msg) = &message.v.ty else { return V::unknown() };
@@ -18,8 +18,8 @@ impl<'p> Checker<'p> {
             self.error_help(
                 E_TYPE,
                 message.span,
-                format!("l'agent `{agent}` ne gère pas `{msg}`"),
-                suggest(msg, known.clone()).or_else(|| Some(format!("messages gérés : {}", known.join(", ")))),
+                format!("agent `{agent}` does not handle `{msg}`"),
+                suggest(msg, known.clone()).or_else(|| Some(format!("handled messages: {}", known.join(", ")))),
             );
             return V::unknown();
         };
@@ -32,7 +32,7 @@ impl<'p> Checker<'p> {
         ret
     }
 
-    /// `run "consigne"` : boucle agentique ; résultat teinté, effets de ses outils.
+    /// `run "instruction"`: agentic loop; tainted result, effects of its tools.
     pub(crate) fn run(
         &mut self,
         cx: &mut Ctx<'p>,
@@ -42,18 +42,18 @@ impl<'p> Checker<'p> {
         argv: Vec<ArgV>,
     ) -> V {
         if argv.is_empty() {
-            self.error(E_TYPE, span, "`run` attend une consigne : `run \"…\"`");
+            self.error(E_TYPE, span, "`run` expects an instruction: `run \"…\"`");
         }
         cx.run_span = Some(span);
         match &handler.ret {
             Some(ret) if !is_tainted_decl(ret) => self.report(
                 Diagnostic::new(
                     ret.span(),
-                    "ce handler renvoie le résultat de `run`, qui vient d'un LLM : son type doit être teinté",
+                    "this handler returns the result of `run`, which comes from an LLM: its type must be tainted",
                 )
                 .with_code(E_TAINT_DECL)
-                .with_note(span, "résultat produit ici")
-                .with_help(format!("écrivez `-> ~{}`", type_name(ret))),
+                .with_note(span, "produced here")
+                .with_help(format!("write `-> ~{}`", type_name(ret))),
             ),
             Some(ret) => {
                 let ty = self.peek_ty(ret);
@@ -76,7 +76,7 @@ impl<'p> Checker<'p> {
             .filter(|f| f.kind == FnKind::Tool)
             .collect();
         for tool in tools {
-            // les arguments donnés par le LLM sont validés par le schéma : non teintés
+            // arguments given by the LLM are validated against the schema: not tainted
             let (_, effects) = self.check_fn(tool, None, declared_taints(&tool.params), None);
             for e in effects {
                 cx.add_effect(Eff { origin: span, ..e });

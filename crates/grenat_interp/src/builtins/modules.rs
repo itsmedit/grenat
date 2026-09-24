@@ -1,4 +1,4 @@
-//! Modules intégrés : `File`, `Dir`, `Math`, `Env`, `Json`, `Runtime`, `Cli`, `Time`.
+//! Built-in modules: `File`, `Dir`, `Math`, `Env`, `Json`, `Runtime`, `Cli`, `Time`.
 
 use crate::prelude::*;
 
@@ -7,17 +7,17 @@ use crate::llm::value_to_json;
 use super::*;
 
 pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, args: Args<'p>) -> R<'p> {
-    let unknown = || raise("NoMethodError", format!("méthode `{ty}.{name}` inconnue"));
+    let unknown = || raise("NoMethodError", format!("unknown method `{ty}.{name}`"));
     match (ty, name) {
         ("File", "read") => {
             let path = str_arg(&args, 0, name)?;
             interp.check_fs("fs.read", &path)?;
-            std::fs::read_to_string(&*path).map(Value::str).or_else(|e| io_error("lecture de", &path, e))
+            std::fs::read_to_string(&*path).map(Value::str).or_else(|e| io_error("reading", &path, e))
         }
         ("File", "lines") => {
             let path = str_arg(&args, 0, name)?;
             interp.check_fs("fs.read", &path)?;
-            let text = std::fs::read_to_string(&*path).or_else(|e| io_error("lecture de", &path, e))?;
+            let text = std::fs::read_to_string(&*path).or_else(|e| io_error("reading", &path, e))?;
             Ok(Value::array(text.lines().map(Value::str).collect()))
         }
         ("File", "directory?" | "exist?") => {
@@ -32,16 +32,16 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
             if content.contains_taint() {
                 return raise(
                     "TaintError",
-                    "une valeur produite par un LLM atteint `File.write` (effet `fs.write`) sans validation",
+                    "an LLM-produced value reaches `File.write` (effect `fs.write`) without validation",
                 );
             }
-            std::fs::write(&*path, content.to_display()).or_else(|e| io_error("écriture de", &path, e))?;
+            std::fs::write(&*path, content.to_display()).or_else(|e| io_error("writing", &path, e))?;
             Ok(Value::Nil)
         }
         ("Dir", "list") => {
             let path = str_arg(&args, 0, name)?;
             interp.check_fs("fs.read", &path)?;
-            let entries = std::fs::read_dir(&*path).or_else(|e| io_error("lecture du dossier", &path, e))?;
+            let entries = std::fs::read_dir(&*path).or_else(|e| io_error("reading directory", &path, e))?;
             let mut names: Vec<String> =
                 entries.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
             names.sort();
@@ -49,7 +49,7 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         }
         ("Math", "pi") => Ok(Value::Float(std::f64::consts::PI)),
         ("Math", "sqrt" | "log" | "sin" | "cos" | "exp") => {
-            let x = number(&arg(&args, 0, name)?).map_or_else(|| raise("TypeError", "nombre attendu"), Ok)?;
+            let x = number(&arg(&args, 0, name)?).map_or_else(|| raise("TypeError", "expected a number"), Ok)?;
             Ok(Value::Float(match name {
                 "sqrt" => x.sqrt(),
                 "log" => x.ln(),
@@ -64,7 +64,7 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
             match (std::env::var(&*key), args.pos.get(1)) {
                 (Ok(v), _) => Ok(Value::str(v)),
                 (Err(_), Some(default)) => Ok(default.clone()),
-                (Err(_), None) => raise("KeyError", format!("variable d'environnement `{key}` absente")),
+                (Err(_), None) => raise("KeyError", format!("missing environment variable `{key}`")),
             }
         }
         ("Json", "dump" | "generate") => Ok(Value::str(value_to_json(&arg(&args, 0, name)?).to_string())),
@@ -72,7 +72,7 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
             let text = str_arg(&args, 0, name)?;
             match serde_json::from_str::<serde_json::Value>(&text) {
                 Ok(json) => Ok(json_to_untyped(&json)),
-                Err(e) => raise("ParseError", format!("JSON invalide : {e}")),
+                Err(e) => raise("ParseError", format!("invalid JSON: {e}")),
             }
         }
         ("Runtime", "on_approval") => {
@@ -81,9 +81,9 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         }
         ("Cli", "confirm") => {
             let message = arg(&args, 0, name)?.to_display();
-            interp.write_err(&format!("{message} (o/N) "));
+            interp.write_err(&format!("{message} (y/N) "));
             let answer = interp.read_line().unwrap_or_default();
-            Ok(Value::Bool(matches!(answer.trim().to_lowercase().as_str(), "o" | "oui" | "y" | "yes")))
+            Ok(Value::Bool(matches!(answer.trim().to_lowercase().as_str(), "y" | "yes")))
         }
         ("Cli", "ask") => {
             let message = arg(&args, 0, name)?.to_display();

@@ -1,4 +1,4 @@
-//! Noms, arité, champs, méthodes, types, motifs (E0100, E0200).
+//! Names, arity, fields, methods, types, patterns (E0100, E0200).
 
 mod common;
 
@@ -7,11 +7,11 @@ use common::*;
 #[test]
 fn unknown_names_get_suggestions() {
     let d = single("total = 1\nputs totla\n", "E0100", "totla");
-    assert_eq!(d.help.as_deref(), Some("vouliez-vous `total` ?"));
+    assert_eq!(d.help.as_deref(), Some("did you mean `total`?"));
 
     let src = format!("{PRELUDE}s = Summary(title: \"a\", bullets: [])\nputs s.titel\n");
     let d = single(&src, "E0200", "titel");
-    assert_eq!(d.help.as_deref(), Some("vouliez-vous `title` ?"));
+    assert_eq!(d.help.as_deref(), Some("did you mean `title`?"));
 }
 
 #[test]
@@ -21,7 +21,7 @@ fn calls_are_checked() {
     single(&format!("{fns}greet(\"a\", 2, 3)\n"), "E0200", "3");
     single(&format!("{fns}greet(42)\n"), "E0200", "42");
     let d = single(&format!("{fns}greet(\"a\", time: 2)\n"), "E0200", "2");
-    assert_eq!(d.help.as_deref(), Some("vouliez-vous `times` ?"));
+    assert_eq!(d.help.as_deref(), Some("did you mean `times`?"));
     clean(&format!("{fns}greet(\"a\")\ngreet(name: \"a\", times: 3)\n"));
 }
 
@@ -55,7 +55,7 @@ fn patterns_are_checked() {
 
 #[test]
 fn unknown_values_are_never_reported() {
-    // typage graduel : ce qui vient de JSON est inconnu, donc accepté
+    // gradual typing: whatever comes from JSON is unknown, hence accepted
     clean("data = Json.parse(\"{}\")\nputs data[\"a\"].whatever.chain(1, 2)\n");
 }
 

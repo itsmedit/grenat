@@ -1,11 +1,11 @@
-//! Commentaires `##` indexés par ligne, rattachés aux déclarations.
+//! `##` comments indexed by line and attached to declarations.
 
 use std::collections::HashMap;
 
 use grenat_ast::*;
 use grenat_lexer::Comment;
 
-/// Commentaires `##` indexés par ligne, pour les rattacher aux déclarations.
+/// `##` comments indexed by line, to attach them to declarations.
 pub(crate) struct DocTable {
     pub(crate) line_starts: Vec<usize>,
     pub(crate) leading: HashMap<usize, String>,
@@ -28,7 +28,7 @@ impl DocTable {
         self.line_starts.partition_point(|&start| start <= span.start as usize) - 1
     }
 
-    /// Lignes `##` contiguës juste au-dessus, puis `##` en fin de la même ligne.
+    /// Contiguous `##` lines just above, then a trailing `##` on the same line.
     pub(crate) fn doc_for(&self, span: Span) -> Option<String> {
         let line = self.line_of(span);
         let mut lines = Vec::new();

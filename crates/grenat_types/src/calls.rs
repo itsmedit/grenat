@@ -1,4 +1,4 @@
-//! Appels de fonctions : arguments, liaison aux paramètres, fonctions intégrées.
+//! Function calls: arguments, parameter binding, built-in functions.
 
 use grenat_ast::{Arg, Block, Diagnostic, Expr, FnDef, FnKind, Ident, Span, TypeKind};
 
@@ -48,7 +48,7 @@ impl<'p> Checker<'p> {
         }
         let receiver = recv.map(|r| self.expr(cx, r));
         let argv = self.args(cx, args);
-        // `xs.push(v)` : le tableau devient teinté si `v` l'est
+        // `xs.push(v)`: the array becomes tainted if `v` is
         if let Some(r) = recv
             && matches!(name.name.as_str(), "push" | "append" | "unshift")
         {
@@ -101,7 +101,7 @@ impl<'p> Checker<'p> {
         }
         if n == "run" {
             self.report(
-                Diagnostic::new(name.span, "`run` n'est utilisable que dans un handler d'agent (`on Message … end`)")
+                Diagnostic::new(name.span, "`run` can only be used inside an agent handler (`on Message … end`)")
                     .with_code(E_DECL),
             );
             return V::unknown();
@@ -113,13 +113,13 @@ impl<'p> Checker<'p> {
         self.error_help(
             E_NAME,
             name.span,
-            format!("fonction inconnue `{n}`"),
+            format!("unknown function `{n}`"),
             suggest(n, candidates.iter().map(String::as_str)),
         );
         V::unknown()
     }
 
-    /// Lie les arguments aux paramètres ; renvoie la teinte de chaque paramètre.
+    /// Binds arguments to parameters; returns each parameter's taint.
     pub(crate) fn bind_args(
         &mut self,
         owner: &str,
@@ -146,13 +146,13 @@ impl<'p> Checker<'p> {
                             self.error(
                                 E_TYPE,
                                 arg.span,
-                                format!("`{owner}` attend `{expected}` pour `{}`, reçu `{}`", slot.name, arg.v.ty),
+                                format!("`{owner}` expects `{expected}` for `{}`, got `{}`", slot.name, arg.v.ty),
                             );
                         }
                     }
                 }
                 None if slot.optional => {}
-                None => self.error(E_TYPE, span, format!("argument `{}` manquant pour `{owner}`", slot.name)),
+                None => self.error(E_TYPE, span, format!("missing argument `{}` for `{owner}`", slot.name)),
             }
         }
         for (j, arg) in args.iter().enumerate() {
@@ -163,11 +163,11 @@ impl<'p> Checker<'p> {
                 Some(n) => self.error_help(
                     E_TYPE,
                     arg.span,
-                    format!("argument nommé inconnu `{n}:` pour `{owner}`"),
+                    format!("unknown named argument `{n}:` for `{owner}`"),
                     suggest(n, slots.iter().map(|s| s.name)),
                 ),
                 None => {
-                    self.error(E_TYPE, arg.span, format!("trop d'arguments pour `{owner}` ({} attendus)", slots.len()))
+                    self.error(E_TYPE, arg.span, format!("too many arguments for `{owner}` (expected {})", slots.len()))
                 }
             }
         }
@@ -184,7 +184,7 @@ impl<'p> Checker<'p> {
         block: Option<&'p Block>,
     ) -> V {
         if block.is_some() {
-            self.error(E_TYPE, span, format!("`{}` ne prend pas de bloc", def.name.name));
+            self.error(E_TYPE, span, format!("`{}` does not take a block", def.name.name));
             self.walk_block(cx, block, &[]);
         }
         let mut taints = self.bind_args(&def.name.name, &Slot::params(&def.params), &argv, span);
@@ -198,7 +198,7 @@ impl<'p> Checker<'p> {
             if let Some(origin) = recv.as_ref().and_then(|r| r.taint) {
                 self.taint_violation(span, origin, &def.name.name, &effect);
             }
-            // l'appel est refusé ici (et à l'exécution) : inutile de signaler la suite dans l'appelé
+            // the call is rejected here (and at runtime): no need to report what follows inside the callee
             taints = declared_taints(&def.params);
             if let Some(r) = recv.as_mut() {
                 r.taint = None;
@@ -252,11 +252,11 @@ impl<'p> Checker<'p> {
                 }
                 Some(Ty::Unknown) => V::unknown(),
                 Some(other) => {
-                    self.error(E_TYPE, span, format!("`{name}` attend un type d'agent, reçu `{other}`"));
+                    self.error(E_TYPE, span, format!("`{name}` expects an agent type, got `{other}`"));
                     V::unknown()
                 }
                 None => {
-                    self.error(E_TYPE, span, format!("`{name}` attend un agent : `{name} Researcher`"));
+                    self.error(E_TYPE, span, format!("`{name}` expects an agent: `{name} Researcher`"));
                     V::unknown()
                 }
             },
@@ -268,7 +268,7 @@ impl<'p> Checker<'p> {
                 if let Some(v) = &first
                     && !self.compat(&v.ty, &Ty::Budget)
                 {
-                    self.error(E_TYPE, argv[0].span, format!("`within` attend un budget, reçu `{}`", v.ty));
+                    self.error(E_TYPE, argv[0].span, format!("`within` expects a budget, got `{}`", v.ty));
                 }
                 self.walk_block(cx, block, &[]).unwrap_or_else(V::unknown)
             }

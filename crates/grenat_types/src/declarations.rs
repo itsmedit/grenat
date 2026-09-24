@@ -1,4 +1,4 @@
-//! Vérification des déclarations : modèles, fonctions, types, agents, superviseurs.
+//! Declaration checks: models, functions, types, agents, supervisors.
 
 use grenat_ast::{
     Arg, Diagnostic, Directive, Expr, ExprKind, FnDef, FnKind, Handler, Item, Member, Span, TypeDef, TypeKind,
@@ -34,16 +34,14 @@ impl<'p> Checker<'p> {
         for option in &model.options {
             let Arg::Named { name, value: Some(value) } = option else { continue };
             match (name.name.as_str(), &value.kind) {
-                ("provider", ExprKind::Symbol(p)) if p != "anthropic" => self.error(
-                    E_DECL,
-                    value.span,
-                    format!("fournisseur `:{p}` non pris en charge (disponible : `:anthropic`)"),
-                ),
+                ("provider", ExprKind::Symbol(p)) if p != "anthropic" => {
+                    self.error(E_DECL, value.span, format!("unsupported provider `:{p}` (available: `:anthropic`)"))
+                }
                 ("provider" | "name" | "temperature" | "max_tokens" | "effort" | "fallbacks", _) => {}
                 (other, _) => self.error_help(
                     E_DECL,
                     name.span,
-                    format!("option de modèle inconnue `{other}:`"),
+                    format!("unknown model option `{other}:`"),
                     suggest(other, ["provider", "name", "temperature", "max_tokens", "effort", "fallbacks"]),
                 ),
             }
@@ -58,7 +56,7 @@ impl<'p> Checker<'p> {
                 self.error_help(
                     E_DECL,
                     effect.span,
-                    format!("effet inconnu `{path}`"),
+                    format!("unknown effect `{path}`"),
                     suggest(&path, KNOWN_EFFECTS.iter().copied()),
                 );
             }
@@ -66,11 +64,9 @@ impl<'p> Checker<'p> {
         if def.kind == FnKind::Tool {
             for param in &def.params {
                 match &param.ty {
-                    None => self.error(
-                        E_DECL,
-                        param.span,
-                        format!("le paramètre `{}` d'un outil doit être typé", param.name.name),
-                    ),
+                    None => {
+                        self.error(E_DECL, param.span, format!("tool parameter `{}` must have a type", param.name.name))
+                    }
                     Some(t) => {
                         let ty = self.resolve(t).0;
                         if let Err(e) = self.schema_ok(&ty, 0) {
@@ -84,12 +80,9 @@ impl<'p> Checker<'p> {
             if let Some(ret) = &def.ret {
                 if !is_tainted_decl(ret) {
                     self.report(
-                        Diagnostic::new(
-                            ret.span(),
-                            "le résultat d'un `prompt` vient d'un LLM : son type doit être teinté",
-                        )
-                        .with_code(E_TAINT_DECL)
-                        .with_help(format!("écrivez `-> ~{}`", type_name(ret))),
+                        Diagnostic::new(ret.span(), "a `prompt` result comes from an LLM: its type must be tainted")
+                            .with_code(E_TAINT_DECL)
+                            .with_help(format!("write `-> ~{}`", type_name(ret))),
                     );
                 }
                 let ty = self.resolve(ret).0;
@@ -105,12 +98,12 @@ impl<'p> Checker<'p> {
         match selector.map(|e| (&e.kind, e.span)) {
             Some((ExprKind::Symbol(name), span)) if !self.models.contains(&name.as_str()) => {
                 let models = self.models.clone();
-                self.error_help(E_NAME, span, format!("modèle `:{name}` non déclaré"), suggest(name, models));
+                self.error_help(E_NAME, span, format!("model `:{name}` is not declared"), suggest(name, models));
             }
             None if self.models.is_empty() => self.report(
-                Diagnostic::new(span, "aucun modèle déclaré")
+                Diagnostic::new(span, "no model declared")
                     .with_code(E_DECL)
-                    .with_help("ajoutez `model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"`"),
+                    .with_help("add `model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"`"),
             ),
             _ => {}
         }
@@ -145,7 +138,7 @@ impl<'p> Checker<'p> {
                 if let Some(expected) = &declared
                     && !self.compat(&v.ty, expected)
                 {
-                    self.error(E_TYPE, default.span, format!("`{}` attend `{expected}`, reçu `{}`", f.name.name, v.ty));
+                    self.error(E_TYPE, default.span, format!("`{}` expects `{expected}`, got `{}`", f.name.name, v.ty));
                 }
             }
         }
@@ -166,14 +159,14 @@ impl<'p> Checker<'p> {
                 for d in directives {
                     match (d.name.name.as_str(), d.args.first()) {
                         ("child", Some(Arg::Pos(Expr { kind: ExprKind::Const(path), span }))) => {
-                            let child = path.last().expect("chemin").name.as_str();
+                            let child = path.last().expect("path").name.as_str();
                             if !self.types.get(child).is_some_and(|t| t.def.kind == TypeKind::Agent) {
-                                self.error(E_NAME, *span, format!("agent inconnu `{child}`"));
+                                self.error(E_NAME, *span, format!("unknown agent `{child}`"));
                             }
                         }
-                        ("child", _) => self.error(E_DECL, d.span, "`child` attend un agent : `child Writer`"),
+                        ("child", _) => self.error(E_DECL, d.span, "`child` expects an agent: `child Writer`"),
                         (other, _) => {
-                            self.error(E_DECL, d.name.span, format!("directive de superviseur inconnue `{other}`"))
+                            self.error(E_DECL, d.name.span, format!("unknown supervisor directive `{other}`"))
                         }
                     }
                 }
@@ -194,20 +187,20 @@ impl<'p> Checker<'p> {
                 "tools" => {
                     for arg in &d.args {
                         let Arg::Pos(Expr { kind: ExprKind::Var(tool), span }) = arg else {
-                            self.error(E_DECL, d.span, "`tools` attend des noms d'outils : `tools lire, chercher`");
+                            self.error(E_DECL, d.span, "`tools` expects tool names: `tools read, search`");
                             continue;
                         };
                         match self.fns.get(tool.as_str()) {
                             Some(def) if def.kind == FnKind::Tool => {}
                             Some(_) => self.report(
-                                Diagnostic::new(*span, format!("`{tool}` n'est pas un `tool`"))
+                                Diagnostic::new(*span, format!("`{tool}` is not a `tool`"))
                                     .with_code(E_DECL)
-                                    .with_help("déclarez-le avec `tool` : seuls les outils sont confiés à un LLM"),
+                                    .with_help("declare it with `tool`: only tools are handed to an LLM"),
                             ),
                             None => {
                                 let tools: Vec<&str> =
                                     self.fns.iter().filter(|(_, f)| f.kind == FnKind::Tool).map(|(n, _)| *n).collect();
-                                self.error_help(E_NAME, *span, format!("outil inconnu `{tool}`"), suggest(tool, tools));
+                                self.error_help(E_NAME, *span, format!("unknown tool `{tool}`"), suggest(tool, tools));
                             }
                         }
                     }
@@ -216,7 +209,7 @@ impl<'p> Checker<'p> {
                     if let Some(e) = first {
                         let v = self.expr(&mut cx, e);
                         if !self.compat(&v.ty, &Ty::Int) {
-                            self.error(E_TYPE, e.span, format!("`max_turns` attend un `Int`, reçu `{}`", v.ty));
+                            self.error(E_TYPE, e.span, format!("`max_turns` expects an `Int`, got `{}`", v.ty));
                         }
                     }
                 }
@@ -232,7 +225,7 @@ impl<'p> Checker<'p> {
                 other => self.error_help(
                     E_DECL,
                     d.name.span,
-                    format!("directive d'agent inconnue `{other}`"),
+                    format!("unknown agent directive `{other}`"),
                     suggest(other, ["model", "tools", "max_turns", "instructions", "budget"]),
                 ),
             }
@@ -249,17 +242,13 @@ impl<'p> Checker<'p> {
                     self.error_help(
                         E_TYPE,
                         a.span,
-                        format!("option de budget inconnue `{other}:`"),
+                        format!("unknown budget option `{other}:`"),
                         suggest(other, ["usd", "tokens", "time"]),
                     );
                     continue;
                 }
                 None => {
-                    self.error(
-                        E_TYPE,
-                        a.span,
-                        "`budget` n'accepte que des options nommées : `usd:`, `tokens:`, `time:`",
-                    );
+                    self.error(E_TYPE, a.span, "`budget` only accepts named options: `usd:`, `tokens:`, `time:`");
                     continue;
                 }
             };
@@ -268,7 +257,7 @@ impl<'p> Checker<'p> {
                 self.error(
                     E_TYPE,
                     a.span,
-                    format!("`{}:` attend `{expected}`, reçu `{}`", a.name.as_deref().unwrap_or(""), a.v.ty),
+                    format!("`{}:` expects `{expected}`, got `{}`", a.name.as_deref().unwrap_or(""), a.v.ty),
                 );
             }
         }
@@ -284,12 +273,12 @@ impl<'p> Checker<'p> {
                     self.error(
                         E_DECL,
                         value.span,
-                        "les options d'un superviseur sont nommées : `strategy:`, `max_restarts:`, `within:`",
+                        "supervisor options are named: `strategy:`, `max_restarts:`, `within:`",
                     );
                     continue;
                 }
                 Arg::Named { name, value: None } => {
-                    self.error(E_DECL, name.span, format!("valeur attendue pour `{}:`", name.name));
+                    self.error(E_DECL, name.span, format!("expected a value for `{}:`", name.name));
                     continue;
                 }
             };
@@ -300,23 +289,23 @@ impl<'p> Checker<'p> {
                     ExprKind::Symbol(s) => self.error_help(
                         E_DECL,
                         value.span,
-                        format!("stratégie de supervision inconnue `:{s}`"),
+                        format!("unknown supervision strategy `:{s}`"),
                         suggest(s, STRATEGIES)
-                            .or_else(|| Some("stratégies : :one_for_one, :one_for_all, :rest_for_one".into())),
+                            .or_else(|| Some("strategies: :one_for_one, :one_for_all, :rest_for_one".into())),
                     ),
-                    _ => self.error(E_TYPE, value.span, "`strategy:` attend un symbole, par exemple `:one_for_one`"),
+                    _ => self.error(E_TYPE, value.span, "`strategy:` expects a symbol, for example `:one_for_one`"),
                 },
                 "max_restarts" if !self.compat(&v.ty, &Ty::Int) => {
-                    self.error(E_TYPE, value.span, format!("`max_restarts:` attend un `Int`, reçu `{}`", v.ty));
+                    self.error(E_TYPE, value.span, format!("`max_restarts:` expects an `Int`, got `{}`", v.ty));
                 }
                 "within" if !(self.compat(&v.ty, &Ty::Duration) || self.compat(&v.ty, &Ty::Float)) => {
-                    self.error(E_TYPE, value.span, format!("`within:` attend une durée (`1.min`), reçu `{}`", v.ty));
+                    self.error(E_TYPE, value.span, format!("`within:` expects a duration (`1.min`), got `{}`", v.ty));
                 }
                 "max_restarts" | "within" => {}
                 other => self.error_help(
                     E_DECL,
                     name.span,
-                    format!("option de superviseur inconnue `{other}:`"),
+                    format!("unknown supervisor option `{other}:`"),
                     suggest(other, ["strategy", "max_restarts", "within"]),
                 ),
             }

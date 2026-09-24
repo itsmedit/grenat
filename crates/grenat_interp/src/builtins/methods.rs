@@ -1,17 +1,17 @@
-//! Aiguillage des méthodes intégrées selon le type de la valeur.
+//! Dispatch of built-in methods by value type.
 
 use crate::prelude::*;
 
 use super::*;
 
 pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &str, args: Args<'p>) -> R<'p> {
-    // communes à toutes les valeurs
+    // shared by every value
     match name {
         "nil?" => return Ok(Value::Bool(matches!(recv, Value::Nil))),
         "to_s" => return interp.display(&recv).map(Value::str),
         "inspect" => return Ok(Value::str(recv.inspect())),
         "tainted?" => return Ok(Value::Bool(false)),
-        // sur une valeur non teintée, la validation est un simple passage
+        // on an untainted value, validation is a simple pass-through
         "trust!" | "approve" => return Ok(recv),
         "check" => {
             let body = block(&args, name)?;
@@ -20,13 +20,13 @@ pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &s
             } else {
                 Value::err(Value::Error(Arc::new(ErrorVal::new(
                     "CheckError",
-                    format!("validation refusée pour {}", recv.inspect()),
+                    format!("validation failed for {}", recv.inspect()),
                 ))))
             });
         }
         "is_a?" => {
             let Value::Type(ty) = arg(&args, 0, name)? else {
-                return raise("TypeError", "`is_a?` attend un type");
+                return raise("TypeError", "`is_a?` expects a type");
             };
             return Ok(Value::Bool(interp.is_a(&recv, &ty)));
         }
@@ -74,7 +74,7 @@ pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &s
                     match fields.iter_mut().find(|(n, _)| &**n == field_name) {
                         Some((_, v)) => *v = value.clone(),
                         None => {
-                            return raise("ArgumentError", format!("champ inconnu `{field_name}:` pour `{}`", r.ty));
+                            return raise("ArgumentError", format!("unknown field `{field_name}:` for `{}`", r.ty));
                         }
                     }
                 }
@@ -110,7 +110,7 @@ pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &s
         Value::Error(e) => match name {
             "message" => Some(Ok(Value::str(&e.message))),
             "type" => Some(Ok(Value::str(&*e.ty))),
-            "full_message" => Some(Ok(Value::str(format!("{} : {}", e.ty, e.message)))),
+            "full_message" => Some(Ok(Value::str(format!("{}: {}", e.ty, e.message)))),
             _ => None,
         },
         Value::Budget(b) => match name {
@@ -125,5 +125,5 @@ pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &s
         },
         _ => None,
     };
-    result.unwrap_or_else(|| raise("NoMethodError", format!("méthode `{name}` inconnue pour {}", recv.type_name())))
+    result.unwrap_or_else(|| raise("NoMethodError", format!("unknown method `{name}` for {}", recv.type_name())))
 }

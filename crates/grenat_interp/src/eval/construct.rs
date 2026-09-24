@@ -1,4 +1,4 @@
-//! Construction des structs, classes, variantes, erreurs et messages.
+//! Construction of structs, classes, variants, errors and messages.
 
 use crate::prelude::*;
 
@@ -20,12 +20,10 @@ impl<'p> Interp<'p> {
                     Ok(Value::record(name, fields))
                 }
                 TypeKind::Class => self.new_object(name, args, false),
-                TypeKind::Agent => raise("TypeError", format!("un agent se démarre avec `spawn {name}`")),
-                TypeKind::Enum => {
-                    raise("TypeError", format!("`{name}` est un enum : construisez une de ses variantes"))
-                }
+                TypeKind::Agent => raise("TypeError", format!("an agent is started with `spawn {name}`")),
+                TypeKind::Enum => raise("TypeError", format!("`{name}` is an enum: build one of its variants")),
                 TypeKind::Module | TypeKind::Supervisor => {
-                    raise("TypeError", format!("`{name}` ne peut pas être instancié"))
+                    raise("TypeError", format!("`{name}` cannot be instantiated"))
                 }
             };
         }
@@ -46,13 +44,13 @@ impl<'p> Interp<'p> {
             return Ok(Value::Error(Arc::new(error)));
         }
         if self.messages.contains(name) {
-            // message d'agent : champs positionnels `_0`, `_1`… puis nommés
+            // agent message: positional fields `_0`, `_1`… then named ones
             let mut fields: Fields<'p> =
                 args.pos.into_iter().enumerate().map(|(i, v)| (format!("_{i}").into(), v)).collect();
             fields.extend(args.named.into_iter().map(|(n, v)| (n.into(), v)));
             return Ok(Value::record(name, fields));
         }
-        raise("NameError", format!("type inconnu `{name}`"))
+        raise("NameError", format!("unknown type `{name}`"))
     }
 
     pub(crate) fn build_fields(
@@ -74,20 +72,20 @@ impl<'p> Interp<'p> {
             } else if matches!(def.ty, Some(grenat_ast::Type::Optional(..))) {
                 Value::Nil
             } else {
-                return raise("ArgumentError", format!("champ `{}` manquant pour `{owner}`", def.name.name));
+                return raise("ArgumentError", format!("missing field `{}` for `{owner}`", def.name.name));
             };
             fields.push((def.name.name.as_str().into(), value));
         }
         if pos.next().is_some() {
-            return raise("ArgumentError", format!("trop de valeurs pour `{owner}` ({} champs)", defs.len()));
+            return raise("ArgumentError", format!("too many values for `{owner}` ({} fields)", defs.len()));
         }
         if let Some((name, _)) = named.first() {
-            return raise("ArgumentError", format!("champ inconnu `{name}:` pour `{owner}`"));
+            return raise("ArgumentError", format!("unknown field `{name}:` for `{owner}`"));
         }
         Ok(fields)
     }
 
-    /// Instance de classe ou d'agent : état `@…` initialisé, puis `initialize`.
+    /// Class or agent instance: `@…` state initialized, then `initialize`.
     pub(crate) fn new_object(&mut self, ty: &'p str, args: Args<'p>, is_agent: bool) -> R<'p> {
         let obj = Arc::new(Object { ty: ty.into(), fields: Mutex::new(Vec::new()), is_agent });
         let value = Value::Object(obj.clone());
@@ -112,12 +110,12 @@ impl<'p> Interp<'p> {
             if let Some(v) = args.pos.first() {
                 return raise(
                     "ArgumentError",
-                    format!("`{ty}` sans `initialize` n'accepte que des arguments nommés (reçu {})", v.inspect()),
+                    format!("`{ty}` without `initialize` only accepts named arguments (got {})", v.inspect()),
                 );
             }
             for (name, v) in args.named {
                 if !info_fields.iter().any(|f| f.name.name == name) {
-                    return raise("ArgumentError", format!("état inconnu `@{name}` pour `{ty}`"));
+                    return raise("ArgumentError", format!("unknown state `@{name}` for `{ty}`"));
                 }
                 set_field(&mut obj.fields.borrow_mut(), &name, v);
             }

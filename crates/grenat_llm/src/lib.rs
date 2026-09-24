@@ -1,8 +1,8 @@
-//! Accès aux modèles de langage.
+//! Access to language models.
 //!
-//! Le runtime ne dépend que du trait [`Provider`] : l'implémentation réelle
-//! ([`Anthropic`]) parle HTTP à l'API Messages, [`Scripted`] rejoue des
-//! réponses préparées pour les tests.
+//! The runtime only depends on the [`Provider`] trait: the real implementation
+//! ([`Anthropic`]) talks HTTP to the Messages API, while [`Scripted`] replays
+//! prepared replies for tests.
 
 mod anthropic;
 mod pricing;
@@ -62,11 +62,11 @@ mod tests {
         let body = json!({
             "model": "claude-opus-5",
             "stop_reason": "tool_use",
-            "content": [{"type": "text", "text": "Je lis."}, {"type": "tool_use", "id": "t1", "name": "read", "input": {"p": 1}}],
+            "content": [{"type": "text", "text": "Reading."}, {"type": "tool_use", "id": "t1", "name": "read", "input": {"p": 1}}],
             "usage": {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 2}
         });
         let r = parse_response(&body).unwrap();
-        assert_eq!(r.text(), "Je lis.");
+        assert_eq!(r.text(), "Reading.");
         assert_eq!(r.tool_uses()[0].name, "read");
         assert_eq!(r.usage.total_tokens(), 17);
     }

@@ -1,9 +1,9 @@
-//! Tokens produits par le lexer : positions, mots-clés, genres de tokens, commentaires, erreurs.
+//! Tokens produced by the lexer: positions, keywords, token kinds, comments, errors.
 
 use std::fmt;
 use std::ops::Range;
 
-/// Position dans le source, en octets.
+/// Position in the source, in bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Span {
     pub start: u32,
@@ -15,7 +15,7 @@ impl Span {
         Span { start: start as u32, end: end as u32 }
     }
 
-    /// Plus petit span couvrant `self` et `other`.
+    /// Smallest span covering `self` and `other`.
     pub fn to(self, other: Span) -> Span {
         Span { start: self.start.min(other.start), end: self.end.max(other.end) }
     }
@@ -81,7 +81,7 @@ keywords! {
     Workflow => "workflow",
 }
 
-/// Morceau d'une chaîne : texte littéral ou interpolation `#{…}` déjà découpée en tokens.
+/// A piece of a string: literal text, or a `#{…}` interpolation already split into tokens.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StrPart {
     Lit(String),
@@ -154,21 +154,21 @@ pub enum TokenKind {
 }
 
 impl TokenKind {
-    /// Description lisible pour les messages d'erreur.
+    /// Human-readable description for error messages.
     pub fn describe(&self) -> String {
         use TokenKind::*;
         match self {
-            Int(n) => format!("nombre `{n}`"),
-            Float(n) => format!("nombre `{n}`"),
-            Str(_) => "chaîne".into(),
-            Symbol(s) => format!("symbole `:{s}`"),
+            Int(n) => format!("number `{n}`"),
+            Float(n) => format!("number `{n}`"),
+            Str(_) => "string".into(),
+            Symbol(s) => format!("symbol `:{s}`"),
             Label(s) => format!("`{s}:`"),
-            Ident(s) => format!("identifiant `{s}`"),
-            Const(s) => format!("constante `{s}`"),
+            Ident(s) => format!("identifier `{s}`"),
+            Const(s) => format!("constant `{s}`"),
             IVar(s) => format!("`@{s}`"),
-            Kw(k) => format!("mot-clé `{}`", k.as_str()),
-            Newline => "fin de ligne".into(),
-            Eof => "fin du fichier".into(),
+            Kw(k) => format!("keyword `{}`", k.as_str()),
+            Newline => "end of line".into(),
+            Eof => "end of file".into(),
             other => format!("`{}`", other.punct()),
         }
     }
@@ -237,8 +237,8 @@ impl fmt::Display for TokenKind {
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,
-    /// Précédé d'un blanc (ou premier de sa ligne) : distingue `foo [1]` de `foo[1]`,
-    /// `foo (x)` de `foo(x)`, `x ?` de `x?`.
+    /// Preceded by whitespace (or first on its line): tells `foo [1]` from `foo[1]`,
+    /// `foo (x)` from `foo(x)`, `x ?` from `x?`.
     pub space_before: bool,
 }
 
@@ -246,9 +246,9 @@ pub struct Token {
 pub struct Comment {
     pub span: Span,
     pub text: String,
-    /// `## …` : commentaire de documentation.
+    /// `## …`: a documentation comment.
     pub doc: bool,
-    /// En fin de ligne, après du code.
+    /// At the end of a line, after code.
     pub trailing: bool,
 }
 

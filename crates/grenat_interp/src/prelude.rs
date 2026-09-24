@@ -1,4 +1,4 @@
-//! Imports communs aux modules de l'interpréteur.
+//! Imports shared by the interpreter modules.
 
 pub(crate) use std::cmp::Ordering;
 pub(crate) use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};

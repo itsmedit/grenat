@@ -1,14 +1,14 @@
-//! Lexer de Grenat.
+//! The Grenat lexer.
 //!
-//! Écrit à la main plutôt qu'avec un générateur : l'interpolation `"#{…}"`
-//! et les heredocs `<<~ID` demandent des modes qu'un lexer régulier gère mal.
+//! Hand-written rather than generated: `"#{…}"` interpolation and `<<~ID`
+//! heredocs need modes that a regular lexer handles poorly.
 //!
-//! Conventions à la Ruby gérées ici :
-//! - `nom:` collé est un **label** (argument nommé, champ), `:nom` est un **symbole** ;
-//! - `?` et `!` en fin d'identifiant minuscule font partie du nom (`empty?`, `save!`) ;
-//! - une fin de ligne suivie de `.` ou `&.` continue l'expression (chaînage multi-ligne) ;
-//! - les commentaires sont retirés du flux de tokens mais conservés à part
-//!   (les `##` sont des commentaires de documentation, transmis aux LLM).
+//! Ruby-style conventions handled here:
+//! - `name:` (no space) is a **label** (named argument, field); `:name` is a **symbol**;
+//! - a trailing `?` or `!` on a lowercase identifier is part of the name (`empty?`, `save!`);
+//! - a newline followed by `.` or `&.` continues the expression (multi-line chaining);
+//! - comments are removed from the token stream but kept aside
+//!   (`##` comments are documentation, passed on to LLMs).
 
 mod lexer;
 mod strings;

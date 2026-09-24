@@ -1,4 +1,4 @@
-//! Forme de l'AST pour les constructions où la grammaire est subtile.
+//! AST shape for constructs where the grammar is subtle.
 
 use grenat_ast::*;
 use grenat_parser::parse;
@@ -12,20 +12,20 @@ fn program(src: &str) -> Program {
 fn stmt(src: &str) -> ExprKind {
     match program(src).items.remove(0) {
         Item::Stmt(e) => e.kind,
-        other => panic!("instruction attendue : {other:?}"),
+        other => panic!("expected a statement: {other:?}"),
     }
 }
 
 fn call_parts(kind: &ExprKind) -> (&str, &[Arg], Option<&Block>) {
     match kind {
         ExprKind::Call { name, args, block, .. } => (&name.name, args, block.as_deref()),
-        other => panic!("appel attendu : {other:?}"),
+        other => panic!("expected a call: {other:?}"),
     }
 }
 
 #[test]
 fn do_block_binds_to_the_outer_command() {
-    // `do` appartient à `within`, pas à `budget(…)`
+    // `do` belongs to `within`, not to `budget(…)`
     let kind = stmt("within budget(usd: 1.00) do\n  work\nend\n");
     let (name, args, block) = call_parts(&kind);
     assert_eq!(name, "within");
@@ -69,7 +69,7 @@ fn short_block_with_implicit_it() {
     let kind = stmt("outcomes.partition(&.sent?)");
     let (_, args, block) = call_parts(&kind);
     assert!(args.is_empty());
-    let block = block.expect("bloc court");
+    let block = block.expect("short block");
     assert_eq!(block.params[0].name.name, "it");
     let (name, ..) = call_parts(&block.body.stmts[0].kind);
     assert_eq!(name, "sent?");
@@ -116,10 +116,10 @@ fn case_in_patterns() {
 
 #[test]
 fn prompt_with_effects_model_and_docs() {
-    let src = "## Résume.\n## Deux lignes.\nprompt summarize(a: String) -> ~Summary? uses llm, net(\"x\") using :fast\n  user a\nend\n";
+    let src = "## Summarizes.\n## Two lines.\nprompt summarize(a: String) -> ~Summary? uses llm, net(\"x\") using :fast\n  user a\nend\n";
     let Item::Fn(f) = program(src).items.remove(0) else { panic!() };
     assert_eq!(f.kind, FnKind::Prompt);
-    assert_eq!(f.doc.as_deref(), Some("Résume.\nDeux lignes."));
+    assert_eq!(f.doc.as_deref(), Some("Summarizes.\nTwo lines."));
     assert!(matches!(f.ret, Some(Type::Tainted(ref inner, _)) if matches!(**inner, Type::Optional(..))));
     assert_eq!(f.effects.len(), 2);
     assert_eq!(f.effects[1].args.len(), 1);
@@ -159,10 +159,10 @@ end
 
 #[test]
 fn struct_fields_get_trailing_docs() {
-    let src = "struct S\n  ## Au-dessus\n  a: String ## À droite\n  b: Int = 3\nend\n";
+    let src = "struct S\n  ## Above\n  a: String ## On the right\n  b: Int = 3\nend\n";
     let Item::Type(s) = program(src).items.remove(0) else { panic!() };
     let Member::Field(a) = &s.members[0] else { panic!() };
-    assert_eq!(a.doc.as_deref(), Some("Au-dessus\nÀ droite"));
+    assert_eq!(a.doc.as_deref(), Some("Above\nOn the right"));
     let Member::Field(b) = &s.members[1] else { panic!() };
     assert!(b.doc.is_none() && b.default.is_some());
 }
@@ -180,17 +180,17 @@ fn errors_are_reported_with_recovery() {
 
     let parsed = parse("def f\n  1\n");
     let d = &parsed.diagnostics[0];
-    assert!(d.message.contains("`end` attendu pour fermer `def`"), "{}", d.message);
+    assert!(d.message.contains("expected `end` to close `def`"), "{}", d.message);
     assert_eq!(d.notes.len(), 1);
 }
 
 #[test]
 fn negative_literals_bind_before_method_calls() {
-    // `-3.abs` est `(-3).abs`, comme en Ruby
+    // `-3.abs` is `(-3).abs`, as in Ruby
     let ExprKind::Call { recv: Some(recv), .. } = stmt("-3.abs") else { panic!() };
     assert_eq!(recv.kind, ExprKind::Int(-3));
     assert!(matches!(stmt("-1.5"), ExprKind::Float(f) if f == -1.5));
-    // … mais un moins séparé, ou devant `**`, reste un opérateur
+    // … but a detached minus, or one before `**`, stays an operator
     assert!(matches!(stmt("- 3.abs"), ExprKind::Unary { op: UnOp::Neg, .. }));
     assert!(matches!(stmt("-2 ** 2"), ExprKind::Unary { op: UnOp::Neg, .. }));
     assert!(matches!(stmt("x -1"), ExprKind::Binary { op: BinOp::Sub, .. }));

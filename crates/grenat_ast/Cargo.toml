@@ -1,6 +1,6 @@
 [package]
 name = "grenat_ast"
-description = "Arbre syntaxique du langage Grenat"
+description = "Syntax tree of the Grenat language"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

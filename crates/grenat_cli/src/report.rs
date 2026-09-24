@@ -1,9 +1,9 @@
-//! Affichage des diagnostics, dans le style de rustc.
+//! Diagnostic rendering, rustc style.
 
 use grenat_lexer::Span;
 use grenat_parser::Diagnostic;
 
-/// Ligne et colonne (en caractères), à partir de 1.
+/// Line and column (in characters), 1-based.
 pub fn line_col(src: &str, offset: usize) -> (usize, usize) {
     let before = &src[..offset.min(src.len())];
     let line = before.matches('\n').count() + 1;
@@ -22,8 +22,8 @@ impl Painter {
 pub fn render(path: &str, src: &str, diag: &Diagnostic, color: bool) -> String {
     let p = Painter(color);
     let title = match diag.code {
-        Some(code) => format!("erreur[{code}]"),
-        None => "erreur".into(),
+        Some(code) => format!("error[{code}]"),
+        None => "error".into(),
     };
     let mut out = format!("{}: {}\n", p.paint("1;31", &title), p.paint("1", &diag.message));
     snippet(&mut out, &p, path, src, diag.span, "1;31");
@@ -32,7 +32,7 @@ pub fn render(path: &str, src: &str, diag: &Diagnostic, color: bool) -> String {
         snippet(&mut out, &p, path, src, *span, "1;36");
     }
     if let Some(help) = &diag.help {
-        out.push_str(&format!("  = {} : {help}\n", p.paint("1", "aide")));
+        out.push_str(&format!("  = {}: {help}\n", p.paint("1", "help")));
     }
     out.push('\n');
     out

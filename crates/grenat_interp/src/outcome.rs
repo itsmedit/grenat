@@ -1,4 +1,4 @@
-//! Conversion du résultat interne en erreur ou bilan publics.
+//! Converts the internal outcome into a public error or summary.
 
 use std::sync::atomic::Ordering;
 
@@ -16,11 +16,11 @@ impl<'p> Interp<'p> {
             },
             Ctrl::Break(_) | Ctrl::Next(_) => RuntimeError {
                 ty: "LocalJumpError".into(),
-                message: "`break` ou `next` hors d'une boucle ou d'un bloc".into(),
+                message: "`break` or `next` outside a loop or block".into(),
                 span: None,
                 trace: Vec::new(),
             },
-            Ctrl::Return(_) | Ctrl::Exit(_) => unreachable!("traité par l'appelant"),
+            Ctrl::Return(_) | Ctrl::Exit(_) => unreachable!("handled by the caller"),
         }
     }
 

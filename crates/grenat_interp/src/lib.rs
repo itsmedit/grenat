@@ -1,13 +1,13 @@
-//! Interpréteur de Grenat : exécution directe de l'AST.
+//! Grenat interpreter: direct execution of the AST.
 //!
-//! Le langage de base, les `prompt` typés, les `tool`, les agents-acteurs,
-//! les budgets, la teinte `~T` et les capacités sont vérifiés à l'exécution.
+//! The core language, typed `prompt`s, `tool`s, actor agents, budgets, taint
+//! `~T` and capabilities are all enforced at run time.
 //!
-//! Concurrence (phase 3) : chaque tâche (programme principal, `parallel_map`,
-//! `race`, `tell`) a sa propre pile d'appels et partage l'état global
-//! ([`Shared`]). Les valeurs sont `Arc`/`Mutex`. Un agent traite un message à
-//! la fois : `ask` exécute le handler dans la tâche de l'appelant, sous le
-//! verrou de l'agent ; les interblocages sont détectés.
+//! Concurrency (phase 3): each task (main program, `parallel_map`, `race`,
+//! `tell`) has its own call stack and shares the global state ([`Shared`]).
+//! Values are `Arc`/`Mutex`. An agent handles one message at a time: `ask`
+//! runs the handler in the caller's task, under the agent's lock; deadlocks
+//! are detected.
 
 mod builtins;
 mod control;
@@ -34,18 +34,18 @@ pub(crate) use program::*;
 pub(crate) use state::*;
 pub(crate) use task::*;
 
-/// Erreur non rattrapée, remontée jusqu'au point d'entrée.
+/// Uncaught error, propagated up to the entry point.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeError {
-    /// Type d'erreur Grenat (`NameError`, `TaintError`…).
+    /// Grenat error type (`NameError`, `TaintError`…).
     pub ty: String,
     pub message: String,
     pub span: Option<Span>,
-    /// Pile d'appels, de l'intérieur vers l'extérieur : (fonction, définition).
+    /// Call stack, innermost first: (function, definition).
     pub trace: Vec<(String, Span)>,
 }
 
-/// Bilan d'une exécution.
+/// Summary of a run.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Summary {
     pub exit_code: i32,
@@ -62,17 +62,17 @@ pub struct TestOutcome {
 
 pub enum Output {
     Stdout,
-    /// Capture de la sortie standard (tests).
+    /// Captures standard output (tests).
     Capture(Arc<Mutex<String>>),
 }
 
 pub struct Options {
-    /// Fournisseur LLM imposé ; par défaut, le client Anthropic (`ANTHROPIC_API_KEY`).
+    /// Forced LLM provider; defaults to the Anthropic client (`ANTHROPIC_API_KEY`).
     pub provider: Option<Arc<dyn Provider>>,
     pub output: Output,
-    /// Lignes d'entrée scriptées (approbations) ; par défaut, l'entrée standard.
+    /// Scripted input lines (approvals); defaults to standard input.
     pub input: Option<VecDeque<String>>,
-    /// Journalise chaque appel LLM et d'outil sur la sortie d'erreur.
+    /// Logs every LLM and tool call to standard error.
     pub log: bool,
 }
 
@@ -82,8 +82,8 @@ impl Default for Options {
     }
 }
 
-/// Exécute les instructions de niveau supérieur puis `main`, si elle existe.
-/// Attend la fin de toutes les tâches lancées (`tell`, perdants de `race`).
+/// Runs the top-level statements, then `main` if it exists.
+/// Waits for every spawned task (`tell`, `race` losers) to finish.
 pub fn run_main(program: &Program, args: Vec<String>, options: Options) -> Result<Summary, RuntimeError> {
     std::thread::scope(|scope| {
         let mut interp = Interp::new(program, options, spawner(scope))?;
@@ -107,7 +107,7 @@ pub fn run_main(program: &Program, args: Vec<String>, options: Options) -> Resul
     })
 }
 
-/// Exécute le script (qui enregistre les `test "…" do … end`), puis chaque test.
+/// Runs the script (which registers the `test "…" do … end` blocks), then each test.
 pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>, RuntimeError> {
     std::thread::scope(|scope| {
         let mut interp = Interp::new(program, options, spawner(scope))?;

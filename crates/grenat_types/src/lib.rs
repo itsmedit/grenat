@@ -1,22 +1,22 @@
-//! Vérification statique de Grenat : noms, types, effets et teinte `~T`.
+//! Static checking for Grenat: names, types, effects and the `~T` taint.
 //!
-//! Le vérificateur est **graduel** : ce qu'il ne sait pas typer devient
-//! `Ty::Unknown`, compatible avec tout, et ne produit jamais d'erreur. Ce
-//! qu'il prouve, en revanche, il le prouve avant l'exécution :
+//! The checker is **gradual**: whatever it cannot type becomes
+//! `Ty::Unknown`, which is compatible with everything and never produces an
+//! error. What it does prove, it proves before execution:
 //!
-//! - **teinte** : une valeur produite par un LLM ne peut pas atteindre une
-//!   fonction à effet dangereux (`shell`, `net`, `fs.write`, `human`) sans
-//!   `.check`, `.approve(by: :human)` ou `.trust!` (E0412) ; l'analyse suit
-//!   la teinte à travers les appels (chaque fonction est vérifiée pour la
-//!   teinte réelle de ses arguments), les champs, l'interpolation, les
-//!   blocs et l'état `@…` des agents ;
-//! - **effets** : une fonction qui déclare `uses` doit couvrir tout ce que
-//!   son corps fait, et `main` comme les `tool` doivent déclarer (E0300) ;
-//! - **noms et types** : variables, champs, méthodes, arité, arguments
-//!   nommés, types incompatibles (E0100, E0200) ;
-//! - **déclarations** : `prompt`, agents et outils bien formés (E0413, E0500).
+//! - **taint**: an LLM-produced value cannot reach a function with a
+//!   dangerous effect (`shell`, `net`, `fs.write`, `human`) without
+//!   `.check`, `.approve(by: :human)` or `.trust!` (E0412); the analysis
+//!   follows taint through calls (each function is checked for the actual
+//!   taint of its arguments), fields, interpolation, blocks and agent
+//!   `@…` state;
+//! - **effects**: a function that declares `uses` must cover everything its
+//!   body does, and both `main` and `tool`s must declare theirs (E0300);
+//! - **names and types**: variables, fields, methods, arity, named
+//!   arguments, incompatible types (E0100, E0200);
+//! - **declarations**: well-formed `prompt`s, agents and tools (E0413, E0500).
 //!
-//! L'interpréteur garde ses vérifications à l'exécution : défense en profondeur.
+//! The interpreter keeps its runtime checks: defense in depth.
 
 mod agents;
 mod builtins;
@@ -55,12 +55,12 @@ pub const E_TAINT: &str = "E0412";
 pub const E_TAINT_DECL: &str = "E0413";
 pub const E_DECL: &str = "E0500";
 
-/// Vérifie un programme ; renvoie les diagnostics triés par position.
+/// Checks a program; returns the diagnostics sorted by position.
 pub fn check(program: &Program) -> Vec<Diagnostic> {
     let mut checker = Checker::new(program);
     checker.collect();
     checker.infer_ivars();
-    // l'état `@…` teinté et les effets des fonctions récursives se propagent d'une passe à l'autre
+    // tainted `@…` state and the effects of recursive functions propagate from one pass to the next
     for _ in 0..4 {
         let before = (checker.ivar_taint.len(), checker.effect_count());
         checker.memo.clear();

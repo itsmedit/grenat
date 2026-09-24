@@ -1,9 +1,9 @@
-//! Signatures de la bibliothèque intégrée — le reflet exact de ce que
-//! l'interpréteur accepte (`grenat_interp/src/builtins.rs`).
+//! Built-in library signatures — an exact mirror of what the interpreter
+//! accepts (`grenat_interp/src/builtins/`).
 
 use crate::ty::Ty;
 
-/// Méthodes définies sur toutes les valeurs.
+/// Methods defined on every value.
 pub fn universal(name: &str) -> Option<Ty> {
     Some(match name {
         "nil?" | "tainted?" | "is_a?" => Ty::Bool,
@@ -13,7 +13,7 @@ pub fn universal(name: &str) -> Option<Ty> {
     })
 }
 
-/// Types des paramètres du bloc passé à `recv.name { |…| }`.
+/// Parameter types of the block passed to `recv.name { |…| }`.
 pub fn block_params(recv: &Ty, name: &str, arg0: Option<&Ty>) -> Vec<Ty> {
     match (recv.base(), name) {
         (Ty::Int, "times" | "upto") => vec![Ty::Int],
@@ -28,7 +28,7 @@ pub fn block_params(recv: &Ty, name: &str, arg0: Option<&Ty>) -> Vec<Ty> {
     }
 }
 
-/// Type de retour de `recv.name(…)` ; `None` si la méthode n'existe pas.
+/// Return type of `recv.name(…)`; `None` if the method does not exist.
 pub fn method(recv: &Ty, name: &str, nargs: usize, block: Option<&Ty>) -> Option<Ty> {
     use Ty::*;
     let has_args = nargs > 0;
@@ -140,7 +140,7 @@ fn array_method(t: &Ty, name: &str, has_args: bool, block: Option<&Ty>) -> Optio
     })
 }
 
-/// `Module.name(…)` : type de retour et effet.
+/// `Module.name(…)`: return type and effect.
 pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static str>)> {
     use Ty::*;
     Some(match (module, name) {
@@ -192,7 +192,7 @@ pub const GLOBALS: &[&str] = &[
     "race",
 ];
 
-/// Champs connus des erreurs intégrées.
+/// Known fields of built-in errors.
 pub fn error_field(error: &str, name: &str) -> Option<Ty> {
     Some(match (error, name) {
         (_, "message" | "type" | "full_message") => Ty::Str,

@@ -1,83 +1,83 @@
-# Grenat — spécification v0.1 (brouillon)
+# Grenat — specification v0.1 (draft)
 
-> *La syntaxe de Ruby, la vitesse de Rust, les agents comme citoyens de première classe.*
+> *Ruby's syntax, Rust's speed, agents as first-class citizens.*
 
-Nom de travail : **Grenat** (pierre rouge, cousine du rubis). Extension : `.grn`. CLI : `grenat`.
+Name: **Grenat** (French for "garnet", a red gemstone and a cousin of the ruby). Extension: `.grn`. CLI: `grenat`.
 
 ---
 
-## 1. Philosophie
+## 1. Philosophy
 
-1. **Ça se lit comme du Ruby** : `def … end`, blocs `do |x|`, `@ivars`, symboles, interpolation `"#{}"`, `unless`, `if` en suffixe, retour implicite.
-2. **Ça tourne comme du Rust** : typage statique **inféré** (on n'écrit presque jamais de types dans le corps des fonctions), compilation native (Cranelift en dev, LLVM en release), aucun GC : **comptage de références Perceus** (comme Koka et Roc), avec réutilisation en place.
-3. **Les agents sont des acteurs** : un agent est un processus léger isolé qui a une boîte aux lettres et qui est supervisé, comme en Erlang.
-4. **Le LLM est un effet** : le compilateur sait quelles fonctions appellent un LLM, touchent le réseau ou le disque, ou demandent l'accord d'un humain.
-5. **Tout ce qui sort d'un LLM est suspect** : c'est une donnée *teintée* `~T` qui ne peut pas atteindre un outil dangereux sans validation. La défense contre l'injection de prompt se fait **à la compilation**.
-6. **Pas de couleur async** : pas de `async`/`await`. Tout est concurrent par défaut (fils verts M:N), comme en Go ou en Erlang.
+1. **It reads like Ruby**: `def … end`, `do |x|` blocks, `@ivars`, symbols, `"#{}"` interpolation, `unless`, trailing `if`, implicit return.
+2. **It runs like Rust**: static typing, **inferred** (you almost never write types inside function bodies), native compilation (Cranelift for development, LLVM for release), no GC: **Perceus reference counting** (as in Koka and Roc), with in-place reuse.
+3. **Agents are actors**: an agent is an isolated lightweight process with a mailbox, supervised, as in Erlang.
+4. **The LLM is an effect**: the compiler knows which functions call an LLM, touch the network or the disk, or ask a human for approval.
+5. **Everything that comes out of an LLM is suspect**: it is *tainted* data, `~T`, that cannot reach a dangerous tool without validation. Prompt injection is defended against **at compile time**.
+6. **No async coloring**: no `async`/`await`. Everything is concurrent by default (M:N green threads), as in Go or Erlang.
 
-### Ce qu'on retire de Ruby (le prix de la vitesse)
+### What we drop from Ruby (the price of speed)
 
 | Ruby | Grenat |
 |---|---|
-| Typage dynamique | Inférence Hindley-Milner + annotations aux frontières (`def`, `struct`) |
-| `method_missing`, `send`, `eval`, `instance_eval` | ❌ remplacés par des **macros** évaluées à la compilation (v0.3) |
-| Monkey-patching, classes ouvertes | ❌ extension seulement via `module` + `include` (traits statiques) |
-| `nil` partout | Types optionnels explicites `String?`, `&.` et `||` conservés |
-| Exceptions | Erreurs = valeurs (`Result`), avec le sucre `raise`/`rescue` et `?` |
-| GC | Comptage de références déterministe, zéro pause |
+| Dynamic typing | Hindley-Milner inference + annotations at the boundaries (`def`, `struct`) |
+| `method_missing`, `send`, `eval`, `instance_eval` | ❌ replaced by compile-time **macros** (v0.3) |
+| Monkey-patching, open classes | ❌ extension only through `module` + `include` (static traits) |
+| `nil` everywhere | Explicit optional types `String?`; `&.` and `||` are kept |
+| Exceptions | Errors are values (`Result`), with `raise`/`rescue` and `?` as sugar |
+| GC | Deterministic reference counting, zero pauses |
 
-Crystal a déjà montré qu'une syntaxe Ruby avec des types statiques et LLVM donne des performances de langage compilé. Grenat reprend cette voie et ajoute un runtime agentique et un système d'effets.
+Crystal already showed that Ruby syntax with static types and LLVM delivers compiled-language performance. Grenat follows that path and adds an agentic runtime and an effect system.
 
 ---
 
-## 2. Les bases
+## 2. The basics
 
 ```ruby
-# Inférence : aucun type dans le corps
+# Inference: no types inside the body
 def fib(n: Int) -> Int
   return n if n < 2
   fib(n - 1) + fib(n - 2)
 end
 
-names = ["Ada", "Linus", "Matz"]            # Array(String) inféré
+names = ["Ada", "Linus", "Matz"]            # inferred Array(String)
 names.map { |n| n.upcase }.each { |n| puts n }
 
-# Optionnels
+# Optionals
 def find_user(id: Int) -> User?
   users.find { |u| u.id == id }
 end
 
-email = find_user(42)&.email || "inconnu"
+email = find_user(42)&.email || "unknown"
 ```
 
-### Structs (valeurs), classes (références), modules (traits)
+### Structs (values), classes (references), modules (traits)
 
 ```ruby
 struct Point
   x: Float
   y: Float
 
-  def norm = Math.sqrt(x * x + y * y)      # méthode en une ligne
+  def norm = Math.sqrt(x * x + y * y)      # one-line method
 end
 
-class Counter                              # référence, compteur RC
+class Counter                              # reference, RC-counted
   @count: Int = 0
   def incr! = @count += 1
 end
 
 module Describable
-  abstract def describe -> String          # méthode abstraite
-  def shout = describe.upcase              # méthode par défaut
+  abstract def describe -> String          # abstract method
+  def shout = describe.upcase              # default method
 end
 
 struct Invoice
   include Describable
   amount: Money
-  def describe = "Facture de #{amount}"
+  def describe = "Invoice for #{amount}"
 end
 ```
 
-### Enums algébriques et pattern matching
+### Algebraic enums and pattern matching
 
 ```ruby
 enum Shape
@@ -89,53 +89,53 @@ def area(s: Shape) -> Float
   case s
   in Circle(r)  then 3.14159 * r * r
   in Rect(w, h) then w * h
-  end                                      # exhaustivité vérifiée par le compilateur
+  end                                      # exhaustiveness checked by the compiler
 end
 ```
 
-### Erreurs
+### Errors
 
 ```ruby
 def load_config(path: Path) -> Result(Config, IoError) uses fs.read
-  text = File.read(path)?                  # ? propage l'erreur
+  text = File.read(path)?                  # ? propagates the error
   Config.parse(text)?
 end
 
 begin
   cfg = load_config("app.toml")?
 rescue IoError => e
-  warn "config absente : #{e.message}"
+  warn "missing config: #{e.message}"
   cfg = Config.default
 end
 ```
 
 ---
 
-## 3. Effets et capacités
+## 3. Effects and capabilities
 
-Chaque fonction a un ensemble d'**effets**. Ils sont **inférés** à l'intérieur d'un module et **déclarés** sur les fonctions publiques, les outils et `main`.
+Every function has a set of **effects**. They are **inferred** inside a module and **declared** on public functions, tools and `main`.
 
-| Effet | Signification |
+| Effect | Meaning |
 |---|---|
-| `llm` | appelle un modèle (consomme du budget) |
-| `net` / `net("api.github.com")` | réseau, éventuellement restreint à un hôte |
-| `fs.read(path)` / `fs.write(path)` | disque, restreint à un préfixe de chemin |
-| `shell` | processus externe, **toujours exécuté dans un bac à sable WASM** |
-| `human` | attend une réponse humaine (approbation, saisie) |
-| `time`, `random` | non-déterminisme (important pour les workflows durables) |
+| `llm` | calls a model (spends budget) |
+| `net` / `net("api.github.com")` | network, optionally restricted to a host |
+| `fs.read(path)` / `fs.write(path)` | disk, restricted to a path prefix |
+| `shell` | external process, **always run in a WASM sandbox** |
+| `human` | waits for a human answer (approval, input) |
+| `time`, `random` | non-determinism (matters for durable workflows) |
 
 ```ruby
 def main uses llm, net, fs.read("./docs"), human
-  # main est la racine des capacités : aucune fonction ne peut
-  # faire plus que ce que main lui accorde.
+  # main is the capability root: no function can do
+  # more than what main grants it.
 end
 ```
 
-Le compilateur **refuse** un appel dont l'effet n'est pas couvert par l'appelant. À l'exécution, les restrictions de chemin et d'hôte sont vérifiées une seconde fois (défense en profondeur).
+The compiler **rejects** a call whose effect is not covered by the caller. At run time, path and host restrictions are checked a second time (defense in depth).
 
 ---
 
-## 4. Modèles et prompts typés
+## 4. Models and typed prompts
 
 ```ruby
 model :fast,  provider: :anthropic, name: "claude-haiku-4-5",  temperature: 0.2
@@ -143,7 +143,7 @@ model :smart, provider: :anthropic, name: "claude-opus-5"
 model :local, provider: :ollama,    name: "llama3.3"
 ```
 
-Une **fonction `prompt`** est une fonction ordinaire dont l'implémentation est déléguée à un LLM. Son type de retour devient un **JSON Schema généré à la compilation**. La sortie est parsée, validée, et **relancée automatiquement** en cas de sortie mal formée.
+A **`prompt` function** is an ordinary function whose implementation is delegated to an LLM. Its return type becomes a **JSON Schema generated at compile time**. The output is parsed, validated, and **automatically retried** when it is malformed.
 
 ```ruby
 enum Sentiment
@@ -153,66 +153,66 @@ enum Sentiment
 end
 
 struct Summary
-  title: String              ## Titre court, 8 mots maximum
-  bullets: Array(String)     ## 3 à 5 points clés
+  title: String              ## Short title, 8 words at most
+  bullets: Array(String)     ## 3 to 5 key points
   sentiment: Sentiment
 end
 
-## Résume un article de presse.
+## Summarizes a news article.
 prompt summarize(article: String) -> ~Summary using :fast
-  system "Tu es un analyste concis et factuel."
+  system "You are a concise, factual analyst."
   user <<~P
-    Résume cet article :
+    Summarize this article:
     #{article}
   P
 end
 ```
 
-Les commentaires `##` sont transmis au modèle : ils deviennent les descriptions du schéma et des outils. La doc du code est aussi le prompt.
+`##` comments are sent to the model: they become the descriptions of the schema and of the tools. The code's documentation is also the prompt.
 
-### Le type teinté `~T`
+### The tainted type `~T`
 
-`~Summary` signifie : *la structure est conforme, mais le contenu vient d'un LLM*.
+`~Summary` means: *the structure is valid, but the content comes from an LLM*.
 
-- On peut **lire** un `~T` librement (l'afficher, le logguer, le passer à un autre prompt).
-- On **ne peut pas** le passer à une fonction qui porte l'effet `shell`, `fs.write`, `net` ou `human`. Le compilateur l'interdit.
-- Pour le « nettoyer », il faut le rendre explicite :
+- You can **read** a `~T` freely (print it, log it, pass it to another prompt).
+- You **cannot** pass it to a function carrying the `shell`, `fs.write`, `net` or `human` effect. The compiler forbids it.
+- To "clean" it, you must do so explicitly:
 
 ```ruby
 s = summarize(article)
 
 s.check { |x| x.bullets.size.between?(3, 5) }   # -> Result(Summary, CheckError)
-s.approve(by: :human)                            # -> Summary (effet human)
-s.trust!                                         # -> Summary (grep-able, signalé par le linter)
+s.approve(by: :human)                            # -> Summary (human effect)
+s.trust!                                         # -> Summary (grep-able, flagged by the linter)
 ```
 
 ---
 
-## 5. Outils
+## 5. Tools
 
 ```ruby
-## Lit un fichier texte du dossier de travail.
+## Reads a text file from the working directory.
 tool read_file(path: Path) -> String uses fs.read("./workspace")
   File.read(path)
 end
 
-## Exécute une commande dans un bac à sable (sans réseau).
+## Runs a command in a sandbox (no network).
 tool run(cmd: String) -> Output uses shell
   Sandbox.exec(cmd, timeout: 30.s, net: false)
 end
 
-## Envoie un e-mail. Nécessite une approbation humaine.
+## Sends an email. Requires human approval.
 tool send_email(to: Email, subject: String, body: String) -> Unit uses net("smtp.mail.com"), human
-  approve! "Envoyer « #{subject} » à #{to} ?"
+  approve! "Send \"#{subject}\" to #{to}?"
   Smtp.send(to:, subject:, body:)
 end
 ```
 
-Les arguments qu'un LLM passe à un outil arrivent **teintés**. Un `tool` est le seul endroit où Grenat accepte de les convertir en `T`, après une validation de schéma et une vérification des capacités. C'est la frontière de confiance.
+The arguments an LLM passes to a tool arrive **tainted**. A `tool` is the only place where Grenat accepts converting them to `T`, after schema validation and a capability check. It is the trust boundary.
 
 ---
 
-## 6. Agents (acteurs)
+## 6. Agents (actors)
 
 ```ruby
 agent Researcher
@@ -222,13 +222,13 @@ agent Researcher
   max_turns 30
 
   instructions <<~I
-    Tu es un chercheur rigoureux. Cite toujours tes sources.
+    You are a rigorous researcher. Always cite your sources.
   I
 
-  @notes: Array(Note) = []                 # état privé, jamais partagé
+  @notes: Array(Note) = []                 # private state, never shared
 
   on Research(topic: String) -> ~Report
-    run "Enquête approfondie sur : #{topic}"
+    run "Thorough investigation of: #{topic}"
   end
 
   on AddNote(note: Note)
@@ -237,51 +237,51 @@ agent Researcher
 end
 ```
 
-- `run` est la **boucle agentique intégrée** (LLM → outils → LLM …). Elle s'arrête quand le modèle produit le type de retour du handler (ici `Report`), ou quand le budget ou `max_turns` est épuisé.
-- L'état `@…` est **isolé** : aucun autre agent ne peut y accéder. Les messages sont **déplacés** ou **gelés** (`Sendable`), donc pas de data race par construction.
+- `run` is the **built-in agent loop** (LLM → tools → LLM …). It stops when the model produces the handler's return type (here `Report`), or when the budget or `max_turns` runs out.
+- `@…` state is **isolated**: no other agent can reach it. Messages are **moved** or **frozen** (`Sendable`), so there are no data races by construction.
 
 ```ruby
 r = spawn Researcher
 
-report = r.ask(Research(topic: "fusion nucléaire 2026"))    # attend la réponse
-r.tell(AddNote(note: Note.new("à vérifier")))                # envoi sans attente
+report = r.ask(Research(topic: "nuclear fusion 2026"))    # waits for the answer
+r.tell(AddNote(note: Note.new("to double-check")))          # fire and forget
 
-# Concurrence sans async/await
+# Concurrency without async/await
 reports = topics.parallel_map(limit: 5) { |t| r.ask(Research(topic: t)) }
 
 winner = race do
   a.ask(Solve(problem))
   b.ask(Solve(problem))
-end                                        # le premier gagne, l'autre est annulé
+end                                        # the first one wins, the other is cancelled
 ```
 
-### Budgets imbriqués
+### Nested budgets
 
 ```ruby
 within budget(usd: 1.00, time: 2.min) do
   reports = topics.parallel_map { |t| r.ask(Research(topic: t)) }
 rescue BudgetExceeded => e
-  warn "stoppé à #{e.spent}"
+  warn "stopped at #{e.spent}"
 end
 ```
 
-Un budget interne ne peut jamais dépasser le budget englobant. Le runtime **comptabilise chaque token** et coupe les appels en cours dès que la limite est atteinte.
+An inner budget can never exceed its enclosing budget. The runtime **accounts for every token** and cuts in-flight calls as soon as the limit is reached.
 
 ### Supervision
 
 ```ruby
 supervisor SupportTeam, strategy: :one_for_one, max_restarts: 3, within: 1.min
   child Triage
-  child Researcher, count: 4               # pool de 4, répartition de charge
+  child Researcher, count: 4               # pool of 4, load-balanced
   child Writer
 end
 ```
 
 ---
 
-## 7. Workflows durables
+## 7. Durable workflows
 
-Un `workflow` survit aux crashs, aux redéploiements et aux attentes humaines de plusieurs jours. Chaque `step` est **journalisé** (SQLite par défaut, Postgres en option). Au redémarrage, les steps terminés sont **rejoués depuis le journal** : aucun appel LLM n'est facturé deux fois.
+A `workflow` survives crashes, redeployments and human waits lasting several days. Every `step` is **journaled** (SQLite by default, Postgres optionally). On restart, completed steps are **replayed from the journal**: no LLM call is ever billed twice.
 
 ```ruby
 workflow publish_article(topic: String) -> Url
@@ -292,110 +292,110 @@ workflow publish_article(topic: String) -> Url
 end
 ```
 
-**Règle vérifiée par le compilateur** : dans un `workflow`, tout effet non déterministe (`llm`, `net`, `time`, `random`, `human`) doit se trouver **à l'intérieur d'un `step`**. Le code hors step est donc rejouable à l'identique.
+**Rule enforced by the compiler**: inside a `workflow`, every non-deterministic effect (`llm`, `net`, `time`, `random`, `human`) must be **inside a `step`**. Code outside steps can therefore be replayed identically.
 
 ---
 
-## 8. Tests et évaluations
+## 8. Tests and evals
 
 ```ruby
-test "summarize respecte le format" do
-  cassette "summaries/article_1" do        # enregistre puis rejoue (façon VCR)
+test "summarize respects the format" do
+  cassette "summaries/article_1" do        # records, then replays (VCR-style)
     s = summarize(fixture("article_1.txt")).trust!
     assert s.bullets.size.between?(3, 5)
   end
 end
 
-test "l'agent refuse d'envoyer sans approbation" do
+test "the agent refuses to send without approval" do
   mock :smart, replies: [call(:send_email, to: "x@y.z", subject: "hi", body: "…")]
   with_human(deny_all) do
     assert_raises ApprovalDenied { spawn(Mailer).ask(Handle(ticket)) }
   end
 end
 
-eval "qualité des résumés", dataset: "evals/articles.jsonl", threshold: 0.85 do |row|
+eval "summary quality", dataset: "evals/articles.jsonl", threshold: 0.85 do |row|
   s = summarize(row.input)
-  judge(:smart, "Le résumé est-il fidèle ?", s, row.input)   # LLM comme juge
+  judge(:smart, "Is the summary faithful?", s, row.input)   # LLM as a judge
 end
 ```
 
-`grenat test` est déterministe (cassettes et mocks). `grenat eval` appelle les vrais modèles et produit un rapport de score et de coût.
+`grenat test` is deterministic (cassettes and mocks). `grenat eval` calls the real models and produces a score and cost report.
 
 ---
 
-## 9. Architecture du compilateur (Rust)
+## 9. Compiler architecture (Rust)
 
 ```
 grenat/
 ├── crates/
-│   ├── grenat_lexer      # écrit à la main (modes : interpolation, heredocs) — tokens + commentaires
-│   ├── grenat_ast        # arbre syntaxique typé, spans
-│   ├── grenat_parser     # descente récursive + Pratt, récupération d'erreurs → AST
-│   ├── grenat_hir        # résolution des noms, désucrage (blocs, &., ?, on/tool/prompt)
-│   ├── grenat_types      # vérification graduelle : noms, types, effets, teinte ~T
-│   ├── grenat_mir        # IR SSA, insertion RC Perceus, monomorphisation
-│   ├── grenat_codegen    # Cranelift (dev, compile vite) → LLVM (release, exécute vite)
-│   ├── grenat_runtime    # staticlib liée à chaque binaire :
-│   │                     #   ordonnanceur M:N work-stealing, acteurs, supervision,
-│   │                     #   clients LLM (Anthropic, OpenAI, Ollama), budgets,
-│   │                     #   journal durable (SQLite), bac à sable wasmtime
-│   ├── grenat_interp     # interpréteur HIR (phase 1, pour valider la sémantique)
+│   ├── grenat_lexer      # hand-written (modes: interpolation, heredocs) — tokens + comments
+│   ├── grenat_ast        # typed syntax tree, spans
+│   ├── grenat_parser     # recursive descent + Pratt, error recovery → AST
+│   ├── grenat_hir        # name resolution, desugaring (blocks, &., ?, on/tool/prompt)
+│   ├── grenat_types      # gradual checking: names, types, effects, ~T taint
+│   ├── grenat_mir        # SSA IR, Perceus RC insertion, monomorphization
+│   ├── grenat_codegen    # Cranelift (dev, compiles fast) → LLVM (release, runs fast)
+│   ├── grenat_runtime    # staticlib linked into every binary:
+│   │                     #   M:N work-stealing scheduler, actors, supervision,
+│   │                     #   LLM clients (Anthropic, OpenAI, Ollama), budgets,
+│   │                     #   durable journal (SQLite), wasmtime sandbox
+│   ├── grenat_interp     # HIR interpreter (phase 1, to validate the semantics)
 │   └── grenat_cli        # grenat run | build | test | eval | fmt
-└── std/                  # bibliothèque standard écrite en Grenat
+└── std/                  # standard library written in Grenat
 ```
 
-Messages d'erreur : chaque diagnostic a un code stable, la ligne fautive et, pour la teinte, **l'endroit où la valeur a été produite par le LLM**. Sortie réelle de `grenat check` quand on envoie la réponse non validée de l'agent dans `support_desk.grn` :
+Error messages: every diagnostic has a stable code, the offending line and, for taint, **the place where the LLM produced the value**. Actual output of `grenat check` when the agent's unvalidated answer is sent in `support_desk.grn`:
 
 ```
-erreur[E0412]: une valeur produite par un LLM atteint `send_reply` (effet `net`) sans validation
+error[E0412]: an LLM-produced value reaches `send_reply` (effect `net`) without validation
    --> support_desk.grn:163:29
     |
 163 |     send_reply(ticket.from, answer.body)
     |                             ^^^^^^^^^^^
-note: produite ici par un LLM
+note: produced here by an LLM
    --> support_desk.grn:132:5
     |
 132 |     run <<~T
     |     ^^^^^^^^
-  = aide : validez-la avec `.check { … }`, `.approve(by: :human)` ou `.trust!`
+  = help: validate it with `.check { … }`, `.approve(by: :human)` or `.trust!`
 ```
 
-| Code | Famille |
+| Code | Family |
 |---|---|
-| E0100 | nom inconnu (variable, fonction, type, constante, modèle, outil), avec suggestion |
-| E0200 | type, arité, argument nommé, champ ou méthode inconnus |
-| E0300 | effet utilisé mais non déclaré ; `main` et les `tool` doivent déclarer les leurs |
-| E0412 | valeur teintée `~T` qui atteint un effet dangereux sans validation |
-| E0413 | `prompt` ou handler utilisant `run` dont le type de retour n'est pas teinté |
-| E0500 | déclaration invalide (effet inconnu, sortie de LLM non sérialisable, `run` hors agent…) |
+| E0100 | unknown name (variable, function, type, constant, model, tool), with a suggestion |
+| E0200 | type, arity, named argument, unknown field or method |
+| E0300 | effect used but not declared; `main` and `tool`s must declare theirs |
+| E0412 | tainted `~T` value reaching a dangerous effect without validation |
+| E0413 | `prompt`, or handler using `run`, whose return type is not tainted |
+| E0500 | invalid declaration (unknown effect, non-serializable LLM output, `run` outside an agent…) |
 
 ---
 
 ## 10. Distribution
 
-Objectif : `brew install grenat` sur macOS, `yay -S grenat` sur Arch / Omarchy, sans aucune dépendance runtime autre que le linker système.
+Goal: `brew install grenat` on macOS, `yay -S grenat` on Arch / Omarchy, with no runtime dependency other than the system linker.
 
-| Canal | Commande | Quand |
+| Channel | Command | When |
 |---|---|---|
-| Tap Homebrew (`itsmedit/homebrew-grenat`) | `brew install itsmedit/grenat/grenat` | dès la v0.1 |
-| homebrew-core | `brew install grenat` | quand le projet est « notable » (~75 étoiles), release stable, build depuis les sources |
-| AUR `grenat` (sources) et `grenat-bin` (précompilé) | `yay -S grenat` | dès la v0.1 |
-| Dépôt Arch `extra` | `pacman -S grenat` | quand un packager Arch l'adopte |
-| Installeur shell | `curl -fsSL https://grenat.dev/install.sh \| sh` | dès la v0.1 |
+| Homebrew tap (`itsmedit/homebrew-grenat`) | `brew install itsmedit/grenat/grenat` | from v0.1 |
+| homebrew-core | `brew install grenat` | once the project is "notable" (~75 stars), stable release, built from source |
+| AUR `grenat` (source) and `grenat-bin` (prebuilt) | `yay -S grenat` | from v0.1 |
+| Arch `extra` repository | `pacman -S grenat` | once an Arch packager adopts it |
+| Shell installer | `curl -fsSL https://grenat.dev/install.sh \| sh` | from v0.1 |
 
-**Automatisation** : `dist` (ex cargo-dist) génère la GitHub Action déclenchée sur chaque tag `v*`. Elle compile les binaires macOS arm64/x86_64 et Linux x86_64/aarch64, crée la GitHub Release, met à jour la formule du tap et l'installeur shell. Le `PKGBUILD` de `grenat-bin` pointe vers ces mêmes artefacts.
+**Automation**: `dist` (formerly cargo-dist) generates the GitHub Action triggered on every `v*` tag. It builds the macOS arm64/x86_64 and Linux x86_64/aarch64 binaries, creates the GitHub Release, and updates the tap formula and the shell installer. The `grenat-bin` `PKGBUILD` points to the same artifacts.
 
-**Contraintes de conception qui en découlent** :
+**Resulting design constraints**:
 
-| Contrainte | Décision |
+| Constraint | Decision |
 |---|---|
-| Grenat est un compilateur qui lie un runtime | `libgrenat_runtime.a` et `std/` sont cherchés **relativement à l'exécutable** (`<prefix>/bin/grenat` → `<prefix>/lib/grenat/`, `<prefix>/share/grenat/std/`), avec la surcharge `GRENAT_HOME`. Ça marche sous `/opt/homebrew`, `/usr` et `~/.cargo` |
-| Linker | `cc` du système (Xcode CLT sur macOS, `gcc` sur Arch), seule dépendance runtime |
-| Pas de dépendances système | `rustls` (pas d'OpenSSL), SQLite embarqué (`rusqlite`, feature `bundled`) |
-| LLVM est lourd (~100 Mo) | **Cranelift par défaut**, embarqué et pur Rust. LLVM en feature optionnelle |
-| Licence | MIT OR Apache-2.0 dès le premier commit |
+| Grenat is a compiler that links a runtime | `libgrenat_runtime.a` and `std/` are looked up **relative to the executable** (`<prefix>/bin/grenat` → `<prefix>/lib/grenat/`, `<prefix>/share/grenat/std/`), overridable with `GRENAT_HOME`. Works under `/opt/homebrew`, `/usr` and `~/.cargo` |
+| Linker | the system `cc` (Xcode CLT on macOS, `gcc` on Arch), the only runtime dependency |
+| No system dependencies | `rustls` (no OpenSSL), bundled SQLite (`rusqlite`, `bundled` feature) |
+| LLVM is heavy (~100 MB) | **Cranelift by default**, embedded and pure Rust. LLVM as an optional feature |
+| License | MIT OR Apache-2.0 from the first commit |
 
-Arborescence installée :
+Installed layout:
 
 ```
 <prefix>/bin/grenat
@@ -405,61 +405,61 @@ Arborescence installée :
 
 ---
 
-## 11. Feuille de route
+## 11. Roadmap
 
-| Phase | Contenu | Résultat |
+| Phase | Content | Outcome |
 |---|---|---|
-| **0** ✅ | Lexer + parser + AST + `grenat check/parse/tokens` | on parse tous les exemples et tous les blocs de cette spec |
-| **0.5** | `grenat fmt` (conservation des commentaires) | formateur canonique |
-| **1** ✅ | Interpréteur, `prompt`, `tool`, agents, budgets, teinte, client Anthropic, `grenat run/test` | premier agent qui tourne |
-| **2** ✅ | Vérification des noms, types, effets et teinte `~T` **avant l'exécution** ; capacités restreintes à l'exécution | les erreurs de sécurité avant l'exécution |
-| **3** ✅ | Agents-acteurs concurrents, `parallel_map`/`race` réels, annulation, interblocages détectés, supervision | multi-agents |
-| **4** | Codegen Cranelift + RC Perceus | binaires natifs rapides |
-| **5** | Workflows durables (journal des `step`), cassettes, `mock`, `eval` | prêt pour la production |
-| **6** | LSP, LLVM release, macros, gestionnaire de paquets | écosystème |
+| **0** ✅ | Lexer + parser + AST + `grenat check/parse/tokens` | every example and every code block of this spec parses |
+| **0.5** | `grenat fmt` (comment-preserving) | canonical formatter |
+| **1** ✅ | Interpreter, `prompt`, `tool`, agents, budgets, taint, Anthropic client, `grenat run/test` | the first agent runs |
+| **2** ✅ | Names, types, effects and `~T` taint checked **before execution**; capabilities enforced at run time | security errors before execution |
+| **3** ✅ | Concurrent actor agents, real `parallel_map`/`race`, cancellation, deadlock detection, supervision | multi-agent |
+| **4** | Cranelift codegen + Perceus RC | fast native binaries |
+| **5** | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
+| **6** | LSP, LLVM release builds, macros, package manager | ecosystem |
 
-### État de la phase 1
+### Phase 1 status
 
-L'interpréteur exécute directement l'AST. Ce qui marche :
+The interpreter executes the AST directly. What works:
 
-- le langage de base : fonctions, blocs et fermetures, `struct`, `class`, `module`/`include`, `enum`, `case/in`, `Result` et `?`, `rescue`/`ensure`, bibliothèque de base (`Array`, `Hash`, `String`, `File`, `Dir`, `Math`, `Json`, `Env`) ;
-- `prompt` : le type de retour devient un JSON Schema (sortie structurée), les `##` deviennent les descriptions, la réponse est validée, relancée une fois si invalide, et renvoyée **teintée** ;
-- `agent` : `spawn`, `ask`/`tell`, état `@…`, boucle `run` avec les `tool` déclarés et un outil `final_answer` typé par le retour du handler ;
-- teinte `~T` : propagée par les accès, l'interpolation, les opérateurs et les blocs ; `TaintError` si elle atteint une fonction à effet `net`, `shell`, `fs.write` ou `human` ; `.check`, `.approve(by: :human)`, `.trust!` ;
-- budgets `usd`/`tokens`/`time` (`within budget(…)`, directive `budget` des agents), coût calculé par modèle ;
-- `Runtime.on_approval`, `approve!`, `grenat test` avec `assert`, `assert_equal`, `assert_raises`.
+- the core language: functions, blocks and closures, `struct`, `class`, `module`/`include`, `enum`, `case/in`, `Result` and `?`, `rescue`/`ensure`, a basic library (`Array`, `Hash`, `String`, `File`, `Dir`, `Math`, `Json`, `Env`);
+- `prompt`: the return type becomes a JSON Schema (structured output), `##` comments become descriptions, the answer is validated, retried once if invalid, and returned **tainted**;
+- `agent`: `spawn`, `ask`/`tell`, `@…` state, the `run` loop with the declared `tool`s and a `final_answer` tool typed by the handler's return type;
+- `~T` taint: propagated through field access, interpolation, operators and blocks; `TaintError` if it reaches a function with the `net`, `shell`, `fs.write` or `human` effect; `.check`, `.approve(by: :human)`, `.trust!`;
+- `usd`/`tokens`/`time` budgets (`within budget(…)`, the agents' `budget` directive), cost computed per model;
+- `Runtime.on_approval`, `approve!`, `grenat test` with `assert`, `assert_equal`, `assert_raises`.
 
-### État de la phase 2
+### Phase 2 status
 
-`grenat check` et `grenat run` vérifient le programme avant de l'exécuter (`--unchecked` pour s'en passer). Le vérificateur est **graduel** : ce qu'il ne sait pas typer (JSON, valeurs dynamiques) devient inconnu et n'est jamais signalé, pour éviter les faux positifs.
+`grenat check` and `grenat run` check the program before running it (`--unchecked` skips this). The checker is **gradual**: what it cannot type (JSON, dynamic values) becomes unknown and is never reported, to avoid false positives.
 
-- **Teinte** : l'analyse suit une valeur `~T` à travers les champs, l'interpolation, les opérateurs, les blocs, les tableaux (`<<`, `push`), l'état `@…` des agents et les appels de fonction. Chaque fonction est vérifiée pour la teinte réelle de ses arguments, si bien qu'une fonction utilitaire fonctionne sur une valeur propre comme sur une valeur teintée, sans annotation.
-- **Effets** : inférés dans le corps, propagés par les appels (y compris `ask` et les outils d'un agent), comparés à `uses`, en tenant compte des restrictions littérales (`fs.read("./docs")` couvre `./docs/a.md`).
-- **À l'exécution** : les restrictions `fs.read(…)` / `fs.write(…)` sont appliquées (`CapabilityError`, y compris contre `../`). Une méthode appelée sur une valeur teintée garde un `self` teinté. La teinte reste vérifiée à l'exécution, en défense en profondeur.
+- **Taint**: the analysis follows a `~T` value through fields, interpolation, operators, blocks, arrays (`<<`, `push`), agents' `@…` state and function calls. Each function is checked for the actual taint of its arguments, so a helper function works on a clean value as well as on a tainted one, with no annotation.
+- **Effects**: inferred from the body, propagated through calls (including `ask` and an agent's tools), compared against `uses`, taking literal restrictions into account (`fs.read("./docs")` covers `./docs/a.md`).
+- **At run time**: `fs.read(…)` / `fs.write(…)` restrictions are enforced (`CapabilityError`, including against `../`). A method called on a tainted value keeps a tainted `self`. Taint is still checked at run time, as defense in depth.
 
-### État de la phase 3
+### Phase 3 status
 
-Chaque tâche (programme principal, élément de `parallel_map`, branche de `race`, message `tell`) a sa propre pile d'appels ; l'état global et les valeurs sont partagés (`Arc`/`Mutex`).
+Each task (main program, `parallel_map` item, `race` branch, `tell` message) has its own call stack; global state and values are shared (`Arc`/`Mutex`).
 
-- **Acteurs** : un agent traite **un message à la fois**. `ask` exécute le handler dans la tâche de l'appelant, sous le verrou de l'agent : un agent inactif ne coûte pas de thread. `tell` part en tâche de fond ; son échec est journalisé (`[tell] l'agent … a échoué`) et le programme attend la fin des tâches de fond avant de se terminer.
-- **Interblocages détectés** : un message à soi-même, ou un cycle d'attente entre agents (même à travers plusieurs tâches), lève `DeadlockError` avec le cycle (`A → B → A`) au lieu de bloquer.
-- **`spawn_pool(T, size: n)`** : chaque message va à l'agent le moins chargé, choisi et réservé atomiquement.
-- **`parallel_map(limit: n)`** (8 par défaut) : résultats dans l'ordre ; la première erreur est levée et annule le reste.
-- **`race do … end`** : chaque instruction est une branche ; la première qui réussit gagne, les autres sont annulées ; si toutes échouent, la première erreur est levée.
-- **Annulation coopérative** : vérifiée à chaque instruction, appel, bloc, tour de boucle et pendant `sleep` (erreur `Cancelled`).
-- **Budgets partagés** : les tâches créées dans un `within budget(…)` dépensent le même budget.
-- **Supervision** : un handler qui lève une erreur fait redémarrer l'agent (état `@…` neuf) selon `strategy:` — `:one_for_one` (lui seul), `:one_for_all` (tous les enfants), `:rest_for_one` (lui et ceux déclarés après). Au-delà de `max_restarts` (3 par défaut) dans la fenêtre `within:` (60 s), l'agent est arrêté et les messages suivants lèvent `AgentDown`. L'appelant reçoit toujours l'erreur. Un agent non supervisé garde son état.
+- **Actors**: an agent handles **one message at a time**. `ask` runs the handler in the caller's task, under the agent's lock: an idle agent costs no thread. `tell` runs in the background; its failure is logged (`[tell] agent … failed`) and the program waits for background tasks before exiting.
+- **Deadlocks detected**: a message to oneself, or a waiting cycle between agents (even across several tasks), raises `DeadlockError` with the cycle (`A → B → A`) instead of hanging.
+- **`spawn_pool(T, size: n)`**: each message goes to the least busy agent, picked and reserved atomically.
+- **`parallel_map(limit: n)`** (8 by default): results in order; the first error is raised and cancels the rest.
+- **`race do … end`**: each statement is a branch; the first one to succeed wins, the others are cancelled; if all fail, the first error is raised.
+- **Cooperative cancellation**: checked at every statement, call, block, loop iteration and during `sleep` (`Cancelled` error).
+- **Shared budgets**: tasks created inside a `within budget(…)` spend the same budget.
+- **Supervision**: a handler that raises makes the agent restart (fresh `@…` state) according to `strategy:` — `:one_for_one` (that agent only), `:one_for_all` (all children), `:rest_for_one` (that agent and those declared after it). Beyond `max_restarts` (3 by default) within the `within:` window (60 s), the agent is stopped and later messages raise `AgentDown`. The caller always receives the error. An unsupervised agent keeps its state.
 
-Simplifications provisoires, levées dans les phases suivantes :
+Temporary simplifications, lifted in later phases:
 
-| Aujourd'hui | Plus tard |
+| Today | Later |
 |---|---|
-| Typage graduel, `T?` accepté là où `T` est attendu | inférence complète, vérification de `nil` |
-| Tâches = threads système (128 Mo de pile réservée, virtuelle) | fils légers M:N avec le code natif (phase 4) |
-| Une tâche annulée termine son appel LLM en cours (facturé) avant de s'arrêter | annulation des requêtes HTTP en vol |
-| `step` exécute son bloc sans journal | journal durable (phase 5) |
-| Restriction `net("hôte")` vérifiée statiquement seulement | client HTTP de la bibliothèque standard |
+| Gradual typing, `T?` accepted where `T` is expected | full inference, `nil` checking |
+| Tasks are OS threads (128 MB of reserved, virtual stack) | M:N green threads with native code (phase 4) |
+| A cancelled task finishes its in-flight LLM call (billed) before stopping | cancellation of in-flight HTTP requests |
+| `step` runs its block without a journal | durable journal (phase 5) |
+| The `net("host")` restriction is only checked statically | HTTP client in the standard library |
 
-Pour les modèles qui le recommandent (`claude-opus-5`, `claude-fable-5-1`), le client active le repli côté serveur (`fallbacks: "default"`) : une requête refusée par un classifieur est rejouée sur un autre modèle au lieu d'échouer. On le désactive avec `model :x, …, fallbacks: false`.
+For the models that recommend it (`claude-opus-5`, `claude-fable-5-1`), the client enables server-side fallbacks (`fallbacks: "default"`): a request refused by a classifier is replayed on another model instead of failing. Disable it with `model :x, …, fallbacks: false`.
 
-Objectif de performance : pour le code CPU, rester **entre 1× et 2× Rust**, comme Crystal ou Swift. Côté agents, supporter **100 000 agents concurrents** sur une seule machine (un acteur au repos ≈ 2 Ko).
+Performance goal: for CPU-bound code, stay **between 1× and 2× Rust**, like Crystal or Swift. On the agent side, support **100,000 concurrent agents** on a single machine (an idle actor ≈ 2 KB).

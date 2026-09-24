@@ -1,4 +1,4 @@
-//! Types vus par les LLM et JSON Schema générés depuis les déclarations.
+//! Types as seen by LLMs, and JSON Schemas generated from declarations.
 
 use crate::prelude::*;
 use grenat_ast::Type;
@@ -6,7 +6,7 @@ use serde_json::{Map, Value as Json, json};
 
 pub(crate) const MAX_SCHEMA_DEPTH: usize = 16;
 
-/// Type tel que vu par les LLM (la teinte `~` est ajoutée par le runtime).
+/// Type as seen by LLMs (the `~` taint is added by the runtime).
 #[derive(Debug, Clone)]
 pub(crate) enum Ty<'p> {
     Int,
@@ -22,7 +22,7 @@ pub(crate) enum Ty<'p> {
 
 pub(crate) fn type_name(ty: &Type) -> &str {
     match ty {
-        Type::Named { path, .. } => &path.last().expect("chemin non vide").name,
+        Type::Named { path, .. } => &path.last().expect("non-empty path").name,
         Type::Optional(inner, _) | Type::Tainted(inner, _) => type_name(inner),
     }
 }
@@ -32,18 +32,16 @@ pub(crate) fn type_error<'p, T>(message: String) -> Result<T, Ctrl<'p>> {
 }
 
 impl<'p> Interp<'p> {
-    // ── Types et schémas ─────────────────────────────────────
+    // ── Types and schemas ─────────────────────────────────────
 
     pub(crate) fn ty(&self, ty: &'p Type) -> Result<Ty<'p>, String> {
         match ty {
             Type::Tainted(inner, _) => self.ty(inner),
             Type::Optional(inner, _) => Ok(Ty::Opt(Box::new(self.ty(inner)?))),
             Type::Named { path, args, .. } => {
-                let name = path.last().expect("chemin non vide").name.as_str();
+                let name = path.last().expect("non-empty path").name.as_str();
                 let arg = |i: usize| -> Result<Ty<'p>, String> {
-                    args.get(i)
-                        .map(|a| self.ty(a))
-                        .unwrap_or_else(|| Err(format!("`{name}` attend un type en paramètre")))
+                    args.get(i).map(|a| self.ty(a)).unwrap_or_else(|| Err(format!("`{name}` expects a type parameter")))
                 };
                 Ok(match name {
                     "Int" => Ty::Int,
@@ -55,7 +53,7 @@ impl<'p> Interp<'p> {
                     "Hash" => Ty::Hash(Box::new(arg(1)?)),
                     _ => match self.types.get(name) {
                         Some(info) => Ty::User(info.def.name.name.as_str()),
-                        None => return Err(format!("type `{name}` inconnu")),
+                        None => return Err(format!("unknown type `{name}`")),
                     },
                 })
             }
@@ -64,7 +62,7 @@ impl<'p> Interp<'p> {
 
     pub(crate) fn schema(&self, ty: &Ty<'p>, depth: usize) -> Result<Json, String> {
         if depth > MAX_SCHEMA_DEPTH {
-            return Err("type récursif : non représentable en JSON Schema".into());
+            return Err("recursive type: cannot be represented as a JSON Schema".into());
         }
         Ok(match ty {
             Ty::Int => json!({"type": "integer"}),
@@ -74,7 +72,7 @@ impl<'p> Interp<'p> {
             Ty::Nil => json!({"type": "null"}),
             Ty::Array(item) => json!({"type": "array", "items": self.schema(item, depth + 1)?}),
             Ty::Opt(inner) => json!({"anyOf": [self.schema(inner, depth + 1)?, {"type": "null"}]}),
-            Ty::Hash(_) => return Err("`Hash` ne peut pas sortir d'un LLM : utilisez une `struct`".into()),
+            Ty::Hash(_) => return Err("`Hash` cannot come out of an LLM: use a `struct`".into()),
             Ty::User(name) => {
                 let info = &self.types[name];
                 let mut schema = match info.def.kind {
@@ -92,7 +90,7 @@ impl<'p> Interp<'p> {
                         let docs: Vec<String> = info
                             .variants
                             .iter()
-                            .filter_map(|v| v.doc.as_ref().map(|d| format!("{} : {d}", v.name.name)))
+                            .filter_map(|v| v.doc.as_ref().map(|d| format!("{}: {d}", v.name.name)))
                             .collect();
                         if !docs.is_empty() {
                             s["description"] = json!(docs.join("\n"));
@@ -113,7 +111,7 @@ impl<'p> Interp<'p> {
                         }
                         json!({"anyOf": alternatives})
                     }
-                    kind => return Err(format!("un {kind:?} (`{name}`) ne peut pas sortir d'un LLM")),
+                    kind => return Err(format!("a {kind:?} (`{name}`) cannot come out of an LLM")),
                 };
                 if let Some(doc) = &info.def.doc {
                     schema["description"] = json!(doc);
@@ -123,7 +121,7 @@ impl<'p> Interp<'p> {
         })
     }
 
-    /// Objet strict : tous les champs requis, ceux qui ont une valeur par défaut acceptent `null`.
+    /// Strict object: every field required, fields with a default value accept `null`.
     pub(crate) fn object_schema<'a>(
         &self,
         fields: impl Iterator<Item = (&'a str, Option<&'p Type>, Option<&'a str>, bool)>,
@@ -132,7 +130,7 @@ impl<'p> Interp<'p> {
         let mut properties = Map::new();
         let mut required = Vec::new();
         for (name, ty, doc, has_default) in fields {
-            let ty = ty.ok_or_else(|| format!("le champ `{name}` n'a pas de type"))?;
+            let ty = ty.ok_or_else(|| format!("field `{name}` has no type"))?;
             let mut schema = self.schema(&self.ty(ty)?, depth + 1)?;
             if has_default {
                 schema = json!({"anyOf": [schema, {"type": "null"}]});
@@ -146,7 +144,7 @@ impl<'p> Interp<'p> {
         Ok(json!({"type": "object", "properties": properties, "required": required, "additionalProperties": false}))
     }
 
-    /// Schéma de sortie : un objet, en enveloppant `{"value": …}` si nécessaire.
+    /// Output schema: an object, wrapping in `{"value": …}` when needed.
     pub(crate) fn output_schema(&self, ty: &Ty<'p>) -> Result<(Json, bool), String> {
         let schema = self.schema(ty, 0)?;
         if schema["type"] == "object" {

@@ -1,4 +1,4 @@
-//! Appels de méthodes : types déclarés, valeurs intégrées, modules.
+//! Method calls: declared types, built-in values, modules.
 
 use grenat_ast::{Block, FnDef, Ident, Span, TypeKind};
 
@@ -14,7 +14,7 @@ impl<'p> Checker<'p> {
         }
     }
 
-    /// Champ de struct (ou champ commun de variante d'enum).
+    /// Struct field (or a field shared by enum variants).
     pub(crate) fn field_of(&self, ty: &Ty, name: &str) -> Option<Ty> {
         let Ty::User(t) = ty.base() else { return None };
         let decl = self.types.get(t.as_str())?;
@@ -37,7 +37,7 @@ impl<'p> Checker<'p> {
     ) -> V {
         let n = name.name.as_str();
         let taint = recv.taint;
-        // contrôle de la teinte
+        // taint control
         match n {
             "trust!" => return V::new(recv.ty),
             "check" => {
@@ -76,7 +76,7 @@ impl<'p> Checker<'p> {
                         V { ty, taint }
                     }
                     None => {
-                        self.error(E_TYPE, name.span, format!("méthode `{n}` inconnue pour `{base}`"));
+                        self.error(E_TYPE, name.span, format!("unknown method `{n}` for `{base}`"));
                         V { ty: Ty::Unknown, taint }
                     }
                 }
@@ -113,7 +113,7 @@ impl<'p> Checker<'p> {
                 return V { ty: Ty::Str, taint };
             }
             if kind.is_none() && is_error_name(t) {
-                // erreurs intégrées ou sans déclaration : champs libres
+                // built-in or undeclared errors: free-form fields
                 return V { ty: builtins::error_field(t, n).unwrap_or(Ty::Unknown), taint };
             }
             if self.messages.contains_key(t) {
@@ -130,7 +130,7 @@ impl<'p> Checker<'p> {
                             self.error_help(
                                 E_TYPE,
                                 arg.span,
-                                format!("champ inconnu `{field}:` pour `{t}`"),
+                                format!("unknown field `{field}:` for `{t}`"),
                                 suggest(field, fields.iter().map(|s| s.name)),
                             );
                         }
@@ -149,11 +149,11 @@ impl<'p> Checker<'p> {
             candidates.extend(decl.fields.iter().map(|f| f.name.name.as_str()));
         }
         let what = if candidates.is_empty() || kind == Some(TypeKind::Class) || kind == Some(TypeKind::Agent) {
-            "méthode"
+            "method"
         } else {
-            "champ ou méthode"
+            "field or method"
         };
-        self.error_help(E_TYPE, name.span, format!("{what} `{n}` inconnu pour `{t}`"), suggest(n, candidates));
+        self.error_help(E_TYPE, name.span, format!("unknown {what} `{n}` for `{t}`"), suggest(n, candidates));
         V { ty: Ty::Unknown, taint }
     }
 
@@ -201,7 +201,7 @@ impl<'p> Checker<'p> {
             candidates.extend(decl.statics.keys().copied());
             candidates.push("new");
         }
-        self.error_help(E_TYPE, name.span, format!("méthode `{t}.{n}` inconnue"), suggest(n, candidates));
+        self.error_help(E_TYPE, name.span, format!("unknown method `{t}.{n}`"), suggest(n, candidates));
         V::unknown()
     }
 }

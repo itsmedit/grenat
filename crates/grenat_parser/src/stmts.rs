@@ -1,4 +1,4 @@
-//! Instructions : corps, `rescue`, modificateurs, affectations multiples, `and`/`or`/`not`.
+//! Statements: bodies, `rescue`, modifiers, multiple assignment, `and`/`or`/`not`.
 
 use grenat_ast::*;
 use grenat_lexer::{Keyword as K, TokenKind as T};
@@ -6,7 +6,7 @@ use grenat_lexer::{Keyword as K, TokenKind as T};
 use crate::*;
 
 impl<'d> Parser<'d> {
-    /// Instructions puis clauses `rescue`/`ensure` ; ne consomme pas le `end`.
+    /// Statements, then `rescue`/`ensure` clauses; does not consume the `end`.
     pub(crate) fn body(&mut self, stops: &[K]) -> PResult<Body> {
         let start = self.span();
         let mut all_stops = vec![K::Rescue, K::Ensure, K::End];
@@ -38,7 +38,7 @@ impl<'d> Parser<'d> {
                         let at_end = matches!(p.kind(), T::Newline | T::Eof | T::RBrace)
                             || matches!(p.kind(), T::Kw(k) if stops.contains(k));
                         if !at_end {
-                            let _ = p.unexpected::<()>("une fin de ligne");
+                            let _ = p.unexpected::<()>("end of line");
                             p.recover_line();
                         }
                     }
@@ -61,13 +61,13 @@ impl<'d> Parser<'d> {
                 types.push(self.ty()?);
             }
         }
-        let binding = if self.eat(&T::FatArrow) { Some(self.ident("un nom de variable")?) } else { None };
+        let binding = if self.eat(&T::FatArrow) { Some(self.ident("a variable name")?) } else { None };
         self.eat_kw(K::Then);
         let body = self.stmts(&[K::Rescue, K::Ensure, K::End]);
         Ok(Rescue { types, binding, body, span: start.to(self.prev_span()) })
     }
 
-    /// Instruction : expression suivie d'éventuels modificateurs (`x if y`).
+    /// Statement: an expression followed by optional modifiers (`x if y`).
     pub(crate) fn stmt(&mut self) -> PResult<Expr> {
         let mut e = match self.multi_assign()? {
             Some(e) => e,
@@ -93,7 +93,7 @@ impl<'d> Parser<'d> {
         Ok(e)
     }
 
-    /// `a, b = valeur`
+    /// `a, b = value`
     pub(crate) fn multi_assign(&mut self) -> PResult<Option<Expr>> {
         let mut i = 0;
         loop {
@@ -126,7 +126,7 @@ impl<'d> Parser<'d> {
         Ok(Some(Expr::new(ExprKind::MultiAssign { targets, value: Box::new(value) }, span)))
     }
 
-    /// Niveau `and` / `or` / `not` (plus faible que l'affectation, comme en Ruby).
+    /// The `and` / `or` / `not` level (lower than assignment, as in Ruby).
     pub(crate) fn expr_stmt(&mut self) -> PResult<Expr> {
         let mut lhs = self.not_expr()?;
         loop {

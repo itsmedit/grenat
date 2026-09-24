@@ -1,6 +1,6 @@
-//! Types d'erreur intégrés et hiérarchie des erreurs.
+//! Built-in error types and the error hierarchy.
 
-/// Types d'erreur « intégrés », utilisables sans déclaration (`raise ApprovalDenied`).
+/// Built-in error types, usable without a declaration (`raise ApprovalDenied`).
 const ERROR_NAMES: &[&str] = &[
     "Exception",
     "StandardError",

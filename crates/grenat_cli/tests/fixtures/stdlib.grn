@@ -1,5 +1,5 @@
-# Tour de la bibliothèque intégrée : chaque méthode, une ligne de sortie.
-# `grenat run` vérifie d'abord le programme : vérificateur et interpréteur doivent s'accorder.
+# A tour of the built-in library: every method, one line of output.
+# `grenat run` checks the program first: the checker and the interpreter must agree.
 
 def show(label: String, value: Any)
   puts "#{label.ljust(22)} #{value.inspect}"
@@ -17,7 +17,7 @@ def main uses fs.read, env, time
   show "zero even odd", [0.zero?, 4.even?, 3.odd?]
   show "succ pred", [1.succ, 1.pred]
   show "between?", 5.between?(1, 9)
-  show "durées", [30.s, 2.min, 1.h, 3.days]
+  show "durations", [30.s, 2.min, 1.h, 3.days]
 
   # Float
   show "round", [2.567.round, 2.567.round(2)]
@@ -28,16 +28,16 @@ def main uses fs.read, env, time
   s = "  Grenat Rubis  "
   show "strip", [s.strip, s.lstrip, s.rstrip]
   t = s.strip
-  show "casse", [t.upcase, t.downcase, "gRENAT".capitalize]
+  show "case", [t.upcase, t.downcase, "gRENAT".capitalize]
   show "size reverse", [t.size, "abc".reverse]
   show "chars lines split", ["ab".chars, "a\nb".lines, "a,b".split(","), "a b".split]
-  show "prédicats", ["".empty?, t.include?("Rub"), t.start_with?("Gre"), t.end_with?("is")]
+  show "predicates", ["".empty?, t.include?("Rub"), t.start_with?("Gre"), t.end_with?("is")]
   show "index", [t.index("R"), t.index("z")]
   show "sub gsub", ["a-b-c".sub("-", "+"), "a-b-c".gsub("-", "+")]
-  show "truncate", "Grenat est un langage".truncate(10)
+  show "truncate", "Grenat is a language".truncate(10)
   show "ljust rjust", ["ab".ljust(4) + "|", "ab".rjust(4)]
   show "conversions", ["42".to_i, "2.5".to_f, "nom".to_sym]
-  show "répétition", "ab" * 3
+  show "repetition", "ab" * 3
 
   # Array
   xs = [3, 1, 4, 1, 5]
@@ -89,14 +89,14 @@ def main uses fs.read, env, time
   show "range", [r.to_a, r.include?(3), r.first, r.last, r.size, r.sum]
   show "range exclusive", (1...4).to_a
 
-  # Result et nil
+  # Result and nil
   ok = Ok(5)
-  err = Err(ParseError("illisible"))
+  err = Err(ParseError("unreadable"))
   show "Result", [ok.ok?, err.err?, ok.value, err.unwrap_or(0)]
   show "or_else", err.or_else { |e| e.message.size }
   show "nil", [nil.nil?, 1.nil?, nil.to_s]
 
-  # universelles
+  # universal
   show "inspect to_s", [:a.inspect, 1.5.to_s]
   show "is_a?", [1.is_a?(Int), "a".is_a?(String), 1.is_a?(String)]
 
@@ -104,8 +104,8 @@ def main uses fs.read, env, time
   show "Math", [Math.sqrt(16.0), Math.pi.round(2)]
   show "Json", [Json.dump({a: [1, true]}), Json.parse("[1, 2]")]
   show "Env", Env.get("GRENAT_TEST_ABSENT")
-  show "Env fetch", Env.fetch("GRENAT_TEST_ABSENT", "défaut")
+  show "Env fetch", Env.fetch("GRENAT_TEST_ABSENT", "default")
   show "File", [File.exist?("Cargo.toml"), File.directory?("crates"), File.lines("LICENSE-MIT").first]
-  show "Dir", Dir.list("examples").include?("bases.grn")
+  show "Dir", Dir.list("examples").include?("basics.grn")
   show "Time", Time.now > 0
 end

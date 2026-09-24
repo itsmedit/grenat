@@ -4,21 +4,21 @@ to_f abs               [7.0, 3]
 zero even odd          [true, true, true]
 succ pred              [2, 0]
 between?               true
-durées                 [30s, 2min, 1h, 3d]
+durations              [30s, 2min, 1h, 3d]
 round                  [3, 2.57]
 floor ceil to_i        [2, 3, 2]
 abs zero?              [1.5, true]
 strip                  ["Grenat Rubis", "Grenat Rubis  ", "  Grenat Rubis"]
-casse                  ["GRENAT RUBIS", "grenat rubis", "Grenat"]
+case                   ["GRENAT RUBIS", "grenat rubis", "Grenat"]
 size reverse           [12, "cba"]
 chars lines split      [["a", "b"], ["a", "b"], ["a", "b"], ["a", "b"]]
-prédicats              [true, true, true, true]
+predicates             [true, true, true, true]
 index                  [7, nil]
 sub gsub               ["a+b-c", "a+b+c"]
-truncate               "Grenat es…"
+truncate               "Grenat is…"
 ljust rjust            ["ab  |", "  ab"]
 conversions            [42, 2.5, :nom]
-répétition             "ababab"
+repetition             "ababab"
 size count empty?      [5, 3, true]
 first last             [3, 5, [3, 1], [1, 5]]
 map select reject      [[6, 2, 8, 2, 10], [3, 1, 1, 5], [4]]
@@ -54,14 +54,14 @@ any? all?              [true, true]
 range                  [[1, 2, 3, 4], true, 1, 4, 4, 10]
 range exclusive        [1, 2, 3]
 Result                 [true, true, 5, 0]
-or_else                9
+or_else                10
 nil                    [true, false, ""]
 inspect to_s           [":a", "1.5"]
 is_a?                  [true, true, false]
 Math                   [4.0, 3.14]
 Json                   ["{\"a\":[1,true]}", [1, 2]]
 Env                    nil
-Env fetch              "défaut"
+Env fetch              "default"
 File                   [true, true, "MIT License"]
 Dir                    true
 Time                   true

@@ -1,4 +1,4 @@
-//! Annotations de type : `Array(T)`, `T?`, `~T`.
+//! Type annotations: `Array(T)`, `T?`, `~T`.
 
 use grenat_ast::*;
 use grenat_lexer::TokenKind as T;
@@ -14,9 +14,9 @@ impl<'d> Parser<'d> {
             return Ok(Type::Tainted(Box::new(inner), span));
         }
         let start = self.span();
-        let mut path = vec![self.const_name("un type")?];
+        let mut path = vec![self.const_name("a type")?];
         while self.eat(&T::ColonColon) {
-            path.push(self.const_name("un type")?);
+            path.push(self.const_name("a type")?);
         }
         let mut args = Vec::new();
         if self.at_tight(&T::LParen) {

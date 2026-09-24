@@ -1,4 +1,4 @@
-//! Contexte de vérification d'une fonction : portées, `self`, effets et retours collectés.
+//! Checking context of a function: scopes, `self`, collected effects and returns.
 
 use std::collections::HashMap;
 
@@ -7,7 +7,7 @@ use grenat_ast::{Field, FnDef, Handler, Param, Span, Type};
 use crate::ty::{Ty, V};
 use crate::*;
 
-/// Paramètre, champ ou variante : ce qu'un appel doit lier.
+/// Parameter, field or variant: what a call must bind.
 #[derive(Clone, Copy)]
 pub(crate) struct Slot<'p> {
     pub(crate) name: &'p str,
@@ -39,7 +39,7 @@ pub(crate) enum Kind<'p> {
     Handler(&'p str, &'p Handler),
 }
 
-/// Contexte d'une fonction en cours de vérification.
+/// Context of the function being checked.
 pub(crate) struct Ctx<'p> {
     pub(crate) scopes: Vec<HashMap<String, V>>,
     pub(crate) self_ty: Option<Ty>,
@@ -78,7 +78,7 @@ impl<'p> Ctx<'p> {
     }
 
     pub(crate) fn define(&mut self, name: &str, value: V) {
-        self.scopes.last_mut().expect("portée").insert(name.to_string(), value);
+        self.scopes.last_mut().expect("scope").insert(name.to_string(), value);
     }
 
     pub(crate) fn add_effect(&mut self, effect: Eff) {
@@ -96,7 +96,7 @@ pub(crate) struct ArgV {
     pub(crate) name: Option<String>,
     pub(crate) v: V,
     pub(crate) span: Span,
-    /// Littéral chaîne sans interpolation (restriction d'effet).
+    /// String literal without interpolation (effect restriction).
     pub(crate) lit: Option<String>,
 }
 

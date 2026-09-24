@@ -1,4 +1,4 @@
-//! Chaînes : échappements, interpolation `#{…}` (sous-lexer) et heredocs `<<~ID`.
+//! Strings: escapes, `#{…}` interpolation (sub-lexer) and `<<~ID` heredocs.
 
 use crate::*;
 
@@ -8,8 +8,8 @@ pub(crate) enum Term {
 }
 
 impl<'s> Lexer<'s> {
-    /// Lit le contenu d'une chaîne jusqu'au terminateur. `self.pos` est juste après
-    /// le guillemet ouvrant (ou au début d'une ligne de heredoc).
+    /// Reads a string's contents up to its terminator. `self.pos` is just past
+    /// the opening quote (or at the start of a heredoc line).
     pub(crate) fn string_parts(&mut self, term: Term, interpolate: bool, open: usize) -> Vec<StrPart> {
         let mut parts = Vec::new();
         let mut buf = String::new();
@@ -20,8 +20,8 @@ impl<'s> Lexer<'s> {
                 break;
             }
             let Some(c) = self.peek() else {
-                // reprise à la fin de la ligne d'ouverture : le reste du fichier reste analysable
-                self.error(open, self.pos, "chaîne non terminée");
+                // resume at the end of the opening line so the rest of the file can still be lexed
+                self.error(open, self.pos, "unterminated string");
                 self.pos = self.line_end(open);
                 break;
             };
@@ -57,7 +57,7 @@ impl<'s> Lexer<'s> {
         self.bump();
         let Some(c) = self.bump() else { return };
         if !full {
-            // chaîne brute : seuls `\\` et `\'` sont des échappements
+            // raw string: only `\\` and `\'` are escapes
             match c {
                 '\\' | '\'' => buf.push(c),
                 other => {
@@ -82,26 +82,26 @@ impl<'s> Lexer<'s> {
                 }
                 let hex = &self.src[hex_start..self.pos];
                 if braced && !self.eat('}') {
-                    self.error(start, self.pos, "`}` attendu pour fermer `\\u{…}`");
+                    self.error(start, self.pos, "expected `}` to close `\\u{…}`");
                 }
                 match u32::from_str_radix(hex, 16).ok().and_then(char::from_u32) {
                     Some(ch) => buf.push(ch),
-                    None => self.error(start, self.pos, "échappement unicode invalide"),
+                    None => self.error(start, self.pos, "invalid unicode escape"),
                 }
             }
             other => buf.push(other),
         }
     }
 
-    /// `#{ … }` : lance un sous-lexer qui s'arrête sur la `}` fermante.
+    /// `#{ … }`: runs a sub-lexer that stops at the closing `}`.
     pub(crate) fn interpolation(&mut self, parts: &mut Vec<StrPart>) -> bool {
         let open = self.pos;
         let mut sub = Lexer::new(self.src, open + 2, true);
         sub.run();
         if sub.peek() != Some('}') {
-            // les erreurs du sous-lexer ne sont que des conséquences de celle-ci
+            // the sub-lexer's errors are only consequences of this one
             let end = self.line_end(open);
-            self.error(open, end, "interpolation non terminée : `}` attendu");
+            self.error(open, end, "unterminated interpolation: expected `}`");
             self.pos = end;
             return false;
         }
@@ -120,8 +120,8 @@ impl<'s> Lexer<'s> {
             && rest[3..].starts_with(|c: char| c == '\'' || c == '_' || c.is_ascii_uppercase())
     }
 
-    /// `<<~ID` : le corps commence à la ligne suivante et va jusqu'à `ID` seul sur sa ligne.
-    /// `~` retire l'indentation commune ; `<<~'ID'` désactive l'interpolation.
+    /// `<<~ID`: the body starts on the next line and runs until `ID` alone on a line.
+    /// `~` strips the common indentation; `<<~'ID'` disables interpolation.
     pub(crate) fn heredoc(&mut self) {
         let start = self.pos;
         let squiggly = self.rest().starts_with("<<~");
@@ -131,7 +131,7 @@ impl<'s> Lexer<'s> {
         self.take_ident_chars();
         let id = self.src[id_start..self.pos].to_string();
         if raw && !self.eat('\'') {
-            self.error(start, self.pos, "`'` attendu pour fermer l'identifiant du heredoc");
+            self.error(start, self.pos, "expected `'` to close the heredoc identifier");
         }
         let opener_end = self.pos;
 
@@ -151,7 +151,7 @@ impl<'s> Lexer<'s> {
             line_start = line_end + 1;
         }
         let resume = resume.unwrap_or_else(|| {
-            self.error(start, opener_end, format!("heredoc non terminé : `{id}` attendu seul sur une ligne"));
+            self.error(start, opener_end, format!("unterminated heredoc: expected `{id}` alone on a line"));
             self.src.len()
         });
 

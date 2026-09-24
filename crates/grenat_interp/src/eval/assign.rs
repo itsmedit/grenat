@@ -1,9 +1,9 @@
-//! Affectation et indexation.
+//! Assignment and indexing.
 
 use crate::prelude::*;
 
 impl<'p> Interp<'p> {
-    // ── Affectation ──────────────────────────────────────────
+    // ── Assignment ──────────────────────────────────────────
 
     pub(crate) fn assign(&mut self, target: &'p Expr, value: Value<'p>) -> Result<(), Ctrl<'p>> {
         match &target.kind {
@@ -28,11 +28,11 @@ impl<'p> Interp<'p> {
                 }
                 Value::Record(r) => raise(
                     "TypeError",
-                    format!("`{}` est une struct immuable : créez une copie avec `.with({}: …)`", r.ty, name.name),
+                    format!("`{}` is an immutable struct: make a copy with `.with({}: …)`", r.ty, name.name),
                 ),
-                other => raise("TypeError", format!("impossible d'affecter `{}` sur {}", name.name, other.type_name())),
+                other => raise("TypeError", format!("cannot assign `{}` on {}", name.name, other.type_name())),
             },
-            _ => raise("TypeError", "cible d'affectation invalide"),
+            _ => raise("TypeError", "invalid assignment target"),
         }
     }
 
@@ -59,14 +59,14 @@ impl<'p> Interp<'p> {
         Ok(new)
     }
 
-    // ── Indexation ───────────────────────────────────────────
+    // ── Indexing ───────────────────────────────────────────
 
     pub(crate) fn index(&mut self, target: Value<'p>, index: Vec<Value<'p>>) -> R<'p> {
         if let Value::Tainted(inner) = &target {
             return Ok(self.index((**inner).clone(), index)?.taint());
         }
         let [key] = index.as_slice() else {
-            return raise("ArgumentError", "un seul indice attendu");
+            return raise("ArgumentError", "expected a single index");
         };
         match (&target, key.untainted()) {
             (Value::Array(items), Value::Int(i)) => {
@@ -92,7 +92,7 @@ impl<'p> Interp<'p> {
             }
             (Value::Type(sup), Value::Type(agent)) => self.supervisor_child(sup, agent),
             (target, key) => {
-                raise("TypeError", format!("{} ne peut pas être indexé par {}", target.type_name(), key.type_name()))
+                raise("TypeError", format!("{} cannot be indexed by {}", target.type_name(), key.type_name()))
             }
         }
     }
@@ -104,14 +104,14 @@ impl<'p> Interp<'p> {
         value: Value<'p>,
     ) -> Result<(), Ctrl<'p>> {
         let [key] = index.as_slice() else {
-            return raise("ArgumentError", "un seul indice attendu");
+            return raise("ArgumentError", "expected a single index");
         };
         match (&target, key.untainted()) {
             (Value::Array(items), Value::Int(i)) => {
                 let mut items = items.borrow_mut();
                 let len = items.len();
                 let Some(i) = resolve_index(*i, len.max(*i as usize + 1)) else {
-                    return raise("IndexError", format!("indice {i} hors du tableau"));
+                    return raise("IndexError", format!("index {i} out of bounds"));
                 };
                 if i >= items.len() {
                     items.resize(i + 1, Value::Nil);
@@ -127,7 +127,7 @@ impl<'p> Interp<'p> {
                 }
                 Ok(())
             }
-            (target, _) => raise("TypeError", format!("impossible d'affecter un indice sur {}", target.type_name())),
+            (target, _) => raise("TypeError", format!("cannot assign an index on {}", target.type_name())),
         }
     }
 }

@@ -1,4 +1,4 @@
-//! Méthodes de `Int` et `Float`.
+//! Methods of `Int` and `Float`.
 
 use crate::prelude::*;
 

@@ -1,4 +1,4 @@
-//! Entrées-sorties du programme : sortie standard (ou capturée), erreurs, lecture de lignes.
+//! Program I/O: standard (or captured) output, errors, line input.
 
 use std::io::Write as _;
 

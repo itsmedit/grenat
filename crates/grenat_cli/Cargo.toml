@@ -1,6 +1,6 @@
 [package]
 name = "grenat_cli"
-description = "Compilateur et outils en ligne de commande du langage Grenat"
+description = "Compiler and command-line tools for the Grenat language"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

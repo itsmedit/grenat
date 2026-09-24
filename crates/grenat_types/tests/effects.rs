@@ -1,4 +1,4 @@
-//! Effets déclarés et inférés (E0300, E0500).
+//! Declared and inferred effects (E0300, E0500).
 
 mod common;
 
@@ -8,7 +8,7 @@ use common::*;
 fn main_must_declare_what_it_does() {
     let src = format!("{PRELUDE}def main\n  summarize(\"x\")\nend\n");
     let d = single(&src, "E0300", "summarize(\"x\")");
-    assert_eq!(d.help.as_deref(), Some("ajoutez `uses llm`"));
+    assert_eq!(d.help.as_deref(), Some("add `uses llm`"));
     clean(&format!("{PRELUDE}def main uses llm\n  summarize(\"x\")\nend\n"));
 }
 
@@ -37,5 +37,5 @@ fn tools_must_declare_effects() {
 #[test]
 fn unknown_effect_names_are_reported() {
     let d = single("def f uses fs.raed\n  1\nend\n", "E0500", "fs.raed");
-    assert_eq!(d.help.as_deref(), Some("vouliez-vous `fs.read` ?"));
+    assert_eq!(d.help.as_deref(), Some("did you mean `fs.read`?"));
 }

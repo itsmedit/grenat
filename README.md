@@ -1,14 +1,14 @@
 # Grenat
 
-> La syntaxe de Ruby, la vitesse de Rust, les agents comme citoyens de première classe.
+> Ruby's syntax, Rust's speed, agents as first-class citizens.
 
-Grenat est un langage de programmation compilé pour construire des systèmes d'agents IA :
-prompts typés, outils, agents-acteurs supervisés, budgets, workflows durables, et un
-système d'effets qui fait de l'injection de prompt une **erreur de compilation**.
+Grenat is a compiled programming language for building AI agent systems: typed prompts,
+tools, supervised actor agents, budgets, durable workflows, and an effect system that
+turns prompt injection into a **compile-time error**.
 
 ```ruby
 prompt summarize(article: String) -> ~Summary using :fast
-  user "Résume : #{article}"
+  user "Summarize: #{article}"
 end
 
 agent Researcher
@@ -17,49 +17,48 @@ agent Researcher
   budget usd: 2.00, time: 10.min
 
   on Research(topic: String) -> ~Report
-    run "Enquête sur #{topic}"
+    run "Investigate #{topic}"
   end
 end
 ```
 
-- Spécification : [`SPEC.md`](SPEC.md)
-- Exemples : [`bases.grn`](examples/bases.grn), [`explorateur.grn`](examples/explorateur.grn) (agent réel), [`support_desk.grn`](examples/support_desk.grn) (multi-agents, approbation humaine)
+- Specification: [`SPEC.md`](SPEC.md)
+- Examples: [`basics.grn`](examples/basics.grn), [`explorer.grn`](examples/explorer.grn) (a real agent), [`support_desk.grn`](examples/support_desk.grn) (multi-agent, human approval)
 
-## État
+## Status
 
-**Phase 3 — agents concurrents** : les agents sont des acteurs (un message à la fois,
-interblocages détectés, supervision avec redémarrage), `parallel_map` et `race` sont
-réellement parallèles. Avant d'exécuter quoi que ce soit, `grenat` vérifie les noms, les
-types, les effets et la teinte : une réponse de modèle non validée qui part vers le réseau
-est une **erreur de compilation**.
+**Phase 3 — concurrent agents**: agents are actors (one message at a time, deadlocks
+detected, supervision with restarts), and `parallel_map` and `race` run truly in parallel.
+Before running anything, `grenat` checks names, types, effects and taint: an unvalidated
+model answer that reaches the network is a **compile-time error**.
 
 ```sh
 cargo build
-target/debug/grenat run examples/bases.grn            # le langage de base, sans LLM
+target/debug/grenat run examples/basics.grn            # the core language, no LLM
 
 export ANTHROPIC_API_KEY=sk-ant-…
-target/debug/grenat run --log examples/explorateur.grn crates/grenat_parser    # un vrai agent
-target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl       # multi-agents + approbation
+target/debug/grenat run --log examples/explorer.grn crates/grenat_parser        # a real agent
+target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl        # multi-agent + approval
 
-target/debug/grenat check examples/*.grn     # noms, types, effets, teinte
-target/debug/grenat test mon_fichier.grn     # blocs `test "…" do … end`
-cargo test                                   # ~140 tests : unitaires, intégration, CLI, client HTTP
+target/debug/grenat check examples/*.grn     # names, types, effects, taint
+target/debug/grenat test my_file.grn         # `test "…" do … end` blocks
+cargo test                                   # ~140 tests: unit, integration, CLI, HTTP client
 ```
 
-## Organisation
+## Layout
 
-| Crate | Rôle |
+| Crate | Role |
 |---|---|
-| `grenat_lexer` | tokens, interpolation, heredocs, commentaires `##` |
-| `grenat_ast` | arbre syntaxique |
-| `grenat_parser` | descente récursive + Pratt, diagnostics avec récupération |
-| `grenat_llm` | client de l'API Claude (sortie structurée, outils, repli), fournisseur scripté pour les tests |
-| `grenat_types` | vérificateur : noms, types, effets, teinte `~T` (E0100–E0500) |
-| `grenat_interp` | interpréteur : valeurs, évaluation, prompts, agents, budgets, teinte, capacités |
-| `grenat_cli` | binaire `grenat` |
+| `grenat_lexer` | tokens, interpolation, heredocs, `##` doc comments |
+| `grenat_ast` | syntax tree |
+| `grenat_parser` | recursive descent + Pratt, diagnostics with error recovery |
+| `grenat_llm` | Claude API client (structured output, tools, fallbacks), scripted provider for tests |
+| `grenat_types` | checker: names, types, effects, `~T` taint (E0100–E0500) |
+| `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities |
+| `grenat_cli` | the `grenat` binary |
 
-Deux dépendances externes seulement : `ureq` (HTTP + rustls) et `serde_json`.
+Only two external dependencies: `ureq` (HTTP + rustls) and `serde_json`.
 
-## Licence
+## License
 
-Au choix : [MIT](LICENSE-MIT) ou [Apache 2.0](LICENSE-APACHE).
+Your choice of [MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE).

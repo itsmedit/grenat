@@ -1,14 +1,14 @@
-# bases.grn — le langage de base, sans LLM.
+# basics.grn — the core language, without any LLM.
 #
-#   grenat run examples/bases.grn
+#   grenat run examples/basics.grn
 
-# Fonctions : types aux frontières, inférence à l'intérieur
+# Functions: types at the boundaries, inference inside
 def fib(n: Int) -> Int
   return n if n < 2
   fib(n - 1) + fib(n - 2)
 end
 
-# Structs : valeurs immuables, méthodes courtes
+# Structs: immutable values, one-line methods
 struct Point
   x: Float
   y: Float
@@ -16,7 +16,7 @@ struct Point
   def norm = Math.sqrt(x * x + y * y)
 end
 
-# Enums algébriques et pattern matching
+# Algebraic enums and pattern matching
 enum Shape
   Circle(radius: Float)
   Rect(w: Float, h: Float)
@@ -29,7 +29,7 @@ def area(shape: Shape) -> Float
   end
 end
 
-# Classes : état mutable dans les @variables
+# Classes: mutable state in @variables
 class Counter
   @count: Int = 0
 
@@ -37,9 +37,9 @@ class Counter
   def count = @count
 end
 
-# Erreurs : valeurs `Result` et opérateur `?`
+# Errors: `Result` values and the `?` operator
 def parse_age(text: String) -> Result(Int, ParseError)
-  return Err(ParseError("« #{text} » n'est pas un âge")) unless text.to_i > 0
+  return Err(ParseError("\"#{text}\" is not an age")) unless text.to_i > 0
   Ok(text.to_i)
 end
 
@@ -48,25 +48,25 @@ def main
   puts "|(3, 4)| = #{Point(x: 3.0, y: 4.0).norm}"
 
   shapes = [Circle(radius: 1.0), Rect(w: 2.0, h: 3.0)]
-  puts "aire totale = #{shapes.sum { |s| area(s) }.round(2)}"
+  puts "total area = #{shapes.sum { |s| area(s) }.round(2)}"
 
   counter = Counter.new
   5.times { counter.incr! }
-  puts "compteur = #{counter.count}"
+  puts "counter = #{counter.count}"
 
   names = ["ada", "linus", "matz"]
   puts names.map(&:capitalize).join(", ")
 
   evens, odds = (1..10).to_a.partition(&.even?)
-  puts "pairs #{evens}, impairs #{odds}"
+  puts "evens #{evens}, odds #{odds}"
 
   ages = {ada: 36, linus: 54}
-  ages.each { |name, age| puts "#{name} a #{age} ans" }
+  ages.each { |name, age| puts "#{name} is #{age}" }
 
   puts parse_age("42")?
   begin
-    parse_age("hier")?
+    parse_age("yesterday")?
   rescue ParseError => e
-    puts "erreur rattrapée : #{e.message}"
+    puts "rescued error: #{e.message}"
   end
 end

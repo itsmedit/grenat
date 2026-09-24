@@ -1,4 +1,4 @@
-//! Évaluation : un module par responsabilité, tous étendant [`Interp`](crate::Interp).
+//! Evaluation: one module per responsibility, all extending [`Interp`](crate::Interp).
 
 mod agents;
 mod assign;

@@ -1,4 +1,4 @@
-//! Le vérificateur : état global et émission des diagnostics.
+//! The checker: global state and diagnostic reporting.
 
 use std::collections::{HashMap, HashSet};
 
@@ -59,7 +59,7 @@ pub(crate) struct Checker<'p> {
     pub(crate) fns: HashMap<&'p str, &'p FnDef>,
     pub(crate) types: HashMap<&'p str, TypeDecl<'p>>,
     pub(crate) variants: HashMap<&'p str, &'p str>,
-    /// Message → agents qui le gèrent.
+    /// Message → agents that handle it.
     pub(crate) messages: HashMap<&'p str, Vec<(&'p str, &'p Handler)>>,
     pub(crate) models: Vec<&'p str>,
     pub(crate) diags: Vec<Diagnostic>,
@@ -67,9 +67,9 @@ pub(crate) struct Checker<'p> {
     pub(crate) memo: HashMap<Key, (V, Vec<Eff>)>,
     pub(crate) in_progress: HashSet<Key>,
     pub(crate) prev_effects: HashMap<usize, Vec<Eff>>,
-    /// État `@…` qui a reçu une valeur teintée : (type, nom) → origine.
+    /// `@…` state that received a tainted value: (type, name) → origin.
     pub(crate) ivar_taint: HashMap<(String, String), Span>,
-    /// Type de l'état `@…` sans annotation, inféré depuis sa valeur initiale.
+    /// Type of unannotated `@…` state, inferred from its initial value.
     pub(crate) ivar_types: HashMap<(String, String), Ty>,
 }
 

@@ -1,4 +1,4 @@
-//! Erreurs Grenat levées à l'exécution.
+//! Grenat errors raised at run time.
 
 use std::sync::{Arc, Mutex};
 
@@ -11,7 +11,7 @@ pub struct ErrorVal<'p> {
     pub message: String,
     pub fields: Fields<'p>,
     span: Mutex<Option<Span>>,
-    /// Pile d'appels : (fonction, site d'appel).
+    /// Call stack: (function, call site).
     pub trace: Mutex<Vec<(String, Span)>>,
 }
 

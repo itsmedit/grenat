@@ -1,6 +1,6 @@
 [package]
 name = "grenat_types"
-description = "Vérification statique de Grenat : noms, types, effets et teinte"
+description = "Static checking for Grenat: names, types, effects and taint"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

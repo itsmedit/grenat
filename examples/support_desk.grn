@@ -1,14 +1,14 @@
-# support_desk.grn — un service client multi-agents complet.
+# support_desk.grn — a complete multi-agent customer support desk.
 #
 #   grenat run examples/support_desk.grn examples/tickets.jsonl
 #
-# Triage classe chaque ticket, Researcher cherche dans la doc,
-# Writer rédige la réponse, un humain approuve avant tout envoi.
+# A prompt triages each ticket, a pool of Writer agents searches the docs
+# and drafts the answer, and a human approves before anything is sent.
 
 model :fast,  provider: :anthropic, name: "claude-haiku-4-5"
 model :smart, provider: :anthropic, name: "claude-opus-5"
 
-# ── Domaine ────────────────────────────────────────────────
+# ── Domain ─────────────────────────────────────────────────
 
 enum Priority
   Low
@@ -26,14 +26,14 @@ end
 struct Triage
   category: Category
   priority: Priority
-  language: String          ## code ISO 639-1 de la langue du client
-  reason: String            ## une phrase justifiant la classification
+  language: String          ## ISO 639-1 code of the customer's language
+  reason: String            ## one sentence justifying the classification
 end
 
 struct Answer
-  body: String              ## réponse au client, dans sa langue, ton chaleureux
-  sources: Array(Path)      ## pages de doc utilisées
-  confidence: Float         ## entre 0.0 et 1.0
+  body: String              ## reply to the customer, in their language, warm tone
+  sources: Array(Path)      ## documentation pages used
+  confidence: Float         ## between 0.0 and 1.0
 end
 
 enum Outcome
@@ -63,7 +63,7 @@ struct Ticket
   end
 end
 
-# ── Intégrations (bouchons de l'exemple : à remplacer par les vraies) ──
+# ── Integrations (stubs for this example: replace with real ones) ──
 
 struct Hit
   path: Path
@@ -81,7 +81,7 @@ end
 
 module Smtp
   def self.send(to: Email, subject: String, body: String) -> Unit uses net("smtp.mail.com")
-    puts "[smtp] à #{to} — #{subject}\n#{body}"
+    puts "[smtp] to #{to} — #{subject}\n#{body}"
   end
 end
 
@@ -91,28 +91,28 @@ end
 
 # ── Prompts ────────────────────────────────────────────────
 
-## Classe un ticket de support.
+## Classifies a support ticket.
 prompt classify(t: Ticket) -> ~Triage using :fast
-  system "Tu tries les tickets d'un SaaS de facturation."
-  user "Sujet : #{t.subject}\n\n#{t.body}"
+  system "You triage the support tickets of an invoicing SaaS."
+  user "Subject: #{t.subject}\n\n#{t.body}"
 end
 
-# ── Outils ─────────────────────────────────────────────────
+# ── Tools ──────────────────────────────────────────────────
 
-## Recherche plein texte dans la documentation produit.
+## Full-text search in the product documentation.
 tool search_docs(query: String, limit: Int = 5) -> Array(Hit) uses fs.read("./docs")
   Docs.index("./docs").search(query, limit:)
 end
 
-## Lit une page de documentation.
+## Reads a documentation page.
 tool read_doc(path: Path) -> String uses fs.read("./docs")
   File.read(path)?
 end
 
-## Envoie la réponse au client. Toujours soumis à approbation humaine.
+## Sends the reply to the customer. Always requires human approval.
 tool send_reply(to: Email, body: String) -> Unit uses net("smtp.mail.com"), human
-  approve! "Envoyer à #{to} ?\n\n#{body}"
-  Smtp.send(to:, subject: "Re: votre demande", body:)
+  approve! "Send to #{to}?\n\n#{body}"
+  Smtp.send(to:, subject: "Re: your request", body:)
 end
 
 # ── Agents ─────────────────────────────────────────────────
@@ -124,13 +124,13 @@ agent Writer
   max_turns 12
 
   instructions <<~I
-    Tu rédiges des réponses de support exactes. N'invente jamais une
-    fonctionnalité : si la doc ne répond pas, dis-le et propose un rappel.
+    You write accurate support replies. Never make up a feature:
+    if the documentation has no answer, say so and offer a callback.
   I
 
   on Draft(ticket: Ticket, triage: Triage) -> ~Answer
     run <<~T
-      Réponds en #{triage.language} au ticket suivant (#{triage.category}) :
+      Reply in #{triage.language} to the following ticket (#{triage.category}):
       #{ticket.body}
     T
   end
@@ -147,14 +147,14 @@ agent Dispatcher
     in Triage(category: Spam)
       return Outcome.skipped(ticket.id)
     in Triage(priority: Urgent)
-      Pager.notify("Ticket urgent ##{ticket.id}")
+      Pager.notify("Urgent ticket ##{ticket.id}")
     else
     end
 
     answer = @writers.ask(Draft(ticket:, triage:))
 
-    # Une réponse ~Answer ne peut pas aller vers send_reply (effet net + human)
-    # sans validation : `send_reply(ticket.from, answer.body)` est refusé par
+    # An ~Answer cannot reach send_reply (effects net + human) without
+    # validation: `send_reply(ticket.from, answer.body)` is rejected by
     # `grenat check` (E0412).
     safe = answer
       .check { |a| a.confidence >= 0.7 && a.sources.any? }
@@ -170,25 +170,25 @@ supervisor Desk, strategy: :one_for_one, max_restarts: 3, within: 1.min
   child Dispatcher
 end
 
-# ── Workflow durable : survit à un crash pendant l'attente humaine ──
+# ── Durable workflow: survives a crash while waiting for a human ──
 
 workflow process_ticket(ticket: Ticket) -> Outcome
   step(:handle) { Desk[Dispatcher].ask(Handle(ticket:)) }
 end
 
-# ── Point d'entrée ─────────────────────────────────────────
+# ── Entry point ────────────────────────────────────────────
 
 def main(args: Array(String)) uses llm, net("smtp.mail.com"), fs.read, human
   tickets = File.lines(args.first).map { |l| Ticket.from_json(l)? }
 
-  Runtime.on_approval { |req| Cli.confirm(req.message) }   # humain = le terminal
+  Runtime.on_approval { |req| Cli.confirm(req.message) }   # human = the terminal
 
   within budget(usd: 5.00, time: 30.min) do
     outcomes = tickets.parallel_map(limit: 8) { |t| process_ticket(t) }
 
     sent, skipped = outcomes.partition(&.sent?)
-    puts "✓ #{sent.size} envoyés, #{skipped.size} ignorés — coût #{budget.spent}"
+    puts "✓ #{sent.size} sent, #{skipped.size} skipped — cost #{budget.spent}"
   rescue BudgetExceeded => e
-    warn "Budget épuisé après #{e.spent} : reprise possible, le journal est intact."
+    warn "Budget exhausted after #{e.spent}: the run can resume, the journal is intact."
   end
 end

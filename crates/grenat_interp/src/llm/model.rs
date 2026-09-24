@@ -1,4 +1,4 @@
-//! Résolution des modèles, fournisseur LLM et appel comptabilisé (budgets, journal).
+//! Model resolution, LLM provider and accounted calls (budgets, logging).
 
 use crate::prelude::*;
 use grenat_llm::{Anthropic, ModelConfig, Request, Response, cost_usd};
@@ -6,7 +6,7 @@ use grenat_llm::{Anthropic, ModelConfig, Request, Response, cost_usd};
 use crate::value::money;
 
 impl<'p> Interp<'p> {
-    // ── Modèles et appels ────────────────────────────────────
+    // ── Models and calls ────────────────────────────────────
 
     pub(crate) fn model(&mut self, selector: Option<&'p Expr>) -> Result<ModelConfig, Ctrl<'p>> {
         let Some(selector) = selector else {
@@ -15,7 +15,7 @@ impl<'p> Interp<'p> {
                 Some(config) => Ok(config),
                 None => raise(
                     "LlmError",
-                    "aucun modèle déclaré : ajoutez `model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"`",
+                    "no model declared: add `model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"`",
                 ),
             };
         };
@@ -23,11 +23,11 @@ impl<'p> Interp<'p> {
             Value::Symbol(name) => {
                 match self.models.borrow().iter().find(|(n, _)| **n == *name).map(|(_, c)| c.clone()) {
                     Some(config) => Ok(config),
-                    None => raise("NameError", format!("modèle `:{name}` non déclaré")),
+                    None => raise("NameError", format!("model `:{name}` is not declared")),
                 }
             }
             Value::Str(name) => Ok(ModelConfig::new("anthropic", &*name)),
-            other => raise("TypeError", format!("modèle attendu (`:fast`), reçu {}", other.inspect())),
+            other => raise("TypeError", format!("expected a model (`:fast`), got {}", other.inspect())),
         }
     }
 
@@ -36,15 +36,12 @@ impl<'p> Interp<'p> {
             return Ok(provider);
         }
         if model.provider != "anthropic" {
-            return raise(
-                "LlmError",
-                format!("fournisseur `:{}` non pris en charge (phase 1 : `:anthropic`)", model.provider),
-            );
+            return raise("LlmError", format!("unsupported provider `:{}` (available: `:anthropic`)", model.provider));
         }
         match Anthropic::from_env() {
             Ok(client) => {
                 let provider: Arc<dyn grenat_llm::Provider> = Arc::new(client);
-                // plusieurs tâches peuvent créer le client en même temps : le premier gagne
+                // several tasks may create the client at the same time: the first one wins
                 let provider = self.provider.borrow_mut().get_or_insert(provider).clone();
                 Ok(provider)
             }
@@ -62,7 +59,7 @@ impl<'p> Interp<'p> {
             Err(e) => return raise("LlmError", e.message),
         };
         self.llm_calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        // après un repli côté serveur, c'est le modèle qui a répondu qui est facturé
+        // after a server-side fallback, the model that actually answered is billed
         let cost = cost_usd(&response.model, &response.usage)
             .or_else(|| cost_usd(&request.model.name, &response.usage))
             .unwrap_or(0.0);
@@ -81,8 +78,8 @@ impl<'p> Interp<'p> {
             self.write_err(&line);
         }
         match response.stop_reason.as_str() {
-            "refusal" => return raise("LlmRefusal", "le modèle a refusé la requête"),
-            "max_tokens" => return raise("LlmError", "réponse tronquée : augmentez `max_tokens` du modèle"),
+            "refusal" => return raise("LlmRefusal", "the model refused the request"),
+            "max_tokens" => return raise("LlmError", "truncated response: increase the model's `max_tokens`"),
             _ => {}
         }
         self.check_budgets()?;

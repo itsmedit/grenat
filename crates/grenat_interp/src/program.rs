@@ -1,4 +1,4 @@
-//! Chargement du programme : fonctions, types, variantes, messages et modèles.
+//! Program loading: functions, types, variants, messages and models.
 
 use std::collections::HashMap;
 
@@ -35,7 +35,7 @@ impl<'p> Interp<'p> {
         let mut fallbacks = None;
         for option in &decl.options {
             let Arg::Named { name, value: Some(expr) } = option else {
-                return raise("ArgumentError", format!("option invalide pour le modèle `:{}`", decl.name.name));
+                return raise("ArgumentError", format!("invalid option for model `:{}`", decl.name.name));
             };
             let value = self.eval(expr)?;
             match (name.name.as_str(), value) {
@@ -49,13 +49,13 @@ impl<'p> Interp<'p> {
                 (option, value) => {
                     return raise(
                         "ArgumentError",
-                        format!("option `{option}: {}` invalide pour le modèle `:{}`", value.inspect(), decl.name.name),
+                        format!("invalid option `{option}: {}` for model `:{}`", value.inspect(), decl.name.name),
                     );
                 }
             }
         }
         if config.name.is_empty() {
-            return raise("ArgumentError", format!("le modèle `:{}` n'a pas de `name:`", decl.name.name));
+            return raise("ArgumentError", format!("model `:{}` has no `name:`", decl.name.name));
         }
         config.fallbacks = fallbacks.unwrap_or_else(|| ModelConfig::new("", config.name.as_str()).fallbacks);
         Ok(config)
@@ -72,28 +72,28 @@ impl<'p> Interp<'p> {
 }
 
 impl<'p> Shared<'p> {
-    /// Enregistre fonctions, types et modèles avant toute exécution.
+    /// Registers functions, types and models before anything runs.
     pub(crate) fn load(&mut self) -> Result<(), Ctrl<'p>> {
         let program = self.program;
         for item in &program.items {
             match item {
                 Item::Fn(def) => {
                     if self.fns.insert(&def.name.name, def).is_some() {
-                        return raise("NameError", format!("fonction `{}` définie deux fois", def.name.name));
+                        return raise("NameError", format!("function `{}` defined twice", def.name.name));
                     }
                 }
                 Item::Type(def) => {
                     let info = TypeInfo::new(def);
                     self.messages.extend(info.handlers.keys().copied());
                     if self.types.insert(&def.name.name, info).is_some() {
-                        return raise("NameError", format!("type `{}` défini deux fois", def.name.name));
+                        return raise("NameError", format!("type `{}` defined twice", def.name.name));
                     }
                 }
                 Item::Model(_) | Item::Stmt(_) => {}
             }
         }
 
-        // `include Module` : copie des méthodes non redéfinies
+        // `include Module`: copy the methods that are not overridden
         let includes: Vec<(&'p str, &'p str)> = self
             .types
             .values()
@@ -106,9 +106,9 @@ impl<'p> Shared<'p> {
             .collect();
         for (owner, module) in includes {
             let Some(methods) = self.types.get(module).map(|m| m.methods.clone()) else {
-                return raise("NameError", format!("module `{module}` inconnu (inclus par `{owner}`)"));
+                return raise("NameError", format!("unknown module `{module}` (included by `{owner}`)"));
             };
-            let info = self.types.get_mut(owner).expect("type chargé");
+            let info = self.types.get_mut(owner).expect("loaded type");
             for (name, def) in methods {
                 info.methods.entry(name).or_insert(def);
             }

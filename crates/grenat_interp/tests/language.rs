@@ -1,4 +1,4 @@
-//! Langage de base : fermetures, modules, structs, Result, erreurs, tests Grenat.
+//! Core language: closures, modules, structs, Result, errors, Grenat tests.
 
 mod common;
 
@@ -31,11 +31,11 @@ end
 struct Invoice
   include Describable
   amount: Int
-  def describe = \"facture de #{amount}\"
+  def describe = \"invoice for #{amount}\"
 end
 puts Invoice(amount: 3).shout
 ";
-    assert_eq!(run(src), "FACTURE DE 3\n");
+    assert_eq!(run(src), "INVOICE FOR 3\n");
 }
 
 #[test]
@@ -54,10 +54,10 @@ fn case_without_match_raises() {
 
 #[test]
 fn errors_carry_location_and_trace() {
-    let src = "def inner\n  inconnue\nend\ndef outer = inner\nouter\n";
+    let src = "def inner\n  unknown_name\nend\ndef outer = inner\nouter\n";
     let e = run_err(src, vec![]);
     assert_eq!(e.ty, "NameError");
-    assert_eq!(&src[e.span.unwrap().range()], "inconnue");
+    assert_eq!(&src[e.span.unwrap().range()], "unknown_name");
     let names: Vec<_> = e.trace.iter().map(|(n, _)| n.as_str()).collect();
     assert_eq!(names, ["inner", "outer"]);
 }
@@ -66,7 +66,7 @@ fn errors_carry_location_and_trace() {
 fn result_and_try_operator() {
     let src = "\
 def parse(s: String) -> Result(Int, ParseError)
-  return Err(ParseError(\"vide\")) if s.empty?
+  return Err(ParseError(\"empty\")) if s.empty?
   Ok(s.to_i)
 end
 def double(s: String) = parse(s)? * 2
@@ -78,7 +78,7 @@ rescue ParseError => e
 end
 p parse(\"\").or_else { |e| -1 }
 ";
-    assert_eq!(run(src), "42\nvide\n-1\n");
+    assert_eq!(run(src), "42\nempty\n-1\n");
 }
 
 #[test]
@@ -93,10 +93,10 @@ fn grenat_test_blocks() {
 test \"addition\" do
   assert_equal 4, 2 + 2
 end
-test \"échec\" do
-  assert 1 > 2, \"un n'est pas plus grand que deux\"
+test \"failure\" do
+  assert 1 > 2, \"one is not greater than two\"
 end
-test \"erreurs\" do
+test \"errors\" do
   assert_raises ZeroDivisionError { 1 / 0 }
 end
 ";
@@ -104,5 +104,5 @@ end
     let outcomes = run_tests(&parsed.program, Options::default()).unwrap();
     let summary: Vec<_> =
         outcomes.iter().map(|o| (o.name.as_str(), o.error.as_ref().map(|e| e.message.as_str()))).collect();
-    assert_eq!(summary, [("addition", None), ("échec", Some("un n'est pas plus grand que deux")), ("erreurs", None)]);
+    assert_eq!(summary, [("addition", None), ("failure", Some("one is not greater than two")), ("errors", None)]);
 }

@@ -1,4 +1,4 @@
-//! Budgets de dépense (`within budget(…)`).
+//! Spending budgets (`within budget(…)`).
 
 use crate::prelude::*;
 
@@ -16,7 +16,7 @@ impl<'p> Interp<'p> {
     pub(crate) fn check_budgets(&self) -> Result<(), Ctrl<'p>> {
         for budget in self.budgets.iter().rev() {
             if let Some(reason) = budget.exceeded() {
-                let mut error = ErrorVal::new("BudgetExceeded", format!("budget dépassé : {reason}"));
+                let mut error = ErrorVal::new("BudgetExceeded", format!("budget exceeded: {reason}"));
                 error.fields.push(("spent".into(), Value::Money(budget.spent())));
                 error.fields.push(("tokens".into(), Value::Int(budget.tokens() as i64)));
                 return Err(Ctrl::Raise(Arc::new(error)));

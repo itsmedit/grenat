@@ -1,4 +1,4 @@
-//! Représentations textuelles : `puts` (to_display) et `p` (inspect).
+//! Text representations: `puts` (to_display) and `p` (inspect).
 
 use std::fmt::{self, Write};
 
@@ -25,7 +25,7 @@ pub(crate) fn float(f: f64) -> String {
 }
 
 impl<'p> Value<'p> {
-    /// Nom du type, pour les messages d'erreur et `is_a?`.
+    /// Type name, for error messages and `is_a?`.
     pub fn type_name(&self) -> String {
         match self {
             Value::Nil => "Nil".into(),
@@ -52,7 +52,7 @@ impl<'p> Value<'p> {
         }
     }
 
-    /// Représentation pour `puts` et l'interpolation.
+    /// Representation for `puts` and interpolation.
     pub fn to_display(&self) -> String {
         match self {
             Value::Nil => String::new(),
@@ -63,7 +63,7 @@ impl<'p> Value<'p> {
         }
     }
 
-    /// Représentation pour `p` et les messages de débogage.
+    /// Representation for `p` and debug messages.
     pub fn inspect(&self) -> String {
         let mut out = String::new();
         self.write_inspect(&mut out);

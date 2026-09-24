@@ -1,4 +1,4 @@
-//! Boucle agentique de `run` : LLM ↔ outils jusqu'à la réponse finale typée.
+//! Agentic loop of `run`: LLM ↔ tools until the typed final answer.
 
 use crate::prelude::*;
 use grenat_llm::{ModelConfig, Request, ToolSpec, ToolUse};
@@ -17,7 +17,7 @@ pub(crate) struct AgentConfig<'p> {
 }
 
 impl<'p> Interp<'p> {
-    // ── Agents : boucle `run` ────────────────────────────────
+    // ── Agents: the `run` loop ────────────────────────────────
 
     pub(crate) fn agent_config(&mut self, ty: &str) -> Result<AgentConfig<'p>, Ctrl<'p>> {
         let directives = self.types[ty].directives.clone();
@@ -40,14 +40,14 @@ impl<'p> Interp<'p> {
                         match arg {
                             grenat_ast::Arg::Pos(Expr { kind: ExprKind::Var(name), .. }) => config.tools.push(name),
                             _ => {
-                                return raise("TypeError", "`tools` attend des noms d'outils : `tools lire, chercher`");
+                                return raise("TypeError", "`tools` expects tool names: `tools read, search`");
                             }
                         }
                     }
                 }
                 "max_turns" => match first.map(|e| self.eval(e)).transpose()? {
                     Some(Value::Int(n)) if n > 0 => config.max_turns = n as usize,
-                    _ => return raise("TypeError", "`max_turns` attend un entier positif"),
+                    _ => return raise("TypeError", "`max_turns` expects a positive integer"),
                 },
                 "instructions" => {
                     if let Some(e) = first {
@@ -56,7 +56,7 @@ impl<'p> Interp<'p> {
                     }
                 }
                 "budget" => {}
-                other => return raise("NameError", format!("directive d'agent inconnue `{other}`")),
+                other => return raise("NameError", format!("unknown agent directive `{other}`")),
             }
         }
         config.model = self.model(model_selector)?;
@@ -72,12 +72,12 @@ impl<'p> Interp<'p> {
         })
     }
 
-    /// `run "consigne"` dans un handler d'agent : boucle LLM ↔ outils jusqu'à `final_answer`.
+    /// `run "instruction"` in an agent handler: LLM ↔ tools loop until `final_answer`.
     pub(crate) fn agent_run(&mut self, args: Args<'p>) -> R<'p> {
-        let frame = self.agents.last().expect("dans un agent");
+        let frame = self.agents.last().expect("inside an agent");
         let (agent_ty, handler) = (frame.agent.ty.clone(), frame.handler);
         let Some(instruction) = args.pos.first() else {
-            return raise("ArgumentError", "`run` attend une consigne : `run \"…\"`");
+            return raise("ArgumentError", "`run` expects an instruction: `run \"…\"`");
         };
         let instruction = instruction.to_display();
         let config = self.agent_config(&agent_ty)?;
@@ -90,23 +90,20 @@ impl<'p> Interp<'p> {
         let mut tools = Vec::new();
         for name in &config.tools {
             let Some(def) = self.fns.get(name).copied() else {
-                return raise("NameError", format!("outil inconnu `{name}` dans `tools` de `{agent_ty}`"));
+                return raise("NameError", format!("unknown tool `{name}` in the `tools` of `{agent_ty}`"));
             };
             if def.kind != FnKind::Tool {
-                return raise(
-                    "TypeError",
-                    format!("`{name}` doit être déclaré avec `tool` pour être confié à un agent"),
-                );
+                return raise("TypeError", format!("`{name}` must be declared with `tool` to be given to an agent"));
             }
             tools.push(self.tool_spec(def).or_else(type_error)?);
         }
         tools.push(ToolSpec {
             name: FINAL_TOOL.into(),
-            description: "Donne ta réponse finale. Appelle cet outil une seule fois, quand tu as terminé.".into(),
+            description: "Give your final answer. Call this tool once, when you are done.".into(),
             input_schema: final_schema,
         });
         let system = format!(
-            "{}\n\nQuand tu as terminé, appelle l'outil `{FINAL_TOOL}` avec ta réponse finale.",
+            "{}\n\nWhen you are done, call the `{FINAL_TOOL}` tool with your final answer.",
             config.instructions.as_deref().unwrap_or_default()
         );
         let mut messages = vec![json!({"role": "user", "content": instruction})];
@@ -123,7 +120,9 @@ impl<'p> Interp<'p> {
             messages.push(json!({"role": "assistant", "content": response.content}));
             let uses = response.tool_uses();
             if uses.is_empty() {
-                messages.push(json!({"role": "user", "content": format!("Appelle l'outil `{FINAL_TOOL}` avec ta réponse finale.")}));
+                messages.push(
+                    json!({"role": "user", "content": format!("Call the `{FINAL_TOOL}` tool with your final answer.")}),
+                );
                 continue;
             }
             let mut results = Vec::new();
@@ -133,7 +132,7 @@ impl<'p> Interp<'p> {
                     match self.json_to_value(&payload, &ret) {
                         Ok(value) => return Ok(value.taint()),
                         Err(e) => {
-                            results.push(tool_result(&tool_use.id, format!("Réponse finale invalide : {e}"), true));
+                            results.push(tool_result(&tool_use.id, format!("Invalid final answer: {e}"), true));
                             continue;
                         }
                     }
@@ -141,7 +140,7 @@ impl<'p> Interp<'p> {
                 let (content, is_error) = match self.call_tool(tool_use) {
                     Ok(v) => (tool_output(&v), false),
                     Err(Ctrl::Raise(e)) if !matches!(&*e.ty, "BudgetExceeded" | "TaintError" | "StackOverflow") => {
-                        (format!("{} : {}", e.ty, e.message), true)
+                        (format!("{}: {}", e.ty, e.message), true)
                     }
                     Err(other) => return Err(other),
                 };
@@ -149,14 +148,14 @@ impl<'p> Interp<'p> {
             }
             messages.push(json!({"role": "user", "content": results}));
         }
-        raise("MaxTurnsExceeded", format!("l'agent `{agent_ty}` n'a pas conclu en {} tours", config.max_turns))
+        raise("MaxTurnsExceeded", format!("agent `{agent_ty}` did not finish within {} turns", config.max_turns))
     }
 
-    /// Exécute un outil demandé par le LLM : arguments validés contre le schéma,
-    /// donc non teintés — l'outil est la frontière de confiance.
+    /// Runs a tool requested by the LLM: arguments are validated against the schema,
+    /// hence untainted — the tool is the trust boundary.
     pub(crate) fn call_tool(&mut self, tool_use: &ToolUse) -> R<'p> {
         let Some(def) = self.fns.get(tool_use.name.as_str()).copied() else {
-            return raise("NameError", format!("outil inconnu `{}`", tool_use.name));
+            return raise("NameError", format!("unknown tool `{}`", tool_use.name));
         };
         let mut args = Args::default();
         for param in &def.params {
@@ -167,13 +166,13 @@ impl<'p> Interp<'p> {
             let Some(ty) = &param.ty else {
                 return raise(
                     "TypeError",
-                    format!("paramètre `{}` de l'outil `{}` sans type", param.name.name, def.name.name),
+                    format!("parameter `{}` of tool `{}` has no type", param.name.name, def.name.name),
                 );
             };
             let ty = self.ty(ty).or_else(type_error)?;
             let value = self
                 .json_to_value(json.unwrap_or(&Json::Null), &ty)
-                .or_else(|e| raise("ArgumentError", format!("`{}` : {e}", param.name.name)))?;
+                .or_else(|e| raise("ArgumentError", format!("`{}`: {e}", param.name.name)))?;
             args.named.push((param.name.name.clone(), value));
         }
         if self.log {

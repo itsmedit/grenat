@@ -1,4 +1,4 @@
-//! Fournisseur de test : réponses scriptées ou calculées depuis la requête.
+//! Test provider: scripted replies, or replies computed from the request.
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -9,8 +9,8 @@ use crate::*;
 
 pub(crate) type Responder = Box<dyn Fn(&Json) -> Response + Send + Sync>;
 
-/// Fournisseur de test : rejoue des réponses dans l'ordre (ou les calcule
-/// depuis la requête, pour les exécutions concurrentes) et enregistre les requêtes.
+/// Test provider: replays replies in order (or computes them from the request,
+/// for concurrent runs) and records every request.
 pub struct Scripted {
     replies: Mutex<VecDeque<Response>>,
     responder: Option<Responder>,
@@ -22,12 +22,12 @@ impl Scripted {
         Scripted { replies: Mutex::new(replies.into_iter().collect()), responder: None, requests: Mutex::default() }
     }
 
-    /// Réponse calculée à partir du corps de la requête : déterministe quel que soit l'ordre des appels.
+    /// Reply computed from the request body: deterministic whatever the call order.
     pub fn responder(f: impl Fn(&Json) -> Response + Send + Sync + 'static) -> Self {
         Scripted { replies: Mutex::default(), responder: Some(Box::new(f)), requests: Mutex::default() }
     }
 
-    /// Corps JSON de chaque requête reçue.
+    /// JSON body of every request received.
     pub fn requests(&self) -> Vec<Json> {
         self.requests.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
@@ -44,6 +44,6 @@ impl Provider for Scripted {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .pop_front()
-            .ok_or_else(|| LlmError::new("plus de réponse scriptée"))
+            .ok_or_else(|| LlmError::new("no scripted reply left"))
     }
 }

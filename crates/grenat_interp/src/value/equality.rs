@@ -1,10 +1,10 @@
-//! Égalité structurelle des valeurs (identité pour les objets et les agents).
+//! Structural equality of values (identity for objects and agents).
 
 use std::sync::Arc;
 
 use super::*;
 
-/// Égalité structurelle (identité pour les objets).
+/// Structural equality (identity for objects).
 pub fn equal<'p>(a: &Value<'p>, b: &Value<'p>) -> bool {
     use Value::*;
     match (a.untainted(), b.untainted()) {

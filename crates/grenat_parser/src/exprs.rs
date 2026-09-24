@@ -1,4 +1,4 @@
-//! Expressions : affectation, opérateurs (Pratt), postfixes, primaires, chaînes.
+//! Expressions: assignment, operators (Pratt), postfix forms, primaries, strings.
 
 use grenat_ast::*;
 use grenat_lexer::{Keyword as K, StrPart, Token, TokenKind as T};
@@ -24,7 +24,7 @@ pub(crate) fn is_assignable(e: &Expr) -> bool {
 }
 
 impl<'d> Parser<'d> {
-    /// Affectation (associative à droite) puis opérateurs binaires.
+    /// Assignment (right-associative), then binary operators.
     pub(crate) fn expr(&mut self) -> PResult<Expr> {
         let lhs = self.binary(0)?;
         let op = match self.kind() {
@@ -38,7 +38,7 @@ impl<'d> Parser<'d> {
             _ => return Ok(lhs),
         };
         if !is_assignable(&lhs) {
-            return self.fail(lhs.span, "cette expression ne peut pas être affectée");
+            return self.fail(lhs.span, "this expression cannot be assigned to");
         }
         self.bump();
         self.skip_newlines();
@@ -52,7 +52,7 @@ impl<'d> Parser<'d> {
         Ok(Expr::new(kind, span))
     }
 
-    /// (opérateur, force à gauche, force à droite) — Pratt.
+    /// (operator, left binding power, right binding power) — Pratt.
     pub(crate) fn infix(&self) -> Option<(Infix, u8, u8)> {
         use BinOp::*;
         let bin = |op, l, r| Some((Infix::Bin(op), l, r));
@@ -111,7 +111,7 @@ impl<'d> Parser<'d> {
             _ => return self.postfix(),
         };
         let start = self.bump().span;
-        // `-3.abs` : littéral négatif collé, comme en Ruby (mais `-2 ** 2` vaut -(2 ** 2))
+        // `-3.abs`: a glued negative literal, as in Ruby (but `-2 ** 2` is -(2 ** 2))
         if op == UnOp::Neg && !self.peek().space_before && *self.nth(1) != T::StarStar {
             let literal = match self.kind() {
                 T::Int(n) => n.checked_neg().map(ExprKind::Int),
@@ -214,7 +214,7 @@ impl<'d> Parser<'d> {
                 Ok(Expr::new(ExprKind::Begin(body), tok.span.to(end)))
             }
             T::Kw(K::Return | K::Break | K::Next) => self.jump(),
-            T::Kw(K::End) => self.fail(tok.span, "`end` sans bloc ouvrant"),
+            T::Kw(K::End) => self.fail(tok.span, "`end` without an opening block"),
             T::Kw(
                 kw @ (K::Def
                 | K::Abstract
@@ -227,9 +227,9 @@ impl<'d> Parser<'d> {
                 | K::Enum
                 | K::Agent
                 | K::Supervisor),
-            ) => self.fail(tok.span, format!("`{}` n'est autorisé qu'au niveau supérieur", kw.as_str())),
-            T::Label(name) => self.fail(tok.span, format!("argument nommé `{name}:` inattendu ici")),
-            _ => self.unexpected("une expression"),
+            ) => self.fail(tok.span, format!("`{}` is only allowed at the top level", kw.as_str())),
+            T::Label(name) => self.fail(tok.span, format!("unexpected named argument `{name}:`")),
+            _ => self.unexpected("an expression"),
         }
     }
 
@@ -252,7 +252,7 @@ impl<'d> Parser<'d> {
         }
         self.diags.append(&mut sub.diags);
         if stmts.len() > 1 {
-            self.report(Diagnostic::new(span, "une seule expression attendue dans `#{…}`"));
+            self.report(Diagnostic::new(span, "expected a single expression in `#{…}`"));
         }
         stmts.pop().unwrap_or_else(|| Expr::new(ExprKind::Str(Vec::new()), span))
     }
@@ -274,18 +274,18 @@ impl<'d> Parser<'d> {
         Ok(Expr::new(ExprKind::Call { recv: None, name, args, block: block.map(Box::new), safe: false, parens }, span))
     }
 
-    /// `Foo`, `A::B`, ou `Research(topic: t)` (construction / appel de type).
+    /// `Foo`, `A::B`, or `Research(topic: t)` (construction / type call).
     pub(crate) fn const_expr(&mut self) -> PResult<Expr> {
         let start = self.span();
-        let mut path = vec![self.const_name("une constante")?];
+        let mut path = vec![self.const_name("a constant")?];
         while self.at(&T::ColonColon) && matches!(self.nth(1), T::Const(_)) {
             self.bump();
-            path.push(self.const_name("une constante")?);
+            path.push(self.const_name("a constant")?);
         }
         if !self.at_tight(&T::LParen) {
             return Ok(Expr::new(ExprKind::Const(path), start.to(self.prev_span())));
         }
-        let name = path.pop().expect("chemin non vide");
+        let name = path.pop().expect("non-empty path");
         let recv = path.last().map(|last| Box::new(Expr::new(ExprKind::Const(path.clone()), start.to(last.span))));
         let (args, block) = self.paren_args()?;
         let kind = ExprKind::Call { recv, name, args, block: block.map(Box::new), safe: false, parens: true };

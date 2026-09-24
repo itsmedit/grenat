@@ -1,4 +1,4 @@
-//! Opérateurs unaires et binaires, comparaisons.
+//! Unary and binary operators, comparisons.
 
 use crate::prelude::*;
 
@@ -43,7 +43,7 @@ pub(crate) fn compare<'p>(a: &Value<'p>, b: &Value<'p>) -> Option<Ordering> {
 }
 
 impl<'p> Interp<'p> {
-    // ── Opérateurs ───────────────────────────────────────────
+    // ── Operators ───────────────────────────────────────────
 
     pub(crate) fn binop(&mut self, op: BinOp, l: Value<'p>, r: Value<'p>) -> R<'p> {
         if l.is_tainted() || r.is_tainted() {
@@ -54,7 +54,7 @@ impl<'p> Interp<'p> {
         let type_error = |l: &Value, r: &Value| {
             raise(
                 "TypeError",
-                format!("opérateur `{}` non défini entre {} et {}", op_str(op), l.type_name(), r.type_name()),
+                format!("operator `{}` is not defined between {} and {}", op_str(op), l.type_name(), r.type_name()),
             )
         };
         match (op, &l, &r) {
@@ -65,12 +65,11 @@ impl<'p> Interp<'p> {
                 Ok(l.clone())
             }
             (BinOp::Add, Str(a), Str(b)) => Ok(Value::str(format!("{a}{b}"))),
-            (BinOp::Add, Str(_), _) => raise(
-                "TypeError",
-                format!("impossible d'ajouter {} à une chaîne : utilisez l'interpolation \"#{{…}}\"", r.type_name()),
-            ),
+            (BinOp::Add, Str(_), _) => {
+                raise("TypeError", format!("cannot add {} to a string: use interpolation \"#{{…}}\"", r.type_name()))
+            }
             (BinOp::Mul, Str(s), Int(n)) if *n >= 0 => Ok(Value::str(s.repeat(*n as usize))),
-            // copies d'abord : `xs + xs` verrouillerait deux fois le même tableau
+            // copy first: `xs + xs` would lock the same array twice
             (BinOp::Add, Array(a), Array(b)) => {
                 let (a, b) = (a.borrow().clone(), b.borrow().clone());
                 Ok(Value::array(a.into_iter().chain(b).collect()))
@@ -109,14 +108,14 @@ impl<'p> Interp<'p> {
 
 fn int_op<'p>(op: BinOp, a: i64, b: i64) -> Option<R<'p>> {
     use BinOp::*;
-    let overflow = || raise("OverflowError", "dépassement d'entier");
+    let overflow = || raise("OverflowError", "integer overflow");
     let checked = |r: Option<i64>| Some(r.map_or_else(overflow, |n| Ok(Value::Int(n))));
     match op {
         Add => checked(a.checked_add(b)),
         Sub => checked(a.checked_sub(b)),
         Mul => checked(a.checked_mul(b)),
-        Div | Rem if b == 0 => Some(raise("ZeroDivisionError", "division par zéro")),
-        // division entière arrondie vers -∞, comme en Ruby
+        Div | Rem if b == 0 => Some(raise("ZeroDivisionError", "division by zero")),
+        // integer division rounded toward -∞, as in Ruby
         Div => checked(a.checked_div(b).map(|q| if (a % b != 0) && ((a < 0) != (b < 0)) { q - 1 } else { q })),
         Rem => checked(Some(((a % b) + b) % b)),
         Pow if b >= 0 => checked(u32::try_from(b).ok().and_then(|b| a.checked_pow(b))),

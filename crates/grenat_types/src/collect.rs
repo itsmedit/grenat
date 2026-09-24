@@ -1,4 +1,4 @@
-//! Collecte des déclarations : fonctions, types, messages, `include`, état `@…`.
+//! Declaration collection: functions, types, messages, `include`, `@…` state.
 
 use grenat_ast::{Field, Item, Member, Span, TypeKind};
 
@@ -12,7 +12,7 @@ impl<'p> Checker<'p> {
             match item {
                 Item::Fn(def) => {
                     if self.fns.insert(&def.name.name, def).is_some() {
-                        self.error(E_NAME, def.name.span, format!("fonction `{}` définie deux fois", def.name.name));
+                        self.error(E_NAME, def.name.span, format!("function `{}` is defined twice", def.name.name));
                     }
                 }
                 Item::Type(def) => {
@@ -21,7 +21,7 @@ impl<'p> Checker<'p> {
                         self.messages.entry(message).or_default().push((&def.name.name, handler));
                     }
                     if self.types.insert(&def.name.name, decl).is_some() {
-                        self.error(E_NAME, def.name.span, format!("type `{}` défini deux fois", def.name.name));
+                        self.error(E_NAME, def.name.span, format!("type `{}` is defined twice", def.name.name));
                     }
                 }
                 Item::Model(model) => self.models.push(&model.name.name),
@@ -43,10 +43,10 @@ impl<'p> Checker<'p> {
             let Some(methods) =
                 self.types.get(module).filter(|m| m.def.kind == TypeKind::Module).map(|m| m.methods.clone())
             else {
-                self.error(E_NAME, span, format!("module `{module}` inconnu"));
+                self.error(E_NAME, span, format!("unknown module `{module}`"));
                 continue;
             };
-            let decl = self.types.get_mut(owner).expect("type déclaré");
+            let decl = self.types.get_mut(owner).expect("declared type");
             decl.includes.push(module);
             for (name, def) in methods {
                 decl.methods.entry(name).or_insert(def);
@@ -59,7 +59,7 @@ impl<'p> Checker<'p> {
         }
     }
 
-    /// `@writers = spawn_pool(Writer)` : `@writers` est un `Writer`.
+    /// `@writers = spawn_pool(Writer)`: `@writers` is a `Writer`.
     pub(crate) fn infer_ivars(&mut self) {
         let owners: Vec<(&'p str, Vec<&'p Field>)> =
             self.types.iter().map(|(name, decl)| (*name, decl.ivars.clone())).collect();

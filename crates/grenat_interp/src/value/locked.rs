@@ -1,9 +1,9 @@
-//! Accès aux verrous avec les noms de `RefCell` (`borrow`, `borrow_mut`).
+//! Lock access with `RefCell`'s method names (`borrow`, `borrow_mut`).
 
 use std::sync::{Mutex, MutexGuard};
 
-/// Accès aux valeurs partagées entre tâches, avec les noms de `RefCell`.
-/// Un verrou empoisonné (tâche qui a paniqué) reste utilisable.
+/// Access to values shared between tasks, with `RefCell`'s method names.
+/// A poisoned lock (from a task that panicked) remains usable.
 pub trait Locked<T> {
     fn borrow(&self) -> MutexGuard<'_, T>;
     fn borrow_mut(&self) -> MutexGuard<'_, T>;

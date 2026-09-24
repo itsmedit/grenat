@@ -1,4 +1,4 @@
-//! Concurrence structurée : `parallel_map`, `race`, annulation, budgets partagés.
+//! Structured concurrency: `parallel_map`, `race`, cancellation, shared budgets.
 
 mod common;
 
@@ -14,16 +14,16 @@ const SLOW: Duration = Duration::from_millis(300);
 fn parallel_map_runs_items_concurrently_and_keeps_order() {
     let r = run_with("p [1, 2, 3, 4].parallel_map(limit: 4) { |x| sleep 0.3; x * 10 }\n", vec![], &[]);
     assert_eq!(r.output, "[10, 20, 30, 40]\n");
-    // séquentiel : 1,2 s ; concurrent : ~0,3 s
-    assert!(r.elapsed < SLOW * 3, "trop lent : {:?}", r.elapsed);
+    // sequential: 1.2 s; concurrent: ~0.3 s
+    assert!(r.elapsed < SLOW * 3, "too slow: {:?}", r.elapsed);
 }
 
 #[test]
 fn parallel_map_respects_the_limit() {
     let r = run_with("p [1, 2, 3, 4].parallel_map(limit: 2) { |x| sleep 0.3; x }\n", vec![], &[]);
     assert_eq!(r.output, "[1, 2, 3, 4]\n");
-    // deux vagues de deux
-    assert!(r.elapsed >= SLOW * 2, "limite ignorée : {:?}", r.elapsed);
+    // two waves of two
+    assert!(r.elapsed >= SLOW * 2, "limit ignored: {:?}", r.elapsed);
 }
 
 #[test]
@@ -37,7 +37,7 @@ fn first_error_wins_and_cancels_the_other_items() {
 seen = []
 begin
   [0, 1, 2, 3].parallel_map(limit: 4) { |x|
-    raise ArgumentError, \"boum #{x}\" if x == 0
+    raise ArgumentError, \"boom #{x}\" if x == 0
     sleep 0.3
     seen << x
     x
@@ -48,7 +48,7 @@ end
 sleep 0.4
 p seen
 ";
-    assert_eq!(run(src), "boum 0\n[]\n");
+    assert_eq!(run(src), "boom 0\n[]\n");
 }
 
 #[test]
@@ -60,7 +60,7 @@ prompt double(n: Int) -> ~Int using :fast
 end
 p (1..6).to_a.parallel_map(limit: 6) { |n| double(n).trust! }
 ";
-    // réponse calculée depuis la requête : indépendante de l'ordre d'arrivée
+    // reply computed from the request: independent of arrival order
     let provider = Scripted::responder(|body| {
         let n: i64 = body["messages"][0]["content"].as_str().unwrap().trim_start_matches("n=").parse().unwrap();
         Response::json_reply(json!({"value": n * 2}))
@@ -79,13 +79,13 @@ prompt double(n: Int) -> ~Int using :fast
 end
 within budget(usd: 0.001) do
   [1, 2, 3].parallel_map(limit: 3) { |n| double(n) }
-  puts \"pas atteint\"
+  puts \"not reached\"
 rescue BudgetExceeded => e
-  puts \"budget dépassé\"
+  puts \"budget exceeded\"
 end
 ";
     let provider = Scripted::responder(|_| Response::json_reply(json!({"value": 0})).with_usage(1000, 1000));
-    assert_eq!(run_provider(src, provider, &[], &[]).ok(), "budget dépassé\n");
+    assert_eq!(run_provider(src, provider, &[], &[]).ok(), "budget exceeded\n");
 }
 
 #[test]
@@ -95,14 +95,14 @@ t = Time.now
 winner = race do
   begin
     sleep 0.5
-    \"lent\"
+    \"slow\"
   end
-  \"rapide\"
+  \"fast\"
 end
 puts winner
 puts Time.now - t < 0.3
 ";
-    assert_eq!(run(src), "rapide\ntrue\n");
+    assert_eq!(run(src), "fast\ntrue\n");
 }
 
 #[test]
@@ -113,9 +113,9 @@ fn race_ignores_failed_branches_while_one_succeeds() {
 
 #[test]
 fn race_raises_the_first_error_when_all_branches_fail() {
-    let src = "race do\n  raise ArgumentError, \"premier\"\n  begin\n    sleep 0.1\n    raise ArgumentError, \"second\"\n  end\nend\n";
+    let src = "race do\n  raise ArgumentError, \"first\"\n  begin\n    sleep 0.1\n    raise ArgumentError, \"second\"\n  end\nend\n";
     let e = run_err(src, vec![]);
-    assert_eq!((e.ty.as_str(), e.message.as_str()), ("ArgumentError", "premier"));
+    assert_eq!((e.ty.as_str(), e.message.as_str()), ("ArgumentError", "first"));
 }
 
 #[test]
@@ -125,16 +125,16 @@ log = []
 race do
   begin
     sleep 0.3
-    log << \"perdant\"
+    log << \"loser\"
   end
-  \"gagnant\"
+  \"winner\"
 end
 sleep 0.5
 p log
 ";
     let r = run_with(src, vec![], &[]);
     assert_eq!(r.output, "[]\n");
-    // le perdant s'arrête à son prochain point de contrôle : le programme ne l'attend pas
+    // the loser stops at its next checkpoint: the program does not wait for it
     assert!(r.elapsed < Duration::from_millis(900), "{:?}", r.elapsed);
 }
 

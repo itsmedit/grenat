@@ -1,4 +1,4 @@
-//! Résolution des annotations de type, compatibilité, sérialisabilité pour les LLM.
+//! Type annotation resolution, compatibility, and serializability for LLMs.
 
 use grenat_ast::{Field, Type, TypeKind};
 
@@ -14,7 +14,7 @@ impl<'p> Checker<'p> {
                 (Ty::opt(inner), tainted)
             }
             Type::Named { path, args, span } => {
-                let name = path.last().expect("chemin non vide").name.as_str();
+                let name = path.last().expect("non-empty path").name.as_str();
                 let arg = |c: &mut Self, i: usize| args.get(i).map_or(Ty::Unknown, |a| c.resolve(a).0);
                 let resolved = match name {
                     "Int" => Ty::Int,
@@ -34,7 +34,7 @@ impl<'p> Checker<'p> {
                     n => {
                         let known: Vec<&str> =
                             self.types.keys().copied().chain(builtins::TYPE_NAMES.iter().copied()).collect();
-                        self.error_help(E_NAME, *span, format!("type inconnu `{n}`"), suggest(n, known));
+                        self.error_help(E_NAME, *span, format!("unknown type `{n}`"), suggest(n, known));
                         Ty::Unknown
                     }
                 };
@@ -43,7 +43,7 @@ impl<'p> Checker<'p> {
         }
     }
 
-    /// `actual` peut-il être passé là où `expected` est attendu ?
+    /// Can `actual` be passed where `expected` is expected?
     pub(crate) fn compat(&self, actual: &Ty, expected: &Ty) -> bool {
         use Ty::*;
         match (actual, expected) {
@@ -52,7 +52,7 @@ impl<'p> Checker<'p> {
             (Int, Float) | (Int | Float, Money) | (Sym, Str) => true,
             (Nil, Opt(_)) => true,
             (a, Opt(b)) => self.compat(a, b),
-            // tolérant : `T?` accepté là où `T` est attendu (la phase 3 ajoutera la vérification de nil)
+            // lenient: `T?` is accepted where `T` is expected (nil checking will come later)
             (Opt(a), b) => self.compat(a, b),
             (Array(a), Array(b)) => self.compat(a, b),
             (Hash(k1, v1), Hash(k2, v2)) => self.compat(k1, k2) && self.compat(v1, v2),
@@ -68,37 +68,37 @@ impl<'p> Checker<'p> {
 
     pub(crate) fn schema_ok(&self, ty: &Ty, depth: usize) -> Result<(), String> {
         if depth > 16 {
-            return Err("type récursif : non représentable en JSON Schema".into());
+            return Err("recursive type: not representable as JSON Schema".into());
         }
         match ty {
-            Ty::Hash(..) => Err("`Hash` ne peut pas sortir d'un LLM : utilisez une `struct`".into()),
+            Ty::Hash(..) => Err("a `Hash` cannot come out of an LLM: use a `struct`".into()),
             Ty::Array(t) | Ty::Opt(t) => self.schema_ok(t, depth + 1),
             Ty::User(name) => {
                 let Some(decl) = self.types.get(name.as_str()) else { return Ok(()) };
                 let fields: Vec<&Field> = match decl.def.kind {
                     TypeKind::Struct => decl.fields.clone(),
                     TypeKind::Enum => decl.variants.iter().flat_map(|v| v.fields.iter()).collect(),
-                    _ => return Err(format!("`{name}` ({:?}) ne peut pas sortir d'un LLM", decl.def.kind)),
+                    _ => return Err(format!("`{name}` ({:?}) cannot come out of an LLM", decl.def.kind)),
                 };
                 for f in fields {
-                    let Some(t) = &f.ty else { return Err(format!("le champ `{}` n'a pas de type", f.name.name)) };
+                    let Some(t) = &f.ty else { return Err(format!("field `{}` has no type", f.name.name)) };
                     self.schema_ok(&self.peek_ty(t), depth + 1)?;
                 }
                 Ok(())
             }
-            Ty::Type(_) | Ty::Budget => Err(format!("{ty} ne peut pas sortir d'un LLM")),
+            Ty::Type(_) | Ty::Budget => Err(format!("{ty} cannot come out of an LLM")),
             _ => Ok(()),
         }
     }
 
-    /// Résolution sans diagnostic (pour les vérifications secondaires).
+    /// Resolution without diagnostics (for secondary checks).
     pub(crate) fn peek_ty(&self, ty: &Type) -> Ty {
         match ty {
             Type::Tainted(inner, _) => self.peek_ty(inner),
             Type::Optional(inner, _) => Ty::opt(self.peek_ty(inner)),
             Type::Named { path, args, .. } => {
                 let arg = |i: usize| args.get(i).map_or(Ty::Unknown, |a| self.peek_ty(a));
-                match path.last().expect("chemin").name.as_str() {
+                match path.last().expect("path").name.as_str() {
                     "Int" => Ty::Int,
                     "Float" => Ty::Float,
                     "String" | "Path" | "Email" | "Url" => Ty::Str,

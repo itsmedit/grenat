@@ -1,4 +1,4 @@
-//! Opérateurs binaires.
+//! Binary operators.
 
 use grenat_ast::{BinOp, Diagnostic, Expr, Span};
 
@@ -49,9 +49,9 @@ impl<'p> Checker<'p> {
             BinOp::Add if lt == Str && rt == Str => Str,
             BinOp::Add if lt == Str => {
                 self.report(
-                    Diagnostic::new(span, format!("impossible d'ajouter `{rt}` à une chaîne"))
+                    Diagnostic::new(span, format!("cannot add `{rt}` to a string"))
                         .with_code(E_TYPE)
-                        .with_help("utilisez l'interpolation : \"…#{valeur}\""),
+                        .with_help("use interpolation: \"…#{value}\""),
                 );
                 Str
             }
@@ -70,7 +70,7 @@ impl<'p> Checker<'p> {
             BinOp::Mul if lt == Duration && rt == Int => Duration,
             BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr if lt == Int && rt == Int => Int,
             _ => {
-                self.error(E_TYPE, span, format!("opérateur `{}` non défini entre `{lt}` et `{rt}`", op_str(op)));
+                self.error(E_TYPE, span, format!("operator `{}` is not defined between `{lt}` and `{rt}`", op_str(op)));
                 Unknown
             }
         };

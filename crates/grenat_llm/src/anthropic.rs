@@ -1,4 +1,4 @@
-//! Client HTTP de l'API Messages d'Anthropic, avec réessais.
+//! HTTP client for Anthropic's Messages API, with retries.
 
 use std::time::Duration;
 
@@ -6,24 +6,24 @@ use serde_json::Value as Json;
 
 use crate::*;
 
-/// Client HTTP de l'API Messages d'Anthropic.
+/// HTTP client for Anthropic's Messages API.
 pub struct Anthropic {
     agent: ureq::Agent,
     api_key: String,
     base_url: String,
-    /// Attente avant le premier réessai, doublée ensuite (sauf `retry-after`).
+    /// Delay before the first retry, doubled afterwards (unless `retry-after` says otherwise).
     retry_delay: Duration,
 }
 
 pub(crate) const MAX_ATTEMPTS: u32 = 4;
 
 impl Anthropic {
-    /// Lit `ANTHROPIC_API_KEY` (et `ANTHROPIC_BASE_URL`, optionnelle).
+    /// Reads `ANTHROPIC_API_KEY` (and the optional `ANTHROPIC_BASE_URL`).
     pub fn from_env() -> Result<Self, LlmError> {
         let api_key = std::env::var("ANTHROPIC_API_KEY")
             .ok()
             .filter(|k| !k.is_empty())
-            .ok_or_else(|| LlmError::new("ANTHROPIC_API_KEY n'est pas définie (export ANTHROPIC_API_KEY=sk-ant-…)"))?;
+            .ok_or_else(|| LlmError::new("ANTHROPIC_API_KEY is not set (export ANTHROPIC_API_KEY=sk-ant-…)"))?;
         let base_url = std::env::var("ANTHROPIC_BASE_URL").unwrap_or_else(|_| "https://api.anthropic.com".into());
         Ok(Anthropic::new(api_key, base_url))
     }
@@ -53,11 +53,11 @@ impl Anthropic {
         if body.get("fallbacks").is_some() {
             request = request.header("anthropic-beta", "server-side-fallback-2026-07-01");
         }
-        let mut response = request.send_json(body).map_err(|e| format!("connexion impossible : {e}"))?;
+        let mut response = request.send_json(body).map_err(|e| format!("connection failed: {e}"))?;
         let status = response.status().as_u16();
         let retry_after =
             response.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok());
-        let json = response.body_mut().read_json::<Json>().map_err(|e| format!("réponse illisible : {e}"))?;
+        let json = response.body_mut().read_json::<Json>().map_err(|e| format!("unreadable response: {e}"))?;
         Ok((status, retry_after, json))
     }
 }
@@ -70,9 +70,9 @@ impl Provider for Anthropic {
             let wait = match self.send(&body) {
                 Ok((200, _, json)) => return parse_response(&json),
                 Ok((status, retry_after, json)) => {
-                    let message = json["error"]["message"].as_str().unwrap_or("erreur inconnue");
-                    last_error = format!("HTTP {status} : {message}");
-                    // 408, 409, 429, 5xx (dont 529 « overloaded ») : on réessaie
+                    let message = json["error"]["message"].as_str().unwrap_or("unknown error");
+                    last_error = format!("HTTP {status}: {message}");
+                    // 408, 409, 429, 5xx (including 529 "overloaded"): retry
                     if !(matches!(status, 408 | 409 | 429) || status >= 500) {
                         break;
                     }
