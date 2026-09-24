@@ -1,0 +1,57 @@
+# objects.grn — strings, arrays and structs, compiled to native code.
+#
+#   grenat run --log examples/objects.grn
+#
+# Every function below is compiled by the JIT. Objects are reference counted
+# (Perceus): the loop in `drift` builds each new particle in the memory of
+# the previous one, and `csv` appends to its string in place.
+
+struct Particle
+  x: Float
+  y: Float
+  vx: Float
+  vy: Float
+end
+
+def drift(p: Particle, steps: Int) -> Particle
+  steps.times do |i|
+    p = Particle(x: p.x + p.vx, y: p.y + p.vy, vx: p.vx * 0.999, vy: p.vy - 0.01)
+  end
+  p
+end
+
+def primes(n: Int) -> Array(Int)
+  composite = []
+  (n + 1).times do |i|
+    composite << false
+  end
+  found = []
+  2.upto(n) do |i|
+    if !composite[i]
+      found << i
+      j = i * i
+      while j <= n
+        composite[j] = true
+        j += i
+      end
+    end
+  end
+  found
+end
+
+def csv(xs: Array(Int)) -> String
+  out = ""
+  xs.each_with_index do |x, i|
+    out = out + (if i == 0 then "" else "," end) + x.to_s
+  end
+  out
+end
+
+def main
+  p = drift(Particle(x: 0.0, y: 0.0, vx: 1.0, vy: 2.0), 2_000_000)
+  puts "particle at (#{p.x.round(2)}, #{p.y.round(2)})"
+  found = primes(2_000_000)
+  puts "#{found.length} primes below 2 000 000, the last: #{found.last}"
+  puts "csv of the first ten: #{csv(found.take(10))}"
+  puts "csv length: #{csv(found).length}"
+end

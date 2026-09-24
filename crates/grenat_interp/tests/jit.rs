@@ -159,3 +159,99 @@ fn native_code_is_much_faster() {
         interpreted.elapsed
     );
 }
+
+/// Functions over strings, arrays and structs; every one of them is compiled.
+const OBJECTS: &str = "\
+struct Point
+  x: Float
+  y: Float
+end
+def label(p: Point) -> String = \"(#{p.x}, #{p.y})\"
+def shift(p: Point, n: Int) -> Point
+  n.times do |i|
+    p = Point(x: p.x + 1.0, y: p.y - 0.5)
+  end
+  p
+end
+def join(words: Array(String)) -> String
+  out = \"\"
+  words.each_with_index do |w, i|
+    out = out + \"#{i}=#{w.upcase};\"
+  end
+  out
+end
+def grow(xs: Array(Int)) -> Array(Int)
+  xs << xs.length
+  xs[0] += 100
+  xs
+end
+def fresh(n: Int) -> Array(Int)
+  out = []
+  1.upto(n) do |i|
+    out << i * i
+  end
+  out
+end
+def at(xs: Array(Int), i: Int) -> Int = xs[i]
+def mutate_then_fail(xs: Array(Int)) -> Int
+  xs << 7
+  xs[0] / 0
+end
+def pair(a: Array(Int), b: Array(Int)) -> Int
+  a << 1
+  b.length
+end
+";
+
+#[test]
+fn the_object_functions_are_really_compiled() {
+    let src = format!("{OBJECTS}puts 1\n");
+    let r = run_mode(&src, Scripted::new([]), &[], &[], Mode { jit: true, log: true });
+    assert!(
+        r.output.starts_with("[jit] native: label, shift, join, grow, fresh, at, mutate_then_fail, pair\n"),
+        "{}",
+        r.output
+    );
+}
+
+#[test]
+fn objects_behave_identically_natively() {
+    let driver = "\
+p label(shift(Point(x: 0.0, y: 1.0), 3))
+p join([\"a\", \"é\"])
+xs = [1, 2]
+ys = grow(xs)
+ys << 9
+p [xs, ys]
+p fresh(5)
+p [at([1, 2, 3], -1), at([1, 2, 3], 7)]
+zs = [5]
+begin
+  mutate_then_fail(zs)
+rescue ZeroDivisionError => e
+  p [e.type, zs]
+end
+same = [1]
+p [pair(same, same), same]
+p label(Point(x: 1, y: 2.0))
+";
+    let out = same_both_ways(&format!("{OBJECTS}{driver}"));
+    let expected = "\
+\"(3.0, -0.5)\"
+\"0=A;1=É;\"
+[[101, 2, 2, 9], [101, 2, 2, 9]]
+[1, 4, 9, 16, 25]
+[3, nil]
+[\"ZeroDivisionError\", [5, 7]]
+[2, [1, 1]]
+\"(1, 2.0)\"
+";
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn deoptimized_calls_are_interpreted() {
+    // `xs[7]` is nil: native code gives up, the interpreter computes `nil`
+    let r = with_jit(&format!("{OBJECTS}p at([1], 7)\n"), true);
+    assert_eq!(r.ok(), "nil\n");
+}

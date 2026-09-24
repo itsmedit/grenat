@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use grenat_codegen::Scalar;
+use grenat_codegen::{Data, Returned};
 
 fn reason(src: &str, name: &str) -> String {
     let (_, jit) = compile(src);
@@ -30,7 +30,7 @@ fn ordinary_functions_are_not_candidates() {
 def untyped(n) = n
 def no_return(n: Int) = n
 def default(n: Int = 1) -> Int = n
-def text(s: String) -> String = s
+def maybe(s: String?) -> Int = 1
 def effect(n: Int) -> Int uses fs.read
   n
 end
@@ -43,7 +43,7 @@ end
 #[test]
 fn unsupported_bodies_are_reported() {
     assert_eq!(reason("def f(n: Int) -> Int\n  puts n\n  n\nend\n", "f"), "calls `puts`, which is not compiled");
-    assert_eq!(reason("def f(n: Int) -> Int\n  s = \"a\"\n  n\nend\n", "f"), "uses strings");
+    assert_eq!(reason("def f(n: Int) -> Int\n  s = :a\n  n\nend\n", "f"), "uses symbols");
     assert_eq!(reason("def f(x: Float) -> Float = x % 2.0\n", "f"), "uses `%` on a `Float`");
     assert_eq!(reason("def f(n: Int) -> Int = n ** 2\n", "f"), "uses `**`");
     assert_eq!(
@@ -53,7 +53,7 @@ fn unsupported_bodies_are_reported() {
     assert_eq!(reason("def f(n: Int) -> Float = n\n", "f"), "returns `Int` instead of `Float`");
     assert_eq!(
         reason("def f(n: Int) -> Int\n  if n\n    1\n  else\n    2\n  end\nend\n", "f"),
-        "uses a `Int` as a condition"
+        "uses `Int` as a condition"
     );
 }
 
@@ -91,9 +91,10 @@ fn arguments_must_match_the_signature_exactly() {
     let (program, jit) = compile("def half(x: Float) -> Float = x / 2.0\n");
     let half = function(program, "half");
     // an Int would be divided as an Int by the interpreter: the caller must interpret this call
-    assert!(jit.call(half, &[Scalar::Int(3)], 100).is_none());
+    assert!(jit.call(half, &[Data::Int(3)], 100).is_none());
     assert!(jit.call(half, &[], 100).is_none());
-    assert_eq!(jit.call(half, &[Scalar::Float(3.0)], 100), Some(Ok(Scalar::Float(1.5))));
+    let returned = Returned { value: Data::Float(1.5), arrays: vec![None] };
+    assert_eq!(jit.call(half, &[Data::Float(3.0)], 100), Some(Ok(returned)));
 }
 
 fn compile_ok(src: &str, name: &str) {

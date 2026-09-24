@@ -1,6 +1,15 @@
-//! Calls into native code for the numeric functions compiled by the JIT.
+//! Calls into the native code compiled by the JIT.
+//!
+//! Values are copied to native code and back. Arrays being references, the
+//! content of every array argument is written back after the call, and an
+//! array passed twice (or returned) stays one and the same array.
+//!
+//! When native code cannot finish a call identically (a result it cannot
+//! represent, or an error after it modified an array argument), the call is
+//! interpreted from the start instead: native code worked on copies, so
+//! nothing it did is visible.
 
-use grenat_codegen::Scalar;
+use grenat_codegen::{Data, Failure};
 
 use crate::prelude::*;
 
@@ -15,20 +24,44 @@ impl<'p> Interp<'p> {
             return None;
         }
         let tainted = args.pos.iter().any(Value::is_tainted);
-        let scalars = args.pos.iter().map(|v| scalar(v.untainted())).collect::<Option<Vec<_>>>()?;
-        let limit = self.max_depth.saturating_sub(self.depth);
-        Some(match jit.call(def, &scalars, limit)? {
-            Ok(result) => {
-                let value = value(result);
-                Ok(if tainted { value.taint() } else { value })
+        let mut arrays: Vec<(usize, Arc<Mutex<Vec<Value<'p>>>>)> = Vec::new();
+        let mut data = Vec::with_capacity(args.pos.len());
+        for (i, arg) in args.pos.iter().enumerate() {
+            let arg = arg.untainted();
+            if let Value::Array(items) = arg {
+                if let Some((j, _)) = arrays.iter().find(|(_, a)| Arc::ptr_eq(a, items)) {
+                    data.push(Data::Alias(*j));
+                    continue;
+                }
+                arrays.push((i, items.clone()));
             }
-            Err(trap) => {
+            data.push(to_data(arg)?);
+        }
+        let limit = self.max_depth.saturating_sub(self.depth);
+        let result = match jit.call(def, &data, limit)? {
+            Ok(returned) => {
+                for (i, items) in &arrays {
+                    if let Some(content) = &returned.arrays[*i] {
+                        *items.borrow_mut() = content.iter().map(value).collect();
+                    }
+                }
+                let result = match returned.value {
+                    Data::Alias(i) => args.pos[i].untainted().clone(),
+                    other => value(&other),
+                };
+                Ok(if tainted { result.taint() } else { result })
+            }
+            Err(Failure::Deopt) => return None,
+            // the interpreter would have left the arrays half modified
+            Err(Failure::Trap(_)) if !arrays.is_empty() => return None,
+            Err(Failure::Trap(trap)) => {
                 let (ty, message) = trap.error();
                 let error = ErrorVal::new(ty, message);
                 error.trace.borrow_mut().push((def.name.name.clone(), def.span));
                 Err(Ctrl::Raise(Arc::new(error)))
             }
-        })
+        };
+        Some(result)
     }
 
     /// With `--log`: which functions run as native code, and why the others do not.
@@ -44,19 +77,31 @@ impl<'p> Interp<'p> {
     }
 }
 
-fn scalar(value: &Value) -> Option<Scalar> {
-    match value {
-        Value::Int(n) => Some(Scalar::Int(*n)),
-        Value::Float(f) => Some(Scalar::Float(*f)),
-        Value::Bool(b) => Some(Scalar::Bool(*b)),
-        _ => None,
-    }
+/// A copy of `value` for native code; `None` for what it does not handle
+/// (including anything tainted inside an array or a struct).
+fn to_data(value: &Value) -> Option<Data> {
+    Some(match value {
+        Value::Int(n) => Data::Int(*n),
+        Value::Float(f) => Data::Float(*f),
+        Value::Bool(b) => Data::Bool(*b),
+        Value::Str(s) => Data::Str(s.to_string()),
+        Value::Array(items) => Data::Array(items.borrow().iter().map(to_data).collect::<Option<_>>()?),
+        Value::Record(r) => Data::Record {
+            ty: r.ty.to_string(),
+            fields: r.fields.iter().map(|(n, v)| Some((n.to_string(), to_data(v)?))).collect::<Option<_>>()?,
+        },
+        _ => return None,
+    })
 }
 
-fn value<'p>(scalar: Scalar) -> Value<'p> {
-    match scalar {
-        Scalar::Int(n) => Value::Int(n),
-        Scalar::Float(f) => Value::Float(f),
-        Scalar::Bool(b) => Value::Bool(b),
+fn value<'p>(data: &Data) -> Value<'p> {
+    match data {
+        Data::Int(n) => Value::Int(*n),
+        Data::Float(f) => Value::Float(*f),
+        Data::Bool(b) => Value::Bool(*b),
+        Data::Str(s) => Value::str(s),
+        Data::Array(items) => Value::array(items.iter().map(value).collect()),
+        Data::Record { ty, fields } => Value::record(ty, fields.iter().map(|(n, v)| (n.as_str().into(), value(v))).collect()),
+        Data::Alias(_) => unreachable!("only a whole result is an alias"),
     }
 }

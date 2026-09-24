@@ -399,6 +399,7 @@ dependencies = [
  "cranelift-native",
  "grenat_ast",
  "grenat_parser",
+ "grenat_runtime",
 ]
 
 [[package]]
@@ -409,6 +410,7 @@ dependencies = [
  "grenat_codegen",
  "grenat_llm",
  "grenat_parser",
+ "grenat_runtime",
  "serde_json",
 ]
 
@@ -431,6 +433,10 @@ dependencies = [
  "grenat_ast",
  "grenat_lexer",
 ]
+
+[[package]]
+name = "grenat_runtime"
+version = "0.1.0"
 
 [[package]]
 name = "grenat_types"

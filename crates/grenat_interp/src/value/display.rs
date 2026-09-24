@@ -20,9 +20,8 @@ pub fn duration(seconds: f64) -> String {
     }
 }
 
-pub(crate) fn float(f: f64) -> String {
-    if f.is_finite() && f.fract() == 0.0 && f.abs() < 1e16 { format!("{f:.1}") } else { f.to_string() }
-}
+/// Shared with native code, which must print numbers identically.
+pub(crate) use grenat_runtime::format_float as float;
 
 impl<'p> Value<'p> {
     /// Type name, for error messages and `is_a?`.

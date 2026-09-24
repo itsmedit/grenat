@@ -27,9 +27,11 @@ end
 
 ## Status
 
-**Phase 4a — native code**: numeric functions (`Int`/`Float`/`Bool`) are compiled to
-machine code by a Cranelift JIT when the program loads — `fib(35)` runs in 0.05 s, about
-1.7× Rust with the same overflow semantics, 200× faster than the interpreter. Agents are
+**Phase 4 — native code**: functions over numbers, strings, arrays and structs are
+compiled to machine code by a Cranelift JIT when the program loads — `fib(35)` runs in
+0.05 s, about 1.7× Rust with the same overflow semantics, 200× faster than the
+interpreter. Objects are reference counted, Perceus style: no garbage collector, no leak,
+in-place updates of uniquely owned values. Agents are
 actors (one message at a time, deadlocks detected, supervision with restarts), and
 `parallel_map` and `race` run truly in parallel. Before running anything, `grenat` checks
 names, types, effects and taint: an unvalidated model answer that reaches the network is
@@ -39,6 +41,7 @@ a **compile-time error**.
 cargo build
 target/debug/grenat run examples/basics.grn            # the core language, no LLM
 target/debug/grenat run --log examples/fib.grn        # native code: see what the JIT compiled
+target/debug/grenat run --log examples/objects.grn    # strings, arrays, structs, natively
 
 export ANTHROPIC_API_KEY=sk-ant-…
 target/debug/grenat run --log examples/explorer.grn crates/grenat_parser        # a real agent
@@ -46,7 +49,7 @@ target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl        
 
 target/debug/grenat check examples/*.grn     # names, types, effects, taint
 target/debug/grenat test my_file.grn         # `test "…" do … end` blocks
-cargo test                                   # ~140 tests: unit, integration, CLI, HTTP client
+cargo test                                   # ~190 tests: unit, integration, CLI, HTTP client, JIT
 ```
 
 ## Layout
@@ -58,7 +61,8 @@ cargo test                                   # ~140 tests: unit, integration, CL
 | `grenat_parser` | recursive descent + Pratt, diagnostics with error recovery |
 | `grenat_llm` | Claude API client (structured output, tools, fallbacks), scripted provider for tests |
 | `grenat_types` | checker: names, types, effects, `~T` taint (E0100–E0500) |
-| `grenat_codegen` | Cranelift JIT for numeric functions |
+| `grenat_codegen` | Cranelift JIT: typing, liveness (Perceus), translation, boundary |
+| `grenat_runtime` | reference-counted strings, arrays and records called by native code |
 | `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities |
 | `grenat_cli` | the `grenat` binary |
 

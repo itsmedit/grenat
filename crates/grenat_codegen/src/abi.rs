@@ -1,11 +1,12 @@
 //! Calling contract between native functions and the interpreter.
 //!
-//! Every compiled function takes its scalar parameters followed by two
-//! integers, the current recursion `depth` and its `limit`, and returns two
-//! values: its result and a status (0, or a [`Trap`] code). Nothing touches
-//! memory: native code never unwinds, a failing callee returns a non-zero
-//! status and every caller returns it immediately. Only the trampoline, at
-//! the boundary with the interpreter, reads and writes a [`Context`].
+//! Every compiled function takes its parameters (scalars, or pointers to
+//! objects it then owns) followed by two integers, the current recursion
+//! `depth` and its `limit`, and returns two values: its result and a status
+//! (0, a [`Trap`] code, or `DEOPT`). Native code never unwinds: a failing
+//! callee returns a non-zero status and every caller releases what it holds
+//! and returns it immediately. Only the trampoline, at the boundary with the
+//! interpreter, reads and writes a [`Context`].
 
 use std::fmt;
 
@@ -21,6 +22,25 @@ pub(crate) struct Context {
 
 pub(crate) const STATUS_OFFSET: i32 = 0;
 pub(crate) const LIMIT_OFFSET: i32 = 8;
+
+/// Status of a call whose result native code cannot represent (`nil`…):
+/// the interpreter runs the call again instead.
+pub(crate) const DEOPT: i64 = 4;
+
+/// Why a native call gave no value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Failure {
+    /// A runtime error, identical to the interpreter's.
+    Trap(Trap),
+    /// Beyond what native code represents: interpret the call.
+    Deopt,
+}
+
+impl Failure {
+    pub(crate) fn from_status(status: i64) -> Failure {
+        if status == DEOPT { Failure::Deopt } else { Failure::Trap(Trap::from_status(status)) }
+    }
+}
 
 /// A runtime error raised by native code; mirrors the interpreter's errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -9,6 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 grenat_ast.workspace = true
+grenat_runtime.workspace = true
 cranelift-codegen = "0.136"
 cranelift-frontend = "0.136"
 cranelift-jit = "0.136"
@@ -17,3 +18,4 @@ cranelift-native = "0.136"
 
 [dev-dependencies]
 grenat_parser.workspace = true
+grenat_runtime.workspace = true

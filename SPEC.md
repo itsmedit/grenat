@@ -334,8 +334,9 @@ grenat/
 │   ├── grenat_hir        # name resolution, desugaring (blocks, &., ?, on/tool/prompt)
 │   ├── grenat_types      # gradual checking: names, types, effects, ~T taint
 │   ├── grenat_mir        # SSA IR, Perceus RC insertion, monomorphization
-│   ├── grenat_codegen    # Cranelift JIT today (numeric subset); AOT and LLVM later
-│   ├── grenat_runtime    # staticlib linked into every binary:
+│   ├── grenat_codegen    # Cranelift JIT today (numbers, strings, arrays, structs); AOT and LLVM later
+│   ├── grenat_runtime    # reference-counted objects called by native code (today);
+│   │                     # later a staticlib linked into every binary:
 │   │                     #   M:N work-stealing scheduler, actors, supervision,
 │   │                     #   LLM clients (Anthropic, OpenAI, Ollama), budgets,
 │   │                     #   durable journal (SQLite), wasmtime sandbox
@@ -414,7 +415,7 @@ Installed layout:
 | **1** ✅ | Interpreter, `prompt`, `tool`, agents, budgets, taint, Anthropic client, `grenat run/test` | the first agent runs |
 | **2** ✅ | Names, types, effects and `~T` taint checked **before execution**; capabilities enforced at run time | security errors before execution |
 | **3** ✅ | Concurrent actor agents, real `parallel_map`/`race`, cancellation, deadlock detection, supervision | multi-agent |
-| **4** 🚧 | Cranelift codegen (4a ✅ JIT for numeric functions), then strings/arrays/structs with Perceus RC, `grenat build` | fast native binaries |
+| **4** 🚧 | Cranelift codegen (4a ✅ JIT for numeric functions, 4b ✅ strings/arrays/structs with Perceus RC), then `grenat build` | fast native binaries |
 | **5** | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
 | **6** | LSP, LLVM release builds, macros, package manager | ecosystem |
 
@@ -456,7 +457,7 @@ Temporary simplifications, lifted in later phases:
 |---|---|
 | Gradual typing, `T?` accepted where `T` is expected | full inference, `nil` checking |
 | Tasks are OS threads (128 MB of reserved, virtual stack) | M:N green threads with native code (later phase 4 slice) |
-| Only numeric functions are native; a native loop is not cancellable mid-run | native strings, arrays, structs (phase 4b) |
+| Native functions cover numbers, strings, arrays, structs, not hashes, enums, closures or agents; a native loop is not cancellable mid-run; values cross the interpreter boundary by copy | whole programs compiled ahead of time (`grenat build`), cancellation checkpoints in native loops |
 | A cancelled task finishes its in-flight LLM call (billed) before stopping | cancellation of in-flight HTTP requests |
 | `step` runs its block without a journal | durable journal (phase 5) |
 | The `net("host")` restriction is only checked statically | HTTP client in the standard library |
@@ -480,7 +481,32 @@ That is ~1.7× Rust with equal semantics, inside the 1–2× goal. The remaining
 
 The interpreter itself now guards its native stack: a deeply nested recursion raises `StackOverflow` instead of crashing, in the main thread and in tasks.
 
-Next slices: strings, arrays and structs in native code with Perceus reference counting; then `grenat build` (ahead-of-time compilation to an executable, linked with the runtime); M:N green threads on top of native code.
+### Phase 4b status: strings, arrays and structs, with Perceus reference counting
+
+Native functions now also take and return `String`, `Array(T)` (`T` a scalar, a string or a struct) and structs whose fields have those types. Their bodies may use string literals and interpolation, `+`, `*`, comparisons, `length`, `[i]`, `upcase`, `strip`, `include?`…; array literals (`[]` included: the element type is inferred from later uses), `xs[i]`, `xs[i] = v`, `xs[i] += v`, `<<`/`push`, `pop`, `first`, `last`, `sum`, `+`; struct construction (`Point(x: …)`, `Point.new(…)`) and field reads; loops over blocks, compiled inline: `n.times`, `a.upto(b)`, `xs.each`, `xs.each_with_index`; `return` inside `while`.
+
+Objects live in `grenat_runtime`: a reference count at offset 0, then the payload. Memory management is **Perceus**, as in Koka:
+
+- a liveness analysis tells, for every read of a variable, whether it is the last one: the last use *moves* the reference, the others *borrow* it (a borrowed value used while a later operand could release the variable takes its own reference); variables that die on entering a branch or leaving a loop are dropped on that edge;
+- `dup`/`drop` are inlined; freeing goes through the runtime, which releases children according to a per-type *shape*;
+- **reuse**: `out = out + s` appends in place when `out` is uniquely owned, and `p = Point(x: p.x + 1.0, y: p.y)` builds the new point in the memory of the old one (drop-reuse). 1,000 iterations of either allocate nothing;
+- errors and deoptimizations release everything held on the way out. Every test call checks that the live-object count comes back to where it was.
+
+Values cross the boundary with the interpreter **by copy**, so native objects never leave the thread of the call and their counts need no atomics. Arrays being references in Grenat, the content of each array argument is written back after the call (only for functions that may modify an array, themselves or through their callees), an array passed twice stays one array, and an argument array returned comes back as the same object.
+
+What native code cannot represent — `nil` from `xs[99]` or `[].first`, an assignment past the end that the interpreter pads with `nil`, `"x" * -1` — **deoptimizes**: the call is interpreted again from the start. The same happens when an error interrupts a function after it modified an array argument, since native code worked on a copy. Differential tests check aliasing, write-back, deoptimization and partial mutation against the interpreter.
+
+`examples/objects.grn` (2 million particle steps, a sieve up to 2 million, a 1.1 MB CSV string), release builds:
+
+| | Time |
+|---|---|
+| Interpreter | ~12.7 s |
+| **Grenat JIT** (whole process: parse, check, compile, run, copies at the boundary) | **0.05 s** |
+| Rust `-O` (equivalent code, `Copy` structs, `Vec<bool>`, `String::push`) | 0.013 s |
+
+The gap to Rust comes from the copies at the boundary (the 149,000 primes cross it three times), an allocation per `to_s`, and reference counts Rust does not need for a `Copy` struct.
+
+Next slices: `grenat build` (ahead-of-time compilation to an executable, linked with the runtime); M:N green threads on top of native code.
 
 For the models that recommend it (`claude-opus-5`, `claude-fable-5-1`), the client enables server-side fallbacks (`fallbacks: "default"`): a request refused by a classifier is replayed on another model instead of failing. Disable it with `model :x, …, fallbacks: false`.
 

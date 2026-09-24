@@ -1,0 +1,10 @@
+[package]
+name = "grenat_runtime"
+description = "Runtime of native Grenat code: reference-counted heap objects"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]

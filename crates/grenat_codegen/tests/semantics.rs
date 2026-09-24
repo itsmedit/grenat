@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use grenat_codegen::{Scalar, Trap};
+use grenat_codegen::{Failure, Returned, Trap};
 
 const ARITH: &str = "\
 def div(a: Int, b: Int) -> Int = a / b
@@ -106,10 +106,10 @@ def safe_or(n: Int) -> Bool = n == 0 || 10 / n > 1
 def not_zero(n: Int) -> Bool = !n.zero?
 ";
     let (p, jit) = compile(src);
-    assert_eq!(call(p, &jit, "safe_and", &[int(0)]), Ok(Scalar::Bool(false)));
-    assert_eq!(call(p, &jit, "safe_and", &[int(2)]), Ok(Scalar::Bool(true)));
-    assert_eq!(call(p, &jit, "safe_or", &[int(0)]), Ok(Scalar::Bool(true)));
-    assert_eq!(call(p, &jit, "not_zero", &[int(3)]), Ok(Scalar::Bool(true)));
+    assert_eq!(call(p, &jit, "safe_and", &[int(0)]), Ok(boolean(false)));
+    assert_eq!(call(p, &jit, "safe_and", &[int(2)]), Ok(boolean(true)));
+    assert_eq!(call(p, &jit, "safe_or", &[int(0)]), Ok(boolean(true)));
+    assert_eq!(call(p, &jit, "not_zero", &[int(3)]), Ok(boolean(true)));
 }
 
 #[test]
@@ -125,13 +125,14 @@ def forever(n: Int) -> Int = forever(n + 1)
 ";
     let (p, jit) = compile(src);
     assert_eq!(call(p, &jit, "fib", &[int(25)]), Ok(int(75025)));
-    assert_eq!(call(p, &jit, "is_even", &[int(10)]), Ok(Scalar::Bool(true)));
-    assert_eq!(call(p, &jit, "is_odd", &[int(7)]), Ok(Scalar::Bool(true)));
+    assert_eq!(call(p, &jit, "is_even", &[int(10)]), Ok(boolean(true)));
+    assert_eq!(call(p, &jit, "is_odd", &[int(7)]), Ok(boolean(true)));
     assert_eq!(call(p, &jit, "forever", &[int(0)]), Err(Trap::StackOverflow));
     // the limit is the caller's remaining depth
     let fib = function(p, "fib");
-    assert_eq!(jit.call(fib, &[int(20)], 5), Some(Err(Trap::StackOverflow)));
-    assert_eq!(jit.call(fib, &[int(20)], 20), Some(Ok(int(6765))));
+    let value = |r: Option<Result<Returned, Failure>>| r.map(|r| r.map(|r| r.value));
+    assert_eq!(value(jit.call(fib, &[int(20)], 5)), Some(Err(Failure::Trap(Trap::StackOverflow))));
+    assert_eq!(value(jit.call(fib, &[int(20)], 20)), Some(Ok(int(6765))));
 }
 
 #[test]
