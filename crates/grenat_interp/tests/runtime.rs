@@ -1,8 +1,7 @@
 //! Exécution de programmes complets, avec un fournisseur LLM scripté.
 
-use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use grenat_interp::{Options, Output, Response, RuntimeError, Scripted, run_main, run_tests};
 use serde_json::json;
@@ -27,8 +26,8 @@ fn run_full(src: &str, replies: Vec<Response>, input: &[&str], args: &[&str]) ->
         .spawn(move || {
             let parsed = grenat_parser::parse(&src);
             assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
-            let provider = Rc::new(Scripted::new(replies));
-            let buffer = Rc::new(RefCell::new(String::new()));
+            let provider = Arc::new(Scripted::new(replies));
+            let buffer = Arc::new(Mutex::new(String::new()));
             let options = Options {
                 provider: Some(provider.clone()),
                 output: Output::Capture(buffer.clone()),
@@ -36,7 +35,7 @@ fn run_full(src: &str, replies: Vec<Response>, input: &[&str], args: &[&str]) ->
                 log: false,
             };
             let result = run_main(&parsed.program, args, options);
-            let output = buffer.borrow().clone();
+            let output = buffer.lock().unwrap().clone();
             Run { result, output, requests: provider.requests() }
         })
         .unwrap()
@@ -420,9 +419,10 @@ fn explorateur_example_runs_end_to_end() {
         "## arg1 — Solide\nUn interpréteur.\n\nFichiers lus : src/lib.rs\n- Typer\n\n> Grenat, enfin des agents typés.\n"
     );
     let listing = &r.requests[1]["messages"][2]["content"][0]["content"];
-    assert!(listing.as_str().unwrap().contains("builtins.rs"), "{listing}");
-    let first_line = &r.requests[2]["messages"][4]["content"][0]["content"];
-    assert_eq!(first_line, "//! Interpréteur de Grenat (phase 1) : exécution directe de l'AST.");
+    assert!(listing.as_str().unwrap().contains("lib.rs"), "{listing}");
+    let first_line = r.requests[2]["messages"][4]["content"][0]["content"].as_str().unwrap().to_string();
+    let expected = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs")).unwrap();
+    assert_eq!(first_line, expected.lines().next().unwrap());
     assert_eq!(r.requests[0]["fallbacks"], "default");
     assert_eq!(r.requests[3]["model"], "claude-haiku-4-5");
 }

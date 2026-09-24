@@ -3,15 +3,32 @@
 //! `'p` est la durée de vie du programme : les fermetures pointent directement
 //! vers les blocs de l'AST, sans copie.
 
-use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fmt::{self, Write};
-use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 
 use grenat_ast::{Body, Span};
 
-pub type Scope<'p> = Rc<RefCell<ScopeData<'p>>>;
+/// Accès aux valeurs partagées entre tâches, avec les noms de `RefCell`.
+/// Un verrou empoisonné (tâche qui a paniqué) reste utilisable.
+pub trait Locked<T> {
+    fn borrow(&self) -> MutexGuard<'_, T>;
+    fn borrow_mut(&self) -> MutexGuard<'_, T>;
+}
+
+impl<T> Locked<T> for Mutex<T> {
+    fn borrow(&self) -> MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn borrow_mut(&self) -> MutexGuard<'_, T> {
+        self.borrow()
+    }
+}
+
+pub type Scope<'p> = Arc<Mutex<ScopeData<'p>>>;
 
 #[derive(Default)]
 pub struct ScopeData<'p> {
@@ -20,7 +37,7 @@ pub struct ScopeData<'p> {
 }
 
 pub fn new_scope<'p>(parent: Option<Scope<'p>>) -> Scope<'p> {
-    Rc::new(RefCell::new(ScopeData { vars: HashMap::new(), parent }))
+    Arc::new(Mutex::new(ScopeData { vars: HashMap::new(), parent }))
 }
 
 pub fn scope_get<'p>(scope: &Scope<'p>, name: &str) -> Option<Value<'p>> {
@@ -48,7 +65,7 @@ pub fn scope_define<'p>(scope: &Scope<'p>, name: &str, value: Value<'p>) {
     scope.borrow_mut().vars.insert(name.to_string(), value);
 }
 
-pub type Fields<'p> = Vec<(Rc<str>, Value<'p>)>;
+pub type Fields<'p> = Vec<(Arc<str>, Value<'p>)>;
 
 pub fn field<'a, 'p>(fields: &'a Fields<'p>, name: &str) -> Option<&'a Value<'p>> {
     fields.iter().find(|(n, _)| &**n == name).map(|(_, v)| v)
@@ -64,40 +81,44 @@ pub enum Value<'p> {
     Money(f64),
     /// Durée en secondes (`10.min`).
     Duration(f64),
-    Str(Rc<str>),
-    Symbol(Rc<str>),
-    Array(Rc<RefCell<Vec<Value<'p>>>>),
-    Hash(Rc<RefCell<Vec<(Value<'p>, Value<'p>)>>>),
+    Str(Arc<str>),
+    Symbol(Arc<str>),
+    Array(Arc<Mutex<Vec<Value<'p>>>>),
+    Hash(Arc<Mutex<Vec<(Value<'p>, Value<'p>)>>>),
     Range(i64, i64, bool),
     /// Instance de `struct` ou message d'agent : valeur immuable.
-    Record(Rc<Record<'p>>),
+    Record(Arc<Record<'p>>),
     /// Instance de `class` ou d'`agent` : référence mutable.
-    Object(Rc<Object<'p>>),
+    Object(Arc<Object<'p>>),
     /// Variante d'`enum` (dont `Ok` / `Err`).
-    Variant(Rc<Variant<'p>>),
-    Closure(Rc<Closure<'p>>),
+    Variant(Arc<Variant<'p>>),
+    Closure(Arc<Closure<'p>>),
     /// Un type ou module utilisé comme valeur (`Researcher`, `File`).
-    Type(Rc<str>),
-    Error(Rc<ErrorVal<'p>>),
-    Budget(Rc<Budget>),
+    Type(Arc<str>),
+    Error(Arc<ErrorVal<'p>>),
+    Budget(Arc<Budget>),
+    /// Référence vers un agent-acteur (`spawn Writer`).
+    Agent(Arc<AgentRef<'p>>),
+    /// Groupe d'agents interchangeables (`spawn_pool(Writer, size: 4)`).
+    Pool(Arc<Vec<Arc<AgentRef<'p>>>>),
     /// Produit par un LLM, non validé : `~T`.
-    Tainted(Rc<Value<'p>>),
+    Tainted(Arc<Value<'p>>),
 }
 
 pub struct Record<'p> {
-    pub ty: Rc<str>,
+    pub ty: Arc<str>,
     pub fields: Fields<'p>,
 }
 
 pub struct Object<'p> {
-    pub ty: Rc<str>,
-    pub fields: RefCell<Fields<'p>>,
+    pub ty: Arc<str>,
+    pub fields: Mutex<Fields<'p>>,
     pub is_agent: bool,
 }
 
 pub struct Variant<'p> {
-    pub enum_name: Rc<str>,
-    pub name: Rc<str>,
+    pub enum_name: Arc<str>,
+    pub name: Arc<str>,
     pub fields: Fields<'p>,
 }
 
@@ -111,34 +132,86 @@ pub struct Closure<'p> {
 }
 
 pub struct ErrorVal<'p> {
-    pub ty: Rc<str>,
+    pub ty: Arc<str>,
     pub message: String,
     pub fields: Fields<'p>,
-    pub span: Cell<Option<Span>>,
+    span: Mutex<Option<Span>>,
     /// Pile d'appels : (fonction, site d'appel).
-    pub trace: RefCell<Vec<(String, Span)>>,
+    pub trace: Mutex<Vec<(String, Span)>>,
 }
 
 impl<'p> ErrorVal<'p> {
+    pub fn span(&self) -> Option<Span> {
+        *self.span.borrow()
+    }
+
+    pub fn set_span(&self, span: Span) {
+        *self.span.borrow_mut() = Some(span);
+    }
+
     pub fn new(ty: &str, message: impl Into<String>) -> Self {
         ErrorVal {
             ty: ty.into(),
             message: message.into(),
             fields: Vec::new(),
-            span: Cell::new(None),
-            trace: RefCell::new(Vec::new()),
+            span: Mutex::new(None),
+            trace: Mutex::new(Vec::new()),
         }
     }
 }
 
-/// Plafond de dépense : tokens, dollars, temps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Strategy {
+    /// Seul l'agent qui a planté redémarre.
+    OneForOne,
+    /// Tous les enfants du superviseur redémarrent.
+    OneForAll,
+    /// L'agent et les enfants déclarés après lui redémarrent.
+    RestForOne,
+}
+
+#[derive(Debug, Clone)]
+pub struct Supervision {
+    pub supervisor: String,
+    pub strategy: Strategy,
+    pub max_restarts: usize,
+    /// Fenêtre de comptage des redémarrages, en secondes.
+    pub within: f64,
+}
+
+/// Un agent-acteur : son état et le verrou qui garantit qu'il traite un message à la fois.
+pub struct AgentRef<'p> {
+    pub id: u64,
+    pub ty: Arc<str>,
+    /// Remplacé par un état neuf quand le superviseur redémarre l'agent.
+    pub state: Mutex<Arc<Object<'p>>>,
+    /// Tenu pendant le traitement d'un message.
+    pub turn: Mutex<()>,
+    /// Tâche en train de traiter un message (détection d'interblocage).
+    pub owner: Mutex<Option<u64>>,
+    /// Messages en attente (répartition dans un pool).
+    pub queued: AtomicUsize,
+    pub budget: Option<Arc<Budget>>,
+    pub supervision: Option<Supervision>,
+    pub restarts: Mutex<Vec<Instant>>,
+    /// Raison de l'arrêt définitif (trop de redémarrages).
+    pub down: Mutex<Option<String>>,
+}
+
+impl AgentRef<'_> {
+    pub fn load(&self) -> usize {
+        self.queued.load(Ordering::Relaxed) + usize::from(self.owner.borrow().is_some())
+    }
+}
+
+/// Plafond de dépense : tokens, dollars, temps. Partagé par les tâches qui le consomment.
 pub struct Budget {
     pub max_usd: Option<f64>,
     pub max_tokens: Option<u64>,
     pub max_seconds: Option<f64>,
-    pub spent_usd: Cell<f64>,
-    pub tokens: Cell<u64>,
-    pub started: Cell<Instant>,
+    spent_usd: Mutex<f64>,
+    tokens: AtomicU64,
+    started: Mutex<Instant>,
 }
 
 impl Budget {
@@ -147,26 +220,43 @@ impl Budget {
             max_usd: None,
             max_tokens: None,
             max_seconds: None,
-            spent_usd: Cell::new(0.0),
-            tokens: Cell::new(0),
-            started: Cell::new(Instant::now()),
+            spent_usd: Mutex::new(0.0),
+            tokens: AtomicU64::new(0),
+            started: Mutex::new(Instant::now()),
         }
+    }
+
+    pub fn spent(&self) -> f64 {
+        *self.spent_usd.borrow()
+    }
+
+    pub fn tokens(&self) -> u64 {
+        self.tokens.load(Ordering::Relaxed)
+    }
+
+    pub fn add(&self, usd: f64, tokens: u64) {
+        *self.spent_usd.borrow_mut() += usd;
+        self.tokens.fetch_add(tokens, Ordering::Relaxed);
+    }
+
+    pub fn restart_clock(&self) {
+        *self.started.borrow_mut() = Instant::now();
     }
 
     /// Description du dépassement, s'il y en a un.
     pub fn exceeded(&self) -> Option<String> {
         if let Some(max) = self.max_usd
-            && self.spent_usd.get() > max
+            && self.spent() > max
         {
-            return Some(format!("{} dépensés, plafond {}", money(self.spent_usd.get()), money(max)));
+            return Some(format!("{} dépensés, plafond {}", money(self.spent()), money(max)));
         }
         if let Some(max) = self.max_tokens
-            && self.tokens.get() > max
+            && self.tokens() > max
         {
-            return Some(format!("{} tokens consommés, plafond {max}", self.tokens.get()));
+            return Some(format!("{} tokens consommés, plafond {max}", self.tokens()));
         }
         if let Some(max) = self.max_seconds
-            && self.started.get().elapsed().as_secs_f64() > max
+            && self.started.borrow().elapsed().as_secs_f64() > max
         {
             return Some(format!("temps écoulé, plafond {}", duration(max)));
         }
@@ -200,15 +290,15 @@ impl<'p> Value<'p> {
     }
 
     pub fn array(items: Vec<Value<'p>>) -> Self {
-        Value::Array(Rc::new(RefCell::new(items)))
+        Value::Array(Arc::new(Mutex::new(items)))
     }
 
     pub fn record(ty: &str, fields: Fields<'p>) -> Self {
-        Value::Record(Rc::new(Record { ty: ty.into(), fields }))
+        Value::Record(Arc::new(Record { ty: ty.into(), fields }))
     }
 
     pub fn ok(value: Value<'p>) -> Self {
-        Value::Variant(Rc::new(Variant {
+        Value::Variant(Arc::new(Variant {
             enum_name: "Result".into(),
             name: "Ok".into(),
             fields: vec![("value".into(), value)],
@@ -216,7 +306,7 @@ impl<'p> Value<'p> {
     }
 
     pub fn err(error: Value<'p>) -> Self {
-        Value::Variant(Rc::new(Variant {
+        Value::Variant(Arc::new(Variant {
             enum_name: "Result".into(),
             name: "Err".into(),
             fields: vec![("error".into(), error)],
@@ -257,7 +347,7 @@ impl<'p> Value<'p> {
     pub fn taint(self) -> Self {
         match self {
             Value::Tainted(_) | Value::Nil => self,
-            other => Value::Tainted(Rc::new(other)),
+            other => Value::Tainted(Arc::new(other)),
         }
     }
 
@@ -282,6 +372,8 @@ impl<'p> Value<'p> {
             Value::Type(_) => "Type".into(),
             Value::Error(e) => e.ty.to_string(),
             Value::Budget(_) => "Budget".into(),
+            Value::Agent(a) => a.ty.to_string(),
+            Value::Pool(p) => p.first().map_or("Pool".into(), |a| a.ty.to_string()),
             Value::Tainted(inner) => format!("~{}", inner.type_name()),
         }
     }
@@ -385,7 +477,13 @@ impl<'p> Value<'p> {
                 let _ = write!(out, "{}(\"{}\")", e.ty, e.message.escape_debug());
             }
             Value::Budget(b) => {
-                let _ = write!(out, "#<Budget {} / {} tokens>", money(b.spent_usd.get()), b.tokens.get());
+                let _ = write!(out, "#<Budget {} / {} tokens>", money(b.spent()), b.tokens());
+            }
+            Value::Agent(a) => {
+                let _ = write!(out, "#<Agent {} {}>", a.ty, a.id);
+            }
+            Value::Pool(p) => {
+                let _ = write!(out, "#<Pool {}×{}>", p.first().map_or("?", |a| &*a.ty), p.len());
             }
             Value::Tainted(inner) => {
                 out.push('~');
@@ -411,6 +509,8 @@ pub fn equal<'p>(a: &Value<'p>, b: &Value<'p>) -> bool {
         (Float(x), Float(y)) | (Money(x), Money(y)) | (Duration(x), Duration(y)) => x == y,
         (Int(x), Float(y)) | (Float(y), Int(x)) => (*x as f64) == *y,
         (Str(x), Str(y)) | (Symbol(x), Symbol(y)) | (Type(x), Type(y)) => x == y,
+        (Array(x), Array(y)) if Arc::ptr_eq(x, y) => true,
+        (Hash(x), Hash(y)) if Arc::ptr_eq(x, y) => true,
         (Array(x), Array(y)) => {
             let (x, y) = (x.borrow(), y.borrow());
             x.len() == y.len() && x.iter().zip(y.iter()).all(|(a, b)| equal(a, b))
@@ -424,10 +524,12 @@ pub fn equal<'p>(a: &Value<'p>, b: &Value<'p>) -> bool {
         (Variant(x), Variant(y)) => {
             x.enum_name == y.enum_name && x.name == y.name && fields_equal(&x.fields, &y.fields)
         }
-        (Object(x), Object(y)) => Rc::ptr_eq(x, y),
-        (Closure(x), Closure(y)) => Rc::ptr_eq(x, y),
+        (Object(x), Object(y)) => Arc::ptr_eq(x, y),
+        (Closure(x), Closure(y)) => Arc::ptr_eq(x, y),
         (Error(x), Error(y)) => x.ty == y.ty && x.message == y.message,
-        (Budget(x), Budget(y)) => Rc::ptr_eq(x, y),
+        (Budget(x), Budget(y)) => Arc::ptr_eq(x, y),
+        (Agent(x), Agent(y)) => Arc::ptr_eq(x, y),
+        (Pool(x), Pool(y)) => Arc::ptr_eq(x, y),
         _ => false,
     }
 }
