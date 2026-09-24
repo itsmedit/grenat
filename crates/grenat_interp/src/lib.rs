@@ -17,6 +17,7 @@ mod llm;
 mod outcome;
 mod prelude;
 mod program;
+mod stack;
 mod state;
 mod task;
 mod value;
@@ -74,18 +75,20 @@ pub struct Options {
     pub input: Option<VecDeque<String>>,
     /// Logs every LLM and tool call to standard error.
     pub log: bool,
+    /// Compiles eligible numeric functions to native code (see `grenat_codegen`).
+    pub jit: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { provider: None, output: Output::Stdout, input: None, log: false }
+        Options { provider: None, output: Output::Stdout, input: None, log: false, jit: true }
     }
 }
 
 /// Runs the top-level statements, then `main` if it exists.
 /// Waits for every spawned task (`tell`, `race` losers) to finish.
 pub fn run_main(program: &Program, args: Vec<String>, options: Options) -> Result<Summary, RuntimeError> {
-    std::thread::scope(|scope| {
+    on_interpreter_thread(|scope| {
         let mut interp = Interp::new(program, options, spawner(scope))?;
         let result = interp.run_script().and_then(|()| match interp.fns.get("main").copied() {
             Some(main) => {
@@ -109,7 +112,7 @@ pub fn run_main(program: &Program, args: Vec<String>, options: Options) -> Resul
 
 /// Runs the script (which registers the `test "…" do … end` blocks), then each test.
 pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>, RuntimeError> {
-    std::thread::scope(|scope| {
+    on_interpreter_thread(|scope| {
         let mut interp = Interp::new(program, options, spawner(scope))?;
         if let Err(ctrl) = interp.run_script() {
             return Err(interp.runtime_error(ctrl));
@@ -125,5 +128,22 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
             outcomes.push(TestOutcome { name, error });
         }
         Ok(outcomes)
+    })
+}
+
+/// Runs `work` on a thread with the interpreter's stack, inside a scope that
+/// outlives every task it spawns: callers need no particular stack themselves.
+fn on_interpreter_thread<'e, T, F>(work: F) -> T
+where
+    T: Send + 'e,
+    F: for<'s> FnOnce(&'s std::thread::Scope<'s, 'e>) -> T + Send + 'e,
+{
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .stack_size(stack::MAIN_STACK)
+            .spawn_scoped(scope, move || work(scope))
+            .expect("spawning the interpreter thread")
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
     })
 }

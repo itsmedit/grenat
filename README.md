@@ -27,14 +27,18 @@ end
 
 ## Status
 
-**Phase 3 — concurrent agents**: agents are actors (one message at a time, deadlocks
-detected, supervision with restarts), and `parallel_map` and `race` run truly in parallel.
-Before running anything, `grenat` checks names, types, effects and taint: an unvalidated
-model answer that reaches the network is a **compile-time error**.
+**Phase 4a — native code**: numeric functions (`Int`/`Float`/`Bool`) are compiled to
+machine code by a Cranelift JIT when the program loads — `fib(35)` runs in 0.05 s, about
+1.7× Rust with the same overflow semantics, 200× faster than the interpreter. Agents are
+actors (one message at a time, deadlocks detected, supervision with restarts), and
+`parallel_map` and `race` run truly in parallel. Before running anything, `grenat` checks
+names, types, effects and taint: an unvalidated model answer that reaches the network is
+a **compile-time error**.
 
 ```sh
 cargo build
 target/debug/grenat run examples/basics.grn            # the core language, no LLM
+target/debug/grenat run --log examples/fib.grn        # native code: see what the JIT compiled
 
 export ANTHROPIC_API_KEY=sk-ant-…
 target/debug/grenat run --log examples/explorer.grn crates/grenat_parser        # a real agent
@@ -54,6 +58,7 @@ cargo test                                   # ~140 tests: unit, integration, CL
 | `grenat_parser` | recursive descent + Pratt, diagnostics with error recovery |
 | `grenat_llm` | Claude API client (structured output, tools, fallbacks), scripted provider for tests |
 | `grenat_types` | checker: names, types, effects, `~T` taint (E0100–E0500) |
+| `grenat_codegen` | Cranelift JIT for numeric functions |
 | `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities |
 | `grenat_cli` | the `grenat` binary |
 

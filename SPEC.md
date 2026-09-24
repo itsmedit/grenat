@@ -334,7 +334,7 @@ grenat/
 │   ├── grenat_hir        # name resolution, desugaring (blocks, &., ?, on/tool/prompt)
 │   ├── grenat_types      # gradual checking: names, types, effects, ~T taint
 │   ├── grenat_mir        # SSA IR, Perceus RC insertion, monomorphization
-│   ├── grenat_codegen    # Cranelift (dev, compiles fast) → LLVM (release, runs fast)
+│   ├── grenat_codegen    # Cranelift JIT today (numeric subset); AOT and LLVM later
 │   ├── grenat_runtime    # staticlib linked into every binary:
 │   │                     #   M:N work-stealing scheduler, actors, supervision,
 │   │                     #   LLM clients (Anthropic, OpenAI, Ollama), budgets,
@@ -414,7 +414,7 @@ Installed layout:
 | **1** ✅ | Interpreter, `prompt`, `tool`, agents, budgets, taint, Anthropic client, `grenat run/test` | the first agent runs |
 | **2** ✅ | Names, types, effects and `~T` taint checked **before execution**; capabilities enforced at run time | security errors before execution |
 | **3** ✅ | Concurrent actor agents, real `parallel_map`/`race`, cancellation, deadlock detection, supervision | multi-agent |
-| **4** | Cranelift codegen + Perceus RC | fast native binaries |
+| **4** 🚧 | Cranelift codegen (4a ✅ JIT for numeric functions), then strings/arrays/structs with Perceus RC, `grenat build` | fast native binaries |
 | **5** | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
 | **6** | LSP, LLVM release builds, macros, package manager | ecosystem |
 
@@ -455,10 +455,32 @@ Temporary simplifications, lifted in later phases:
 | Today | Later |
 |---|---|
 | Gradual typing, `T?` accepted where `T` is expected | full inference, `nil` checking |
-| Tasks are OS threads (128 MB of reserved, virtual stack) | M:N green threads with native code (phase 4) |
+| Tasks are OS threads (128 MB of reserved, virtual stack) | M:N green threads with native code (later phase 4 slice) |
+| Only numeric functions are native; a native loop is not cancellable mid-run | native strings, arrays, structs (phase 4b) |
 | A cancelled task finishes its in-flight LLM call (billed) before stopping | cancellation of in-flight HTTP requests |
 | `step` runs its block without a journal | durable journal (phase 5) |
 | The `net("host")` restriction is only checked statically | HTTP client in the standard library |
+
+### Phase 4a status: a JIT for numeric functions
+
+When a program loads, `grenat_codegen` compiles to machine code (Cranelift) every top-level `def` whose parameters and return type are annotated `Int`, `Float` or `Bool` and whose body uses only arithmetic, comparisons, `&&`/`||`/`!`, locals, `if`/`elsif`/`else`, `while`, `return`, a few numeric methods (`abs`, `to_f`, `to_i`, `zero?`, `even?`, `odd?`, `Math.sqrt`) and calls to other such functions. Everything else stays interpreted; `grenat run --log` says which functions run natively and why the others do not.
+
+Native code is **invisible**: the interpreter calls it only when the actual arguments have exactly the declared types, and it reproduces the interpreter's semantics to the bit — checked integer arithmetic (`OverflowError`), division rounded toward −∞ and remainder with the sign of the divisor, `ZeroDivisionError`, the same recursion limit, taint flowing from arguments to result. Differential tests run the same programs with and without the JIT (`--no-jit`, `GRENAT_JIT=0`) and require identical output.
+
+Calls between native functions pass the recursion depth in registers and return a status next to the value: no memory traffic, no unwinding. Measured on Apple M-series, release builds, `fib(35)`:
+
+| | Time |
+|---|---|
+| Interpreter | ~10.5 s |
+| **Grenat JIT** | **0.05 s** |
+| Rust `-O` with overflow checks (same semantics) | 0.03 s |
+| Rust `-O` (no overflow checks) | 0.02 s |
+
+That is ~1.7× Rust with equal semantics, inside the 1–2× goal. The remaining gap is the recursion-depth check Rust does not perform.
+
+The interpreter itself now guards its native stack: a deeply nested recursion raises `StackOverflow` instead of crashing, in the main thread and in tasks.
+
+Next slices: strings, arrays and structs in native code with Perceus reference counting; then `grenat build` (ahead-of-time compilation to an executable, linked with the runtime); M:N green threads on top of native code.
 
 For the models that recommend it (`claude-opus-5`, `claude-fable-5-1`), the client enables server-side fallbacks (`fallbacks: "default"`): a request refused by a classifier is replayed on another model instead of failing. Disable it with `model :x, …, fallbacks: false`.
 

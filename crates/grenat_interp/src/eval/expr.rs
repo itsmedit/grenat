@@ -31,7 +31,7 @@ impl<'p> Interp<'p> {
         self_val: Option<Value<'p>>,
         scope: crate::value::Scope<'p>,
     ) -> Result<(), Ctrl<'p>> {
-        if self.depth >= self.max_depth {
+        if self.depth >= self.max_depth || self.stack.exceeded() {
             return raise("StackOverflow", "recursion too deep");
         }
         self.depth += 1;

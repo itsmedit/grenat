@@ -1,6 +1,6 @@
 [package]
-name = "grenat_interp"
-description = "Interpreter and concurrent runtime for the Grenat language"
+name = "grenat_codegen"
+description = "Native code generation for Grenat (Cranelift JIT)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,10 +9,11 @@ rust-version.workspace = true
 
 [dependencies]
 grenat_ast.workspace = true
-grenat_llm.workspace = true
-grenat_codegen.workspace = true
-serde_json.workspace = true
+cranelift-codegen = "0.136"
+cranelift-frontend = "0.136"
+cranelift-jit = "0.136"
+cranelift-module = "0.136"
+cranelift-native = "0.136"
 
 [dev-dependencies]
 grenat_parser.workspace = true
-serde_json.workspace = true

@@ -16,6 +16,7 @@ grenat_parser = { path = "crates/grenat_parser" }
 grenat_llm = { path = "crates/grenat_llm" }
 grenat_interp = { path = "crates/grenat_interp" }
 grenat_types = { path = "crates/grenat_types" }
+grenat_codegen = { path = "crates/grenat_codegen" }
 serde_json = "1"
 ureq = { version = "3", features = ["json"] }
 

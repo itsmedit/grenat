@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+use crate::stack::{StackGuard, TASK_STACK};
 use crate::value::{Locked, new_scope};
 use crate::*;
 
@@ -10,8 +11,7 @@ use crate::*;
 pub(crate) type Task<'p> = Box<dyn FnOnce() + Send + 'p>;
 pub(crate) type Spawner<'p> = Arc<dyn Fn(Task<'p>) + Send + Sync + 'p>;
 
-/// Stack of secondary tasks (the main task has 512 MB, see the CLI).
-pub(crate) const TASK_STACK: usize = 128 * 1024 * 1024;
+/// Call depth limit of secondary tasks (their stack is smaller, see `stack`).
 pub(crate) const TASK_DEPTH: usize = 5_000;
 
 pub(crate) fn spawner<'s, 'e>(scope: &'s std::thread::Scope<'s, 'e>) -> Spawner<'s> {
@@ -34,6 +34,8 @@ impl<'p> Interp<'p> {
             max_depth: TASK_DEPTH,
             cancel: self.cancel.clone(),
             task_id: self.next_id.fetch_add(1, Ordering::Relaxed),
+            // measured once the task's own thread starts
+            stack: StackGuard::default(),
         }
     }
 
@@ -43,6 +45,7 @@ impl<'p> Interp<'p> {
         let shared = self.shared.clone();
         (self.spawner)(Box::new(move || {
             let mut child = child;
+            child.stack = StackGuard::here(TASK_STACK);
             work(&mut child);
             drop(child);
             let mut active = shared.active.borrow_mut();

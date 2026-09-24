@@ -12,7 +12,7 @@ const USAGE: &str = "\
 grenat — an agentic programming language
 
 Usage:
-  grenat run [--log] [--unchecked] <file.grn> [args…]
+  grenat run [--log] [--unchecked] [--no-jit] <file.grn> [args…]
                                  check, then run the program (and `main`)
   grenat test <file.grn>...      run the `test \"…\" do … end` blocks
   grenat check <file.grn>...     check names, types, effects and taint
@@ -22,7 +22,8 @@ Usage:
 
 Environment variables:
   ANTHROPIC_API_KEY   Claude API key (prompts and agents)
-  GRENAT_LOG=1        log every LLM and tool call (same as --log)
+  GRENAT_LOG=1        log every LLM and tool call, and what the JIT compiled (same as --log)
+  GRENAT_JIT=0        interpret everything (same as --no-jit)
 ";
 
 fn main() -> ExitCode {
@@ -99,18 +100,6 @@ fn load(path: &str, unchecked: bool) -> Option<(String, grenat_ast::Program)> {
     Some((src, parsed.program))
 }
 
-/// The interpreter walks the AST recursively: it runs on a large stack.
-fn with_big_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
-    std::thread::scope(|s| {
-        std::thread::Builder::new()
-            .stack_size(512 * 1024 * 1024)
-            .spawn_scoped(s, f)
-            .expect("thread")
-            .join()
-            .expect("interpreter thread")
-    })
-}
-
 fn render_runtime_error(path: &str, src: &str, error: &grenat_interp::RuntimeError) {
     let mut diag =
         grenat_parser::Diagnostic::new(error.span.unwrap_or_default(), format!("{}: {}", error.ty, error.message));
@@ -123,10 +112,12 @@ fn render_runtime_error(path: &str, src: &str, error: &grenat_interp::RuntimeErr
 fn run(args: &[String]) -> ExitCode {
     let mut args = args;
     let (mut log, mut unchecked) = (env::var_os("GRENAT_LOG").is_some_and(|v| v != "0"), false);
+    let mut jit = env::var_os("GRENAT_JIT").is_none_or(|v| v != "0");
     while let Some(flag) = args.first().filter(|a| a.starts_with("--")) {
         match flag.as_str() {
             "--log" => log = true,
             "--unchecked" => unchecked = true,
+            "--no-jit" => jit = false,
             other => {
                 eprintln!("unknown option {other}");
                 return ExitCode::from(2);
@@ -140,8 +131,8 @@ fn run(args: &[String]) -> ExitCode {
     };
     let Some((src, program)) = load(path, unchecked) else { return ExitCode::FAILURE };
     let program_args = args[1..].to_vec();
-    let run = || grenat_interp::run_main(&program, program_args, grenat_interp::Options { log, ..Default::default() });
-    match with_big_stack(run) {
+    let options = grenat_interp::Options { log, jit, ..Default::default() };
+    match grenat_interp::run_main(&program, program_args, options) {
         Ok(summary) => {
             if summary.llm_calls > 0 {
                 let line = format!(
@@ -166,7 +157,7 @@ fn test(paths: &[String]) -> ExitCode {
             failed += 1;
             continue;
         };
-        match with_big_stack(|| grenat_interp::run_tests(&program, grenat_interp::Options::default())) {
+        match grenat_interp::run_tests(&program, grenat_interp::Options::default()) {
             Ok(outcomes) => {
                 for outcome in outcomes {
                     match outcome.error {

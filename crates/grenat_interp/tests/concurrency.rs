@@ -142,3 +142,17 @@ p log
 fn race_with_a_single_branch_runs_inline() {
     assert_eq!(run("p(race do\n  1 + 1\nend)\n"), "2\n");
 }
+
+#[test]
+fn deep_recursion_inside_a_task_is_an_error_not_a_crash() {
+    // tasks have a smaller stack than the main thread: the guard must still catch it
+    let src = "\
+def down(n) = if n == 0 then 0 else 1 + down(n - 1) end
+begin
+  [1, 2].parallel_map(limit: 2) { |_| down(1_000_000) }
+rescue StackOverflow => e
+  puts e.message
+end
+";
+    assert_eq!(run(src), "recursion too deep\n");
+}

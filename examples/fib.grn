@@ -1,0 +1,14 @@
+# fib.grn — native code. `fib` is compiled to machine code by the JIT
+# (its parameters and result are `Int`); compare with the interpreter:
+#
+#   grenat run --log examples/fib.grn        # "[jit] native: fib"
+#   grenat run --no-jit examples/fib.grn     # same result, much slower
+
+def fib(n: Int) -> Int
+  return n if n < 2
+  fib(n - 1) + fib(n - 2)
+end
+
+def main
+  puts "fib(32) = #{fib(32)}"
+end

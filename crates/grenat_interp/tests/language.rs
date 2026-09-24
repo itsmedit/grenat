@@ -106,3 +106,22 @@ end
         outcomes.iter().map(|o| (o.name.as_str(), o.error.as_ref().map(|e| e.message.as_str()))).collect();
     assert_eq!(summary, [("addition", None), ("failure", Some("one is not greater than two")), ("errors", None)]);
 }
+
+#[test]
+fn integer_arithmetic_follows_ruby_and_never_panics() {
+    // floor division and modulo take the sign of the divisor
+    assert_eq!(run("p [7 / 2, -7 / 2, 7 / -2, -7 / -2]\n"), "[3, -4, -4, 3]\n");
+    assert_eq!(run("p [7 % 3, -7 % 3, 7 % -3, -7 % -3]\n"), "[1, 2, -2, -1]\n");
+    let min = "-9223372036854775807 - 1";
+    assert_eq!(run(&format!("p(({min}) % -1)\n")), "0\n");
+    for overflow in [
+        format!("({min}) / -1"),
+        format!("({min}).abs"),
+        format!("-({min})"),
+        "9223372036854775807 + 1".to_string(),
+        "9223372036854775807 * 2".to_string(),
+    ] {
+        assert_eq!(run_err(&format!("p({overflow})\n"), vec![]).ty, "OverflowError", "{overflow}");
+    }
+    assert_eq!(run_err("p(1 % 0)\n", vec![]).ty, "ZeroDivisionError");
+}

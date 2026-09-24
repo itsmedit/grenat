@@ -68,6 +68,8 @@ pub(crate) struct Shared<'p> {
     /// Secondary tasks in flight.
     pub active: Mutex<usize>,
     pub idle: Condvar,
+    /// Native code for the eligible numeric functions, when the JIT is enabled.
+    pub jit: Option<grenat_codegen::Jit>,
 }
 
 /// An execution task: its call stack, budgets and capabilities.
@@ -85,6 +87,8 @@ pub(crate) struct Interp<'p> {
     /// Cancellation flags of this task and its ancestors (`race`, `parallel_map`).
     pub cancel: Vec<Arc<AtomicBool>>,
     pub task_id: u64,
+    /// Turns a real exhaustion of this thread's stack into `StackOverflow`.
+    pub stack: crate::stack::StackGuard,
 }
 
 impl<'p> Deref for Interp<'p> {
@@ -121,8 +125,12 @@ impl<'p> Interp<'p> {
             waits: Mutex::new(HashMap::new()),
             active: Mutex::new(0),
             idle: Condvar::new(),
+            jit: None,
         };
         let loaded = shared.load();
+        if options.jit {
+            shared.jit = grenat_codegen::Jit::compile(program).ok();
+        }
         let mut interp = Interp {
             shared: Arc::new(shared),
             frames: vec![Frame { self_val: None, scope: new_scope(None) }],
@@ -134,8 +142,12 @@ impl<'p> Interp<'p> {
             max_depth: MAX_DEPTH,
             cancel: Vec::new(),
             task_id: 0,
+            stack: crate::stack::StackGuard::here(crate::stack::MAIN_STACK),
         };
         loaded.and_then(|()| interp.load_models()).map_err(|ctrl| interp.runtime_error(ctrl))?;
+        if interp.log {
+            interp.log_jit();
+        }
         Ok(interp)
     }
 }

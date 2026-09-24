@@ -10,6 +10,7 @@ mod construct;
 mod errors;
 mod expr;
 mod human;
+mod native;
 mod ops;
 mod pattern;
 

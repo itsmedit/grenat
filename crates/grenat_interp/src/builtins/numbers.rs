@@ -23,7 +23,7 @@ pub(crate) fn int_method<'p>(interp: &mut Interp<'p>, n: i64, name: &str, args: 
         })(),
         "to_i" | "round" | "floor" | "ceil" => Ok(Value::Int(n)),
         "to_f" => Ok(Value::Float(n as f64)),
-        "abs" => Ok(Value::Int(n.abs())),
+        "abs" => n.checked_abs().map(Value::Int).map_or_else(|| raise("OverflowError", "integer overflow"), Ok),
         "zero?" => Ok(Value::Bool(n == 0)),
         "even?" => Ok(Value::Bool(n % 2 == 0)),
         "odd?" => Ok(Value::Bool(n % 2 != 0)),

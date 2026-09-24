@@ -177,3 +177,20 @@ fn standard_library_tour_matches_its_reference_output() {
     }
     assert_eq!(text(&out.stdout).lines().count(), expected.lines().count());
 }
+
+#[test]
+fn log_shows_what_the_jit_compiled_and_no_jit_disables_it() {
+    let path = program(
+        "jit.grn",
+        "def fib(n: Int) -> Int\n  return n if n < 2\n  fib(n - 1) + fib(n - 2)\nend\ndef shout(n: Int) -> Int\n  puts n\n  n\nend\nputs fib(20)\n",
+    );
+    let out = grenat(&["run", "--log", path.to_str().unwrap()]);
+    assert_eq!(text(&out.stdout), "6765\n");
+    let err = text(&out.stderr);
+    assert!(err.contains("[jit] native: fib\n"), "{err}");
+    assert!(err.contains("[jit] `shout` stays interpreted: it calls `puts`, which is not compiled\n"), "{err}");
+
+    let out = grenat(&["run", "--log", "--no-jit", path.to_str().unwrap()]);
+    assert_eq!(text(&out.stdout), "6765\n");
+    assert!(!text(&out.stderr).contains("[jit]"));
+}

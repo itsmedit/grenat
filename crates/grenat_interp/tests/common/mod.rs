@@ -33,32 +33,42 @@ impl Run {
 }
 
 /// Runs `src` with the given provider, on a 512 MB stack like the CLI.
+/// How to run a program in tests.
+#[derive(Clone, Copy)]
+pub struct Mode {
+    pub jit: bool,
+    pub log: bool,
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Mode { jit: true, log: false }
+    }
+}
+
+/// Runs `src` with a given provider.
 pub fn run_provider(src: &str, provider: Scripted, input: &[&str], args: &[&str]) -> Run {
-    let src = src.to_string();
-    let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    let input: VecDeque<String> = input.iter().map(|s| s.to_string()).collect();
-    std::thread::Builder::new()
-        .stack_size(512 * 1024 * 1024)
-        .spawn(move || {
-            let parsed = grenat_parser::parse(&src);
-            assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
-            let provider = Arc::new(provider);
-            let buffer = Arc::new(Mutex::new(String::new()));
-            let options = Options {
-                provider: Some(provider.clone()),
-                output: Output::Capture(buffer.clone()),
-                input: Some(input),
-                log: false,
-            };
-            let started = Instant::now();
-            let result = run_main(&parsed.program, args, options);
-            let elapsed = started.elapsed();
-            let output = buffer.lock().unwrap().clone();
-            Run { result, output, requests: provider.requests(), elapsed }
-        })
-        .unwrap()
-        .join()
-        .unwrap()
+    run_mode(src, provider, input, args, Mode::default())
+}
+
+pub fn run_mode(src: &str, provider: Scripted, input: &[&str], args: &[&str], mode: Mode) -> Run {
+    let parsed = grenat_parser::parse(src);
+    assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+    let provider = Arc::new(provider);
+    let buffer = Arc::new(Mutex::new(String::new()));
+    let options = Options {
+        provider: Some(provider.clone()),
+        output: Output::Capture(buffer.clone()),
+        input: Some(input.iter().map(|s| s.to_string()).collect::<VecDeque<_>>()),
+        log: mode.log,
+        jit: mode.jit,
+    };
+    let started = Instant::now();
+    // run_main runs the interpreter on its own large stack
+    let result = run_main(&parsed.program, args.iter().map(|s| s.to_string()).collect(), options);
+    let elapsed = started.elapsed();
+    let output = buffer.lock().unwrap().clone();
+    Run { result, output, requests: provider.requests(), elapsed }
 }
 
 pub fn run_full(src: &str, replies: Vec<Response>, input: &[&str], args: &[&str]) -> Run {

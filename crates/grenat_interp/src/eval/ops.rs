@@ -117,7 +117,11 @@ fn int_op<'p>(op: BinOp, a: i64, b: i64) -> Option<R<'p>> {
         Div | Rem if b == 0 => Some(raise("ZeroDivisionError", "division by zero")),
         // integer division rounded toward -∞, as in Ruby
         Div => checked(a.checked_div(b).map(|q| if (a % b != 0) && ((a < 0) != (b < 0)) { q - 1 } else { q })),
-        Rem => checked(Some(((a % b) + b) % b)),
+        // remainder with the sign of the divisor, as in Ruby (`i64::MIN % -1` is 0, not a panic)
+        Rem => {
+            let r = a.wrapping_rem(b);
+            Some(Ok(Value::Int(if r != 0 && (r < 0) != (b < 0) { r + b } else { r })))
+        }
         Pow if b >= 0 => checked(u32::try_from(b).ok().and_then(|b| a.checked_pow(b))),
         Pow => Some(Ok(Value::Float((a as f64).powf(b as f64)))),
         Lt => Some(Ok(Value::Bool(a < b))),

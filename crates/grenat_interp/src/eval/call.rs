@@ -166,6 +166,11 @@ impl<'p> Interp<'p> {
         if args.block.is_some() {
             return raise("ArgumentError", format!("`{}` does not take a block", def.name.name));
         }
+        if self_val.is_none()
+            && let Some(result) = self.call_native(def, &args)
+        {
+            return result;
+        }
         if let Some(effect) = dangerous_effect(def) {
             let tainted = args
                 .pos
