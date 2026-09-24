@@ -19,6 +19,7 @@ grenat_types = { path = "crates/grenat_types" }
 grenat_codegen = { path = "crates/grenat_codegen" }
 grenat_runtime = { path = "crates/grenat_runtime" }
 grenat_driver = { path = "crates/grenat_driver" }
+grenat_green = { path = "crates/grenat_green" }
 grenat_host = { path = "crates/grenat_host" }
 serde_json = "1"
 ureq = { version = "3", features = ["json"] }

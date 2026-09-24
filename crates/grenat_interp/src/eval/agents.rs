@@ -45,7 +45,7 @@ impl<'p> Interp<'p> {
             id: self.next_id.fetch_add(1, AtomicOrdering::Relaxed),
             ty: ty.into(),
             state: Mutex::new(state),
-            turn: Mutex::new(()),
+            turn: grenat_green::Mutex::new(()),
             owner: Mutex::new(None),
             queued: AtomicUsize::new(0),
             budget,
@@ -229,7 +229,7 @@ impl<'p> Interp<'p> {
 
         // one message at a time: wait for the agent's turn
         self.wait_for(&agent)?;
-        let turn = agent.turn.borrow();
+        let turn = agent.turn.lock();
         self.waits.borrow_mut().remove(&self.task_id);
         drop(reservation);
         *agent.owner.borrow_mut() = Some(self.task_id);

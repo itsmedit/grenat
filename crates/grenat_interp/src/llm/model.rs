@@ -54,7 +54,8 @@ impl<'p> Interp<'p> {
         self.check_budgets()?;
         let provider = self.provider(request.model)?;
         let started = Instant::now();
-        let response = match provider.complete(request) {
+        // off the worker threads: the other tasks run meanwhile
+        let response = match grenat_green::blocking(|| provider.complete(request)) {
             Ok(r) => r,
             Err(e) => return raise("LlmError", e.message),
         };

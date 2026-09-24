@@ -28,10 +28,12 @@ impl<'p> Interp<'p> {
         if let Some(input) = &mut *self.input.borrow_mut() {
             return input.pop_front();
         }
-        let mut line = String::new();
-        match std::io::stdin().read_line(&mut line) {
-            Ok(0) | Err(_) => None,
-            Ok(_) => Some(line.trim_end_matches(['\n', '\r']).to_string()),
-        }
+        grenat_green::blocking(|| {
+            let mut line = String::new();
+            match std::io::stdin().read_line(&mut line) {
+                Ok(0) | Err(_) => None,
+                Ok(_) => Some(line.trim_end_matches(['\n', '\r']).to_string()),
+            }
+        })
     }
 }

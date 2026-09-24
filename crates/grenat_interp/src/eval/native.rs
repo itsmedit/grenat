@@ -38,9 +38,13 @@ impl<'p> Interp<'p> {
             data.push(to_data(arg)?);
         }
         let limit = self.max_depth.saturating_sub(self.depth);
-        // asked at native checkpoints: a native loop stops when its task is cancelled
+        // asked at native checkpoints: a native loop lets the other tasks run,
+        // and stops when its task is cancelled
         let flags = self.cancel.clone();
-        let cancelled = move || flags.iter().any(|flag| flag.load(std::sync::atomic::Ordering::Relaxed));
+        let cancelled = move || {
+            grenat_green::yield_now();
+            flags.iter().any(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+        };
         let result = match jit.call(def, &data, limit, &cancelled)? {
             Ok(returned) => {
                 for (i, items) in &arrays {

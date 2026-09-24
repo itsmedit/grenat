@@ -32,7 +32,8 @@ compiled to machine code by a Cranelift JIT when the program loads — `fib(35)`
 0.05 s, about 1.7× Rust with the same overflow semantics, 200× faster than the
 interpreter. Objects are reference counted, Perceus style: no garbage collector, no leak,
 in-place updates of uniquely owned values. `grenat build` compiles a program ahead of time
-into a standalone executable. Agents are
+into a standalone executable. Tasks are M:N green threads: 100,000 concurrent tasks fit in
+~1 GB on a few OS threads. Agents are
 actors (one message at a time, deadlocks detected, supervision with restarts), and
 `parallel_map` and `race` run truly in parallel. Before running anything, `grenat` checks
 names, types, effects and taint: an unvalidated model answer that reaches the network is
@@ -67,6 +68,7 @@ cargo test                                   # ~190 tests: unit, integration, CL
 | `grenat_runtime` | reference-counted strings, arrays and records called by native code |
 | `grenat_driver` | load, check and run a program (shared by the CLI and built executables) |
 | `grenat_host` | static library linked into the executables of `grenat build` |
+| `grenat_green` | M:N green threads: scheduler, green locks, channels, timers |
 | `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities |
 | `grenat_cli` | the `grenat` binary |
 

@@ -1,0 +1,11 @@
+[package]
+name = "grenat_green"
+description = "M:N green threads for the Grenat runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+corosensei = "0.3"

@@ -417,7 +417,7 @@ Installed layout:
 | **1** ✅ | Interpreter, `prompt`, `tool`, agents, budgets, taint, Anthropic client, `grenat run/test` | the first agent runs |
 | **2** ✅ | Names, types, effects and `~T` taint checked **before execution**; capabilities enforced at run time | security errors before execution |
 | **3** ✅ | Concurrent actor agents, real `parallel_map`/`race`, cancellation, deadlock detection, supervision | multi-agent |
-| **4** 🚧 | Cranelift codegen (4a ✅ JIT for numeric functions, 4b ✅ strings/arrays/structs with Perceus RC, 4c ✅ `grenat build`), then M:N green threads | fast native binaries |
+| **4** 🚧 | Cranelift codegen (4a ✅ JIT for numeric functions, 4b ✅ strings/arrays/structs with Perceus RC, 4c ✅ `grenat build`, 4d ✅ M:N green threads), then fully native programs | fast native binaries |
 | **5** | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
 | **6** | LSP, LLVM release builds, macros, package manager | ecosystem |
 
@@ -458,7 +458,6 @@ Temporary simplifications, lifted in later phases:
 | Today | Later |
 |---|---|
 | Gradual typing, `T?` accepted where `T` is expected | full inference, `nil` checking |
-| Tasks are OS threads (128 MB of reserved, virtual stack) | M:N green threads with native code (later phase 4 slice) |
 | Native functions cover numbers, strings, arrays, structs, not hashes, enums, closures or agents; values cross the interpreter boundary by copy; a built executable embeds the interpreter for the rest | whole programs compiled natively |
 | A cancelled task finishes its in-flight LLM call (billed) before stopping | cancellation of in-flight HTTP requests |
 | `step` runs its block without a journal | durable journal (phase 5) |
@@ -529,6 +528,19 @@ A release executable weighs ~6.5 MB (5.4 MB stripped) and runs `examples/objects
 Every native function entry and loop iteration is a checkpoint: it reads a flag of the call's context. A ticker thread raises the flag of every running native call every 10 ms (and it starts raised), and native code then asks the host whether its task was cancelled; if so it stops with `Cancelled`, releasing everything it holds. A `race` whose losing branch is a native loop of 10¹² iterations now ends as soon as the winner does.
 
 Counting steps instead would chain every call to the previous one: an earlier version counted down in memory, then in registers passed from call to call, and both slowed `fib(38)` by 35–45 %; so did a third hidden parameter (one more register to save around each recursive call). The final version passes one pointer (depth and context) and reads one byte: `fib(38)` runs in 0.23 s, as before.
+
+### Phase 4d status: M:N green threads
+
+Tasks (`parallel_map`, `race`, `tell`, the program itself) are now green threads (`grenat_green`): stackful coroutines (`corosensei`) run by one worker thread per core. A task that waits parks and its worker runs another one:
+
+- the agent's turn, waiting for tasks, `parallel_map`/`race` results use green primitives (`Mutex`, `Condvar`, channel) that park the task, not the thread;
+- `sleep` registers with a timer thread; LLM calls and standard input run on a separate thread (`blocking`) while the task parks;
+- scheduling is cooperative: the interpreter yields every 4096 calls or loop iterations, native code at its checkpoints (every 10 ms);
+- stacks are reserved (512 MB for the program, 16 MB per task) and only touched pages are committed; stacks of finished tasks are reused.
+
+`parallel_map(limit: 100_000) { sleep 0.5 }` over 100,000 items: 2.8 s and 1.05 GB resident (~10 KB per waiting task); the previous version, one OS thread per task, fails to create the threads. With 10,000 tasks: 1.2 s instead of 2.4 s.
+
+Two pitfalls of stackful coroutines, handled in `grenat_green`: a task may resume on another thread, so the compiler must not reuse a thread-local's address across a suspension (the current task is only read in functions that are never inlined), and no OS lock may be held across a suspension point (the interpreter's long-held locks became green locks). A lock hands over to the next waiter by ticket, so a late wake-up (a timer firing after its sleeper left) cannot be spent on a task that no longer waits. A hang seen once while developing this was not reproduced afterwards (hundreds of runs, including under load); both fixes above address plausible causes.
 
 Next slices: whole programs compiled without the interpreter (native `main`, I/O, the agent runtime in native code); M:N green threads.
 

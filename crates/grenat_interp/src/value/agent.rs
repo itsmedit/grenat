@@ -31,8 +31,9 @@ pub struct AgentRef<'p> {
     pub ty: Arc<str>,
     /// Replaced by a fresh state when the supervisor restarts the agent.
     pub state: Mutex<Arc<Object<'p>>>,
-    /// Held while a message is being handled.
-    pub turn: Mutex<()>,
+    /// Held while a message is being handled (a green lock: waiting for
+    /// the turn parks the task, not its thread).
+    pub turn: grenat_green::Mutex<()>,
     /// Task currently handling a message (deadlock detection).
     pub owner: Mutex<Option<u64>>,
     /// Pending messages (pool load balancing).

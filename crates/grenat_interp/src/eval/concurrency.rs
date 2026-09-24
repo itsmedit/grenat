@@ -16,7 +16,7 @@ impl<'p> Interp<'p> {
         let items = Arc::new(items);
         let next = Arc::new(AtomicUsize::new(0));
         let stop = Arc::new(AtomicBool::new(false));
-        let (sender, receiver) = std::sync::mpsc::channel();
+        let (sender, receiver) = grenat_green::channel();
         for _ in 0..limit.min(count) {
             let mut child = self.fork();
             child.cancel.push(stop.clone());
@@ -73,7 +73,7 @@ impl<'p> Interp<'p> {
             return result;
         }
         let stop = Arc::new(AtomicBool::new(false));
-        let (sender, receiver) = std::sync::mpsc::channel();
+        let (sender, receiver) = grenat_green::channel();
         for (i, branch) in branches.iter().enumerate() {
             let mut child = self.fork();
             child.cancel.push(stop.clone());

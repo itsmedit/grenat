@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicU64};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Mutex};
 
 use grenat_ast::{FnDef, Handler, Program};
 use grenat_llm::{ModelConfig, Provider};
@@ -65,9 +65,9 @@ pub(crate) struct Shared<'p> {
     pub pool_pick: Mutex<()>,
     /// Deadlock detection: task → agent it waits for.
     pub waits: Mutex<HashMap<u64, Arc<AgentRef<'p>>>>,
-    /// Secondary tasks in flight.
-    pub active: Mutex<usize>,
-    pub idle: Condvar,
+    /// Secondary tasks in flight (green primitives: waiting parks the task).
+    pub active: grenat_green::Mutex<usize>,
+    pub idle: grenat_green::Condvar,
     /// Native code for the eligible functions: compiled by the JIT, or
     /// linked into the executable (`grenat build`).
     pub jit: Option<grenat_codegen::Native>,
@@ -87,6 +87,8 @@ pub(crate) struct Interp<'p> {
     pub max_depth: usize,
     /// Cancellation flags of this task and its ancestors (`race`, `parallel_map`).
     pub cancel: Vec<Arc<AtomicBool>>,
+    /// Counts cancellation checks, to yield now and then.
+    pub steps: std::cell::Cell<u32>,
     pub task_id: u64,
     /// Turns a real exhaustion of this thread's stack into `StackOverflow`.
     pub stack: crate::stack::StackGuard,
@@ -124,8 +126,8 @@ impl<'p> Interp<'p> {
             next_id: AtomicU64::new(1),
             pool_pick: Mutex::new(()),
             waits: Mutex::new(HashMap::new()),
-            active: Mutex::new(0),
-            idle: Condvar::new(),
+            active: grenat_green::Mutex::new(0),
+            idle: grenat_green::Condvar::new(),
             jit: None,
         };
         let loaded = shared.load();
@@ -148,6 +150,7 @@ impl<'p> Interp<'p> {
             depth: 0,
             max_depth: MAX_DEPTH,
             cancel: Vec::new(),
+            steps: Default::default(),
             task_id: 0,
             stack: crate::stack::StackGuard::here(crate::stack::MAIN_STACK),
         };

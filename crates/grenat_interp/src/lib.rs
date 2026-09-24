@@ -90,8 +90,8 @@ impl Default for Options {
 /// Runs the top-level statements, then `main` if it exists.
 /// Waits for every spawned task (`tell`, `race` losers) to finish.
 pub fn run_main(program: &Program, args: Vec<String>, options: Options) -> Result<Summary, RuntimeError> {
-    on_interpreter_thread(|scope| {
-        let mut interp = Interp::new(program, options, spawner(scope))?;
+    on_interpreter_thread(|green| {
+        let mut interp = Interp::new(program, options, spawner(green))?;
         let result = interp.run_script().and_then(|()| match interp.fns.get("main").copied() {
             Some(main) => {
                 let mut call_args = Args::default();
@@ -114,8 +114,8 @@ pub fn run_main(program: &Program, args: Vec<String>, options: Options) -> Resul
 
 /// Runs the script (which registers the `test "…" do … end` blocks), then each test.
 pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>, RuntimeError> {
-    on_interpreter_thread(|scope| {
-        let mut interp = Interp::new(program, options, spawner(scope))?;
+    on_interpreter_thread(|green| {
+        let mut interp = Interp::new(program, options, spawner(green))?;
         if let Err(ctrl) = interp.run_script() {
             return Err(interp.runtime_error(ctrl));
         }
@@ -133,19 +133,18 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
     })
 }
 
-/// Runs `work` on a thread with the interpreter's stack, inside a scope that
-/// outlives every task it spawns: callers need no particular stack themselves.
+/// Runs `work` as the first green task (with the interpreter's stack), on a
+/// pool of worker threads, and returns once every task it spawned has
+/// finished: callers need no particular stack themselves.
 fn on_interpreter_thread<'e, T, F>(work: F) -> T
 where
     T: Send + 'e,
-    F: for<'s> FnOnce(&'s std::thread::Scope<'s, 'e>) -> T + Send + 'e,
+    F: FnOnce(&grenat_green::Spawner<'e>) -> T + Send + 'e,
 {
-    std::thread::scope(|scope| {
-        std::thread::Builder::new()
-            .stack_size(stack::MAIN_STACK)
-            .spawn_scoped(scope, move || work(scope))
-            .expect("spawning the interpreter thread")
-            .join()
-            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-    })
+    let config = grenat_green::Config {
+        main_stack: stack::MAIN_STACK,
+        task_stack: stack::TASK_STACK,
+        ..grenat_green::Config::default()
+    };
+    grenat_green::run(config, work)
 }

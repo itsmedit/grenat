@@ -155,7 +155,7 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs_f64(seconds);
             while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()) {
                 interp.check_cancel()?;
-                std::thread::sleep(left.min(std::time::Duration::from_millis(20)));
+                grenat_green::sleep(left.min(std::time::Duration::from_millis(20)));
             }
             interp.check_cancel()?;
             Ok(Value::Nil)

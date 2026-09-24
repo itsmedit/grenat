@@ -156,3 +156,18 @@ end
 ";
     assert_eq!(run(src), "recursion too deep\n");
 }
+
+#[test]
+fn ten_thousand_tasks_wait_together_on_a_few_threads() {
+    // green threads: a sleeping task parks, it does not hold an OS thread
+    let src = "\
+xs = (1..10000).to_a.parallel_map(limit: 10000) do |x|
+  sleep 0.2
+  x * 2
+end
+p [xs.length, xs.sum]
+";
+    let started = std::time::Instant::now();
+    assert_eq!(run(src), "[10000, 100010000]\n");
+    assert!(started.elapsed() < std::time::Duration::from_secs(10), "{:?}", started.elapsed());
+}

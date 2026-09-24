@@ -12,6 +12,7 @@ grenat_ast.workspace = true
 grenat_llm.workspace = true
 grenat_codegen.workspace = true
 grenat_runtime.workspace = true
+grenat_green.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
