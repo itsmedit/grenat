@@ -1,0 +1,19 @@
+[package]
+name = "grenat_host"
+description = "Host library linked into the executables built by `grenat build`"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+# it defines `main`: tested end to end through `grenat build` (see grenat_cli)
+test = false
+doctest = false
+
+[dependencies]
+grenat_codegen.workspace = true
+grenat_driver.workspace = true
+grenat_interp.workspace = true

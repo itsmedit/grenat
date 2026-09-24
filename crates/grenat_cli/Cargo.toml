@@ -17,3 +17,5 @@ grenat_ast.workspace = true
 grenat_parser.workspace = true
 grenat_interp.workspace = true
 grenat_types.workspace = true
+grenat_driver.workspace = true
+grenat_codegen.workspace = true

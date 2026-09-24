@@ -10,13 +10,14 @@
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{InstBuilder, Value, types};
 use cranelift_frontend::Variable;
-use grenat_ast::{Arg, Expr, ExprKind, StrSeg};
+use grenat_ast::{Expr, ExprKind};
 use grenat_runtime::layout;
 
 use super::Translator;
 use crate::abi::DEOPT;
 use crate::runtime::Rt;
 use crate::ty::Ty;
+use crate::walk::mentions;
 
 /// A value being computed.
 #[derive(Debug, Clone, Copy)]
@@ -231,36 +232,5 @@ impl Translator<'_, '_> {
         self.b.def_var(token, memory);
         self.reuse.last_mut().expect("checked").source = Some(held.ty);
         true
-    }
-}
-
-/// `e` mentions variable `name` (reads or assigns it).
-pub(super) fn mentions(e: &Expr, name: &str) -> bool {
-    let any = |es: &[Expr]| es.iter().any(|e| mentions(e, name));
-    let arg = |a: &Arg| match a {
-        Arg::Pos(e) | Arg::BlockPass(e) | Arg::Named { value: Some(e), .. } => mentions(e, name),
-        Arg::Named { name: n, value: None } => n.name == name,
-    };
-    match &e.kind {
-        ExprKind::Var(n) => n == name,
-        ExprKind::Str(segs) => segs.iter().any(|s| matches!(s, StrSeg::Interp(e) if mentions(e, name))),
-        ExprKind::Array(items) => any(items),
-        ExprKind::Assign { target, value } | ExprKind::OpAssign { target, value, .. } => {
-            mentions(target, name) || mentions(value, name)
-        }
-        ExprKind::Binary { lhs, rhs, .. } => mentions(lhs, name) || mentions(rhs, name),
-        ExprKind::Unary { expr, .. } => mentions(expr, name),
-        ExprKind::If { cond, then, else_ } => {
-            mentions(cond, name) || any(then) || else_.as_deref().is_some_and(any)
-        }
-        ExprKind::While { cond, body } => mentions(cond, name) || any(body),
-        ExprKind::Return(value) => value.as_deref().is_some_and(|v| mentions(v, name)),
-        ExprKind::Index { recv, args } => mentions(recv, name) || any(args),
-        ExprKind::Call { recv, args, block, .. } => {
-            recv.as_deref().is_some_and(|r| mentions(r, name))
-                || args.iter().any(arg)
-                || block.as_deref().is_some_and(|b| any(&b.body.stmts))
-        }
-        _ => false,
     }
 }

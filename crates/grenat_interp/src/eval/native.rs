@@ -1,4 +1,4 @@
-//! Calls into the native code compiled by the JIT.
+//! Calls into native code (compiled by the JIT, or linked into the executable).
 //!
 //! Values are copied to native code and back. Arrays being references, the
 //! content of every array argument is written back after the call, and an
@@ -65,14 +65,17 @@ impl<'p> Interp<'p> {
     }
 
     /// With `--log`: which functions run as native code, and why the others do not.
-    pub(crate) fn log_jit(&self) {
+    /// `[jit]` for code compiled at load time, `[aot]` for code linked into
+    /// the executable.
+    pub(crate) fn log_jit(&self, linked: bool) {
         let Some(jit) = &self.jit else { return };
+        let tag = if linked { "aot" } else { "jit" };
         let report = jit.report();
         if !report.compiled.is_empty() {
-            self.write_err(&format!("[jit] native: {}\n", report.compiled.join(", ")));
+            self.write_err(&format!("[{tag}] native: {}\n", report.compiled.join(", ")));
         }
         for (name, reason) in &report.interpreted {
-            self.write_err(&format!("[jit] `{name}` stays interpreted: it {reason}\n"));
+            self.write_err(&format!("[{tag}] `{name}` stays interpreted: it {reason}\n"));
         }
     }
 }

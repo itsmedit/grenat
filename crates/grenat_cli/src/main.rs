@@ -1,10 +1,12 @@
 //! `grenat`: entry point of the toolchain.
 
-mod report;
+mod build;
+mod link;
 
-use std::io::IsTerminal;
+use std::env;
 use std::process::ExitCode;
-use std::{env, fs};
+
+use grenat_driver::{execute, load, log_from_env, native_from_env, read, render_runtime_error, report};
 
 use grenat_lexer::{StrPart, TokenKind};
 
@@ -14,6 +16,8 @@ grenat — an agentic programming language
 Usage:
   grenat run [--log] [--unchecked] [--no-jit] <file.grn> [args…]
                                  check, then run the program (and `main`)
+  grenat build <file.grn> [-o <executable>]
+                                 compile the program ahead of time into an executable
   grenat test <file.grn>...      run the `test \"…\" do … end` blocks
   grenat check <file.grn>...     check names, types, effects and taint
   grenat parse <file.grn>        print the syntax tree
@@ -23,7 +27,10 @@ Usage:
 Environment variables:
   ANTHROPIC_API_KEY   Claude API key (prompts and agents)
   GRENAT_LOG=1        log every LLM and tool call, and what the JIT compiled (same as --log)
-  GRENAT_JIT=0        interpret everything (same as --no-jit)
+  GRENAT_JIT=0        interpret everything (same as --no-jit; also in built executables)
+  GRENAT_HOME         where `grenat build` finds lib/grenat/libgrenat_host.a
+  GRENAT_KEEP_OBJECT  keep the object file of `grenat build` (in the temporary directory)
+  CC                  the linker used by `grenat build` (default: cc)
 ";
 
 fn main() -> ExitCode {
@@ -34,7 +41,8 @@ fn main() -> ExitCode {
         Some("tokens") if args.len() == 2 => dump_tokens(&args[1]),
         Some("run") if args.len() > 1 => run(&args[1..]),
         Some("test") if args.len() > 1 => test(&args[1..]),
-        Some(cmd @ ("build" | "eval" | "fmt")) => {
+        Some("build") if args.len() > 1 => build::build(&args[1..]),
+        Some(cmd @ ("eval" | "fmt")) => {
             eprintln!("`grenat {cmd}` is coming in a later phase (see the roadmap in SPEC.md)");
             ExitCode::FAILURE
         }
@@ -51,23 +59,6 @@ fn main() -> ExitCode {
             ExitCode::from(2)
         }
     }
-}
-
-fn read(path: &str) -> Option<String> {
-    fs::read_to_string(path).map_err(|e| eprintln!("error: cannot read {path}: {e}")).ok()
-}
-
-fn use_color() -> bool {
-    std::io::stderr().is_terminal() && env::var_os("NO_COLOR").is_none()
-}
-
-/// Prints the diagnostics; returns `true` if the file is valid.
-fn report(path: &str, src: &str, diagnostics: &[grenat_parser::Diagnostic]) -> bool {
-    let color = use_color();
-    for diag in diagnostics {
-        eprint!("{}", report::render(path, src, diag, color));
-    }
-    diagnostics.is_empty()
 }
 
 fn check(paths: &[String]) -> ExitCode {
@@ -87,32 +78,9 @@ fn check(paths: &[String]) -> ExitCode {
     }
 }
 
-/// Parses and checks `path` (unless `unchecked`); `None` if the file is invalid.
-fn load(path: &str, unchecked: bool) -> Option<(String, grenat_ast::Program)> {
-    let src = read(path)?;
-    let parsed = grenat_parser::parse(&src);
-    if !report(path, &src, &parsed.diagnostics) {
-        return None;
-    }
-    if !unchecked && !report(path, &src, &grenat_types::check(&parsed.program)) {
-        return None;
-    }
-    Some((src, parsed.program))
-}
-
-fn render_runtime_error(path: &str, src: &str, error: &grenat_interp::RuntimeError) {
-    let mut diag =
-        grenat_parser::Diagnostic::new(error.span.unwrap_or_default(), format!("{}: {}", error.ty, error.message));
-    for (function, span) in &error.trace {
-        diag = diag.with_note(*span, format!("in `{function}`"));
-    }
-    eprint!("{}", report::render(path, src, &diag, use_color()));
-}
-
 fn run(args: &[String]) -> ExitCode {
     let mut args = args;
-    let (mut log, mut unchecked) = (env::var_os("GRENAT_LOG").is_some_and(|v| v != "0"), false);
-    let mut jit = env::var_os("GRENAT_JIT").is_none_or(|v| v != "0");
+    let (mut log, mut unchecked, mut jit) = (log_from_env(), false, native_from_env());
     while let Some(flag) = args.first().filter(|a| a.starts_with("--")) {
         match flag.as_str() {
             "--log" => log = true,
@@ -130,24 +98,8 @@ fn run(args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     };
     let Some((src, program)) = load(path, unchecked) else { return ExitCode::FAILURE };
-    let program_args = args[1..].to_vec();
     let options = grenat_interp::Options { log, jit, ..Default::default() };
-    match grenat_interp::run_main(&program, program_args, options) {
-        Ok(summary) => {
-            if summary.llm_calls > 0 {
-                let line = format!(
-                    "— {} LLM call(s) · {} tokens · ${:.4}",
-                    summary.llm_calls, summary.tokens, summary.cost_usd
-                );
-                eprintln!("{}", if use_color() { format!("\x1b[2m{line}\x1b[0m") } else { line });
-            }
-            ExitCode::from(summary.exit_code.clamp(0, 255) as u8)
-        }
-        Err(error) => {
-            render_runtime_error(path, &src, &error);
-            ExitCode::FAILURE
-        }
-    }
+    ExitCode::from(execute(path, &src, &program, args[1..].to_vec(), options))
 }
 
 fn test(paths: &[String]) -> ExitCode {
@@ -194,7 +146,7 @@ fn dump_tokens(path: &str) -> ExitCode {
     let Some(src) = read(path) else { return ExitCode::FAILURE };
     let lexed = grenat_lexer::lex(&src);
     for tok in &lexed.tokens {
-        let (line, col) = report::line_col(&src, tok.span.start as usize);
+        let (line, col) = grenat_driver::report::line_col(&src, tok.span.start as usize);
         println!("{line:>4}:{col:<4} {}", describe(&tok.kind));
     }
     let diagnostics: Vec<_> =

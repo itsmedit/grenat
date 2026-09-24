@@ -52,6 +52,7 @@ impl Record {
     }
 }
 
-pub(crate) extern "C" fn grenat_record_alloc(fields: i64) -> *mut u64 {
+#[unsafe(no_mangle)]
+pub extern "C" fn grenat_record_alloc(fields: i64) -> *mut u64 {
     Record::alloc(fields as usize)
 }

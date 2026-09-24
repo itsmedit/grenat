@@ -68,8 +68,9 @@ pub(crate) struct Shared<'p> {
     /// Secondary tasks in flight.
     pub active: Mutex<usize>,
     pub idle: Condvar,
-    /// Native code for the eligible numeric functions, when the JIT is enabled.
-    pub jit: Option<grenat_codegen::Jit>,
+    /// Native code for the eligible functions: compiled by the JIT, or
+    /// linked into the executable (`grenat build`).
+    pub jit: Option<grenat_codegen::Native>,
 }
 
 /// An execution task: its call stack, budgets and capabilities.
@@ -128,9 +129,15 @@ impl<'p> Interp<'p> {
             jit: None,
         };
         let loaded = shared.load();
-        if options.jit {
-            shared.jit = grenat_codegen::Jit::compile(program).ok();
-        }
+        let mut link_error = None;
+        shared.jit = match (options.jit, options.linked) {
+            (false, _) => None,
+            (true, None) => grenat_codegen::Native::compile(program).ok(),
+            // SAFETY: `linked` is the image of this executable, whose source `program` comes from
+            (true, Some(image)) => unsafe { grenat_codegen::Native::link(program, image) }
+                .map_err(|e| link_error = Some(e))
+                .ok(),
+        };
         let mut interp = Interp {
             shared: Arc::new(shared),
             frames: vec![Frame { self_val: None, scope: new_scope(None) }],
@@ -145,8 +152,12 @@ impl<'p> Interp<'p> {
             stack: crate::stack::StackGuard::here(crate::stack::MAIN_STACK),
         };
         loaded.and_then(|()| interp.load_models()).map_err(|ctrl| interp.runtime_error(ctrl))?;
+        if let Some(error) = link_error {
+            // everything still runs, interpreted
+            interp.write_err(&format!("warning: native code not loaded: {error}\n"));
+        }
         if interp.log {
-            interp.log_jit();
+            interp.log_jit(options.linked.is_some());
         }
         Ok(interp)
     }

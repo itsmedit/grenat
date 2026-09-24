@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 
 use cranelift_codegen::ir::{AbiParam, FuncRef, Function, Type, types};
-use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Linkage, Module};
 
 /// A function of `grenat_runtime`.
@@ -124,7 +123,7 @@ pub(crate) struct Runtime {
 pub(crate) type RuntimeRefs = HashMap<Rt, FuncRef>;
 
 impl Runtime {
-    pub fn declare(module: &mut JITModule) -> Result<Runtime, String> {
+    pub fn declare(module: &mut impl Module) -> Result<Runtime, String> {
         let ids = Rt::ALL
             .iter()
             .map(|&rt| {
@@ -139,7 +138,7 @@ impl Runtime {
         Ok(Runtime { ids })
     }
 
-    pub fn import(&self, module: &mut JITModule, func: &mut Function) -> RuntimeRefs {
+    pub fn import(&self, module: &mut impl Module, func: &mut Function) -> RuntimeRefs {
         self.ids.iter().map(|(rt, id)| (*rt, module.declare_func_in_func(*id, func))).collect()
     }
 }

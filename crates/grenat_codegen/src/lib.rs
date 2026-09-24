@@ -16,21 +16,27 @@
 //! code that meets something it cannot represent (`nil`) *deoptimizes*: the
 //! interpreter runs the call again. Results and errors are identical.
 //!
-//! Next: ahead-of-time compilation to an executable (`grenat build`).
+//! The same code is emitted in memory when a program loads ([`Native::compile`],
+//! the JIT) or into an object file linked into an executable ([`aot`],
+//! `grenat build`).
 
 mod abi;
+pub mod aot;
 mod data;
 mod eligibility;
+mod emit;
 mod infer;
 mod jit;
 mod liveness;
 mod marshal;
+mod native;
 mod runtime;
 mod shapes;
 mod structs;
 mod translate;
 mod ty;
+mod walk;
 
 pub use abi::{Failure, Trap};
 pub use data::{Data, Returned};
-pub use jit::{Jit, Report};
+pub use native::{Native, Report};

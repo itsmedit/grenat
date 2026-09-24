@@ -11,12 +11,10 @@ use crate::runtime::Rt;
 use crate::ty::Ty;
 
 impl Translator<'_, '_> {
-    /// Address and length of literal bytes kept alive with the compiled code.
+    /// Address and length of the bytes of a literal (data of the module).
     fn literal(&mut self, text: &str) -> (Value, Value) {
-        let bytes: Box<[u8]> = text.as_bytes().into();
-        let ptr = bytes.as_ptr() as i64;
-        self.literals.push(bytes);
-        (self.b.ins().iconst(types::I64, ptr), self.b.ins().iconst(types::I64, text.len() as i64))
+        let data = self.env.literals[text];
+        (self.b.ins().symbol_value(types::I64, data), self.b.ins().iconst(types::I64, text.len() as i64))
     }
 
     /// A new string holding `text`.

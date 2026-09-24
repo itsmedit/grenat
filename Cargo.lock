@@ -263,6 +263,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cranelift-object"
+version = "0.136.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c494329c82e01f560d2d53bfd40a9a2d79b34051bed0430212e883c07e977a1"
+dependencies = [
+ "anyhow",
+ "cranelift-codegen",
+ "cranelift-control",
+ "cranelift-module",
+ "gimli",
+ "log",
+ "object",
+ "target-lexicon",
+]
+
+[[package]]
 name = "cranelift-srcgen"
 version = "0.136.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -382,6 +398,8 @@ name = "grenat_cli"
 version = "0.1.0"
 dependencies = [
  "grenat_ast",
+ "grenat_codegen",
+ "grenat_driver",
  "grenat_interp",
  "grenat_lexer",
  "grenat_parser",
@@ -397,9 +415,30 @@ dependencies = [
  "cranelift-jit",
  "cranelift-module",
  "cranelift-native",
+ "cranelift-object",
  "grenat_ast",
  "grenat_parser",
  "grenat_runtime",
+]
+
+[[package]]
+name = "grenat_driver"
+version = "0.1.0"
+dependencies = [
+ "grenat_ast",
+ "grenat_interp",
+ "grenat_lexer",
+ "grenat_parser",
+ "grenat_types",
+]
+
+[[package]]
+name = "grenat_host"
+version = "0.1.0"
+dependencies = [
+ "grenat_codegen",
+ "grenat_driver",
+ "grenat_interp",
 ]
 
 [[package]]
@@ -672,6 +711,18 @@ name = "num-conv"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521739c6d2bac4aa25192232afe6841231376b2b26d4d9fae5ecf8ca5772e441"
+
+[[package]]
+name = "object"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd229a0361b9d0d4396176e02d65897f487eebeab7caa6d443855ee152ca0b9c"
+dependencies = [
+ "crc32fast",
+ "hashbrown 0.17.1",
+ "indexmap",
+ "memchr",
+]
 
 [[package]]
 name = "once_cell"

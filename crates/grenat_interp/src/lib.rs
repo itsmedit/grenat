@@ -75,13 +75,15 @@ pub struct Options {
     pub input: Option<VecDeque<String>>,
     /// Logs every LLM and tool call to standard error.
     pub log: bool,
-    /// Compiles eligible numeric functions to native code (see `grenat_codegen`).
+    /// Runs eligible functions as native code (see `grenat_codegen`).
     pub jit: bool,
+    /// Native code linked into this executable (`grenat build`), instead of the JIT.
+    pub linked: Option<&'static grenat_codegen::aot::Image>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { provider: None, output: Output::Stdout, input: None, log: false, jit: true }
+        Options { provider: None, output: Output::Stdout, input: None, log: false, jit: true, linked: None }
     }
 }
 

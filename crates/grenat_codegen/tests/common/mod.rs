@@ -2,15 +2,15 @@
 #![allow(dead_code)]
 
 use grenat_ast::{FnDef, Item, Program};
-use grenat_codegen::{Data, Failure, Jit, Returned, Trap};
+use grenat_codegen::{Data, Failure, Native, Returned, Trap};
 use grenat_runtime::live_objects;
 
 /// Parses `src` (leaked: the JIT is keyed by the program's AST) and compiles it.
-pub fn compile(src: &str) -> (&'static Program, Jit) {
+pub fn compile(src: &str) -> (&'static Program, Native) {
     let parsed = grenat_parser::parse(src);
     assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
     let program: &'static Program = Box::leak(Box::new(parsed.program));
-    let jit = Jit::compile(program).expect("compilation");
+    let jit = Native::compile(program).expect("compilation");
     (program, jit)
 }
 
@@ -27,7 +27,7 @@ pub fn function<'p>(program: &'p Program, name: &str) -> &'p FnDef {
 
 /// Calls a compiled function; panics if it was not compiled, and if the call
 /// leaves any object alive (every call must free what it allocates, errors included).
-pub fn call_full(program: &Program, jit: &Jit, name: &str, args: &[Data]) -> Result<Returned, Failure> {
+pub fn call_full(program: &Program, jit: &Native, name: &str, args: &[Data]) -> Result<Returned, Failure> {
     let before = live_objects();
     let result = jit.call(function(program, name), args, 10_000).unwrap_or_else(|| panic!("`{name}` is not compiled"));
     assert_eq!(live_objects(), before, "`{name}` leaks objects");
@@ -35,7 +35,7 @@ pub fn call_full(program: &Program, jit: &Jit, name: &str, args: &[Data]) -> Res
 }
 
 /// The value of a call that neither deoptimizes nor needs its arrays back.
-pub fn call(program: &Program, jit: &Jit, name: &str, args: &[Data]) -> Result<Data, Trap> {
+pub fn call(program: &Program, jit: &Native, name: &str, args: &[Data]) -> Result<Data, Trap> {
     match call_full(program, jit, name, args) {
         Ok(returned) => Ok(returned.value),
         Err(Failure::Trap(trap)) => Err(trap),

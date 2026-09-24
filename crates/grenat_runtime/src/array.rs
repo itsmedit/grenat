@@ -68,18 +68,21 @@ impl Arr {
 
 // ── Functions called by compiled code ─────────────────────────
 
-pub(crate) extern "C" fn grenat_array_new(capacity: i64) -> *mut Arr {
+#[unsafe(no_mangle)]
+pub extern "C" fn grenat_array_new(capacity: i64) -> *mut Arr {
     Arr::new(Vec::with_capacity(capacity.max(0) as usize))
 }
 
 /// Appends `bits`, whose reference (if any) is transferred to the array.
-pub(crate) unsafe extern "C" fn grenat_array_push(a: *mut Arr, bits: u64) {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grenat_array_push(a: *mut Arr, bits: u64) {
     // SAFETY: live array
     unsafe { Arr::update(a, |items| items.push(bits)) }
 }
 
 /// A new array with the elements of `a` then `b`; `heap`: the elements are objects.
-pub(crate) unsafe extern "C" fn grenat_array_concat(a: *const Arr, b: *const Arr, heap: i64) -> *mut Arr {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grenat_array_concat(a: *const Arr, b: *const Arr, heap: i64) -> *mut Arr {
     // SAFETY: live arrays; each copied object gains a reference
     unsafe {
         let items: Vec<u64> = Arr::items(a).iter().chain(Arr::items(b)).copied().collect();
@@ -91,7 +94,8 @@ pub(crate) unsafe extern "C" fn grenat_array_concat(a: *const Arr, b: *const Arr
 }
 
 /// A shallow copy of `a` (`dup`, or the snapshot iterated by `each`).
-pub(crate) unsafe extern "C" fn grenat_array_copy(a: *const Arr, heap: i64) -> *mut Arr {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grenat_array_copy(a: *const Arr, heap: i64) -> *mut Arr {
     // SAFETY: live array; each copied object gains a reference
     unsafe {
         let items = Arr::items(a).to_vec();

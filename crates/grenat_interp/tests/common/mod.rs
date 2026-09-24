@@ -62,6 +62,7 @@ pub fn run_mode(src: &str, provider: Scripted, input: &[&str], args: &[&str], mo
         input: Some(input.iter().map(|s| s.to_string()).collect::<VecDeque<_>>()),
         log: mode.log,
         jit: mode.jit,
+        linked: None,
     };
     let started = Instant::now();
     // run_main runs the interpreter on its own large stack

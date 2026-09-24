@@ -341,6 +341,8 @@ grenat/
 │   │                     #   LLM clients (Anthropic, OpenAI, Ollama), budgets,
 │   │                     #   durable journal (SQLite), wasmtime sandbox
 │   ├── grenat_interp     # HIR interpreter (phase 1, to validate the semantics)
+│   ├── grenat_driver     # load, check and run a program: shared by the CLI and built executables
+│   ├── grenat_host       # static library linked into every executable (runtime + interpreter + main)
 │   └── grenat_cli        # grenat run | build | test | eval | fmt
 └── std/                  # standard library written in Grenat
 ```
@@ -390,7 +392,7 @@ Goal: `brew install grenat` on macOS, `yay -S grenat` on Arch / Omarchy, with no
 
 | Constraint | Decision |
 |---|---|
-| Grenat is a compiler that links a runtime | `libgrenat_runtime.a` and `std/` are looked up **relative to the executable** (`<prefix>/bin/grenat` → `<prefix>/lib/grenat/`, `<prefix>/share/grenat/std/`), overridable with `GRENAT_HOME`. Works under `/opt/homebrew`, `/usr` and `~/.cargo` |
+| Grenat is a compiler that links a runtime | `libgrenat_host.a` (the runtime and the interpreter, linked into every executable `grenat build` produces) and `std/` are looked up **relative to the executable** (`<prefix>/bin/grenat` → `<prefix>/lib/grenat/`, `<prefix>/share/grenat/std/`), overridable with `GRENAT_HOME`. Works under `/opt/homebrew`, `/usr` and `~/.cargo`; in a Cargo build, next to `target/*/grenat` |
 | Linker | the system `cc` (Xcode CLT on macOS, `gcc` on Arch), the only runtime dependency |
 | No system dependencies | `rustls` (no OpenSSL), bundled SQLite (`rusqlite`, `bundled` feature) |
 | LLVM is heavy (~100 MB) | **Cranelift by default**, embedded and pure Rust. LLVM as an optional feature |
@@ -400,7 +402,7 @@ Installed layout:
 
 ```
 <prefix>/bin/grenat
-<prefix>/lib/grenat/libgrenat_runtime.a
+<prefix>/lib/grenat/libgrenat_host.a
 <prefix>/share/grenat/std/…
 ```
 
@@ -415,7 +417,7 @@ Installed layout:
 | **1** ✅ | Interpreter, `prompt`, `tool`, agents, budgets, taint, Anthropic client, `grenat run/test` | the first agent runs |
 | **2** ✅ | Names, types, effects and `~T` taint checked **before execution**; capabilities enforced at run time | security errors before execution |
 | **3** ✅ | Concurrent actor agents, real `parallel_map`/`race`, cancellation, deadlock detection, supervision | multi-agent |
-| **4** 🚧 | Cranelift codegen (4a ✅ JIT for numeric functions, 4b ✅ strings/arrays/structs with Perceus RC), then `grenat build` | fast native binaries |
+| **4** 🚧 | Cranelift codegen (4a ✅ JIT for numeric functions, 4b ✅ strings/arrays/structs with Perceus RC, 4c ✅ `grenat build`), then M:N green threads | fast native binaries |
 | **5** | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
 | **6** | LSP, LLVM release builds, macros, package manager | ecosystem |
 
@@ -457,7 +459,7 @@ Temporary simplifications, lifted in later phases:
 |---|---|
 | Gradual typing, `T?` accepted where `T` is expected | full inference, `nil` checking |
 | Tasks are OS threads (128 MB of reserved, virtual stack) | M:N green threads with native code (later phase 4 slice) |
-| Native functions cover numbers, strings, arrays, structs, not hashes, enums, closures or agents; a native loop is not cancellable mid-run; values cross the interpreter boundary by copy | whole programs compiled ahead of time (`grenat build`), cancellation checkpoints in native loops |
+| Native functions cover numbers, strings, arrays, structs, not hashes, enums, closures or agents; a native loop is not cancellable mid-run; values cross the interpreter boundary by copy; a built executable embeds the interpreter for the rest | whole programs compiled natively, cancellation checkpoints in native loops |
 | A cancelled task finishes its in-flight LLM call (billed) before stopping | cancellation of in-flight HTTP requests |
 | `step` runs its block without a journal | durable journal (phase 5) |
 | The `net("host")` restriction is only checked statically | HTTP client in the standard library |
@@ -506,7 +508,23 @@ What native code cannot represent — `nil` from `xs[99]` or `[].first`, an assi
 
 The gap to Rust comes from the copies at the boundary (the 149,000 primes cross it three times), an allocation per `to_s`, and reference counts Rust does not need for a `Copy` struct.
 
-Next slices: `grenat build` (ahead-of-time compilation to an executable, linked with the runtime); M:N green threads on top of native code.
+### Phase 4c status: `grenat build`
+
+```sh
+grenat build app.grn            # → ./app
+grenat build app.grn -o bin/app
+./app arg1 arg2                 # no `grenat`, no source file, nothing compiled at run time
+```
+
+`grenat build` checks the program, then compiles its eligible functions **ahead of time**: the same Cranelift code as the JIT, emitted into an object file (`cranelift-object`) instead of memory. The object also holds an *image*, exported as `grenat_image`: the program's source, the names of the compiled functions, their entry points, and the table of shapes. The system `cc` links it with `libgrenat_host.a`, a static library containing the runtime, the interpreter and a `main`.
+
+At startup the executable parses its embedded source, links its native functions (it checks that they are exactly the ones this version would compile, then fills the table of shapes), and runs the program as `grenat run` does: same output, same exit code, same errors, `GRENAT_LOG` shows `[aot] native: …`. The CLI and the executables share `grenat_driver`, so they cannot drift apart.
+
+To make one code generator serve both, compiled code embeds no absolute address: string literals are data of the module and shapes are read from a table filled at load time. Two details found on the way: data holding pointers must be 8-byte aligned, and must not be zero-fill (`bss`) since such a section cannot carry relocations — Apple's linker crashes instead of reporting it.
+
+A release executable weighs ~6.5 MB (5.4 MB stripped) and runs `examples/objects.grn` in 0.05 s, as fast as the JIT: what runs natively is identical, only the compilation moved to build time.
+
+Next slices: whole programs compiled without the interpreter (native `main`, I/O, the agent runtime in native code); M:N green threads.
 
 For the models that recommend it (`claude-opus-5`, `claude-fable-5-1`), the client enables server-side fallbacks (`fallbacks: "default"`): a request refused by a classifier is replayed on another model instead of failing. Disable it with `model :x, …, fallbacks: false`.
 

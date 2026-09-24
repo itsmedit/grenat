@@ -17,7 +17,7 @@ mod structs;
 use std::collections::{BTreeSet, HashMap};
 
 use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::{Block, BlockArg, FuncRef, InstBuilder, MemFlagsData, Value, types};
+use cranelift_codegen::ir::{Block, BlockArg, FuncRef, GlobalValue, InstBuilder, MemFlagsData, Value, types};
 use cranelift_frontend::{FunctionBuilder, Variable};
 use grenat_ast::{BinOp, Expr, ExprKind, FnDef};
 
@@ -25,7 +25,6 @@ use crate::abi::Trap;
 use crate::infer::{Flow, Signature, Typed};
 use crate::liveness::{Edge, Plan};
 use crate::runtime::{Rt, RuntimeRefs};
-use crate::shapes::Shapes;
 use crate::structs::Structs as StructTable;
 use crate::ty::Ty;
 
@@ -39,8 +38,11 @@ pub(crate) type Callees<'a> = HashMap<&'a str, FuncRef>;
 pub(crate) struct Env<'a> {
     pub callees: &'a Callees<'a>,
     pub runtime: &'a RuntimeRefs,
-    pub shapes: &'a Shapes,
     pub structs: &'a StructTable,
+    /// The table of shapes (see [`shapes`](crate::shapes)).
+    pub shapes: GlobalValue,
+    /// The bytes of each string literal of the function.
+    pub literals: &'a HashMap<String, GlobalValue>,
 }
 
 pub(crate) struct Translator<'a, 'b> {
@@ -48,8 +50,6 @@ pub(crate) struct Translator<'a, 'b> {
     typed: &'a Typed,
     plan: &'a Plan,
     env: &'a Env<'a>,
-    /// Bytes of the string literals, alive as long as the compiled code.
-    literals: &'a mut Vec<Box<[u8]>>,
     vars: HashMap<String, (Variable, Ty)>,
     /// Recursion depth of this call and its limit, passed in registers.
     depth: Value,
@@ -76,7 +76,6 @@ impl<'a, 'b> Translator<'a, 'b> {
         typed: &'a Typed,
         plan: &'a Plan,
         env: &'a Env<'a>,
-        literals: &'a mut Vec<Box<[u8]>>,
     ) -> FunctionBuilder<'b> {
         let entry = b.create_block();
         b.append_block_params_for_function_params(entry);
@@ -92,7 +91,6 @@ impl<'a, 'b> Translator<'a, 'b> {
             typed,
             plan,
             env,
-            literals,
             vars: HashMap::new(),
             depth,
             limit,
@@ -213,8 +211,11 @@ impl<'a, 'b> Translator<'a, 'b> {
         self.b.ins().icmp_imm_s(IntCC::NotEqual, r, 0)
     }
 
+    /// Address of the shape of `ty`, read from the table.
     fn shape(&mut self, ty: Ty) -> Value {
-        self.b.ins().iconst(types::I64, self.env.shapes.of(ty) as i64)
+        let table = self.b.ins().symbol_value(types::I64, self.env.shapes);
+        let index = crate::shapes::index(ty, self.env.structs.count());
+        self.load(types::I64, table, (index * 8) as i32)
     }
 
     // ── Statements ───────────────────────────────────────────

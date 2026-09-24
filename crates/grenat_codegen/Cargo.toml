@@ -15,6 +15,7 @@ cranelift-frontend = "0.136"
 cranelift-jit = "0.136"
 cranelift-module = "0.136"
 cranelift-native = "0.136"
+cranelift-object = "0.136"
 
 [dev-dependencies]
 grenat_parser.workspace = true

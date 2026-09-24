@@ -62,7 +62,8 @@ unsafe fn release_fields(obj: *mut u8, fields: &[Slot]) -> usize {
 }
 
 /// Frees `obj`, whose last reference was just dropped by compiled code.
-pub(crate) unsafe extern "C" fn grenat_free(obj: *mut u8, shape: *const Shape) {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grenat_free(obj: *mut u8, shape: *const Shape) {
     // SAFETY: the compiler passes the shape of the object's static type
     unsafe {
         match &*shape {
@@ -79,7 +80,8 @@ pub(crate) unsafe extern "C" fn grenat_free(obj: *mut u8, shape: *const Shape) {
 /// Drops a reference to record `obj`. If it was the last one, its fields are
 /// released and its memory is returned for reuse (still counted as live);
 /// otherwise returns null.
-pub(crate) unsafe extern "C" fn grenat_drop_reuse(obj: *mut u8, shape: *const Shape) -> *mut u8 {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grenat_drop_reuse(obj: *mut u8, shape: *const Shape) -> *mut u8 {
     // SAFETY: a live record of that shape, reference owned by the caller
     unsafe {
         let rc = obj as *mut i64;
@@ -95,7 +97,8 @@ pub(crate) unsafe extern "C" fn grenat_drop_reuse(obj: *mut u8, shape: *const Sh
 
 /// Frees memory obtained by [`grenat_drop_reuse`] and never reused (an error
 /// interrupted the construction). Null is ignored.
-pub(crate) unsafe extern "C" fn grenat_free_token(token: *mut u8, shape: *const Shape) {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn grenat_free_token(token: *mut u8, shape: *const Shape) {
     if token.is_null() {
         return;
     }

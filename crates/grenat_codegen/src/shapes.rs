@@ -1,6 +1,9 @@
 //! The [`Shape`] of every heap type of a program, as the runtime needs them
-//! to release objects. Compiled code embeds their addresses: they live as
-//! long as the [`Jit`](crate::Jit) that owns them.
+//! to release objects.
+//!
+//! Compiled code does not embed their addresses (an executable is linked
+//! before they exist): it reads them from a table of pointers, filled when
+//! the code is loaded, in the order of [`index`].
 
 use std::collections::HashMap;
 
@@ -24,11 +27,18 @@ impl Shapes {
         for i in 0..structs.count() {
             record(StructId(i), structs, string, &mut records);
         }
-        let elems = [Elem::Int, Elem::Float, Elem::Bool, Elem::Str, Elem::Unknown]
-            .into_iter()
-            .chain((0..structs.count()).map(|i| Elem::Struct(StructId(i))));
-        let arrays = elems.map(|e| (e, Box::into_raw(Box::new(Shape::Array(slot(e, string, &records)))))).collect();
+        let arrays =
+            array_elems(structs.count()).map(|e| (e, Box::into_raw(Box::new(Shape::Array(slot(e, string, &records)))))).collect();
         Shapes { string, records, arrays }
+    }
+
+    /// Every shape, in table order (see [`index`]).
+    pub fn table(&self) -> Vec<*const Shape> {
+        let arrays = array_elems(self.records.len()).map(|e| self.arrays[&e] as *const Shape);
+        std::iter::once(self.string as *const Shape)
+            .chain(self.records.iter().map(|r| *r as *const Shape))
+            .chain(arrays)
+            .collect()
     }
 
     /// Shape of objects of type `ty` (a heap type).
@@ -39,6 +49,28 @@ impl Shapes {
             Ty::Array(elem) => self.arrays[&elem],
             other => unreachable!("`{other:?}` is not an object"),
         }
+    }
+}
+
+/// Element types of arrays, in table order.
+fn array_elems(structs: usize) -> impl Iterator<Item = Elem> {
+    [Elem::Int, Elem::Float, Elem::Bool, Elem::Str, Elem::Unknown]
+        .into_iter()
+        .chain((0..structs).map(|i| Elem::Struct(StructId(i))))
+}
+
+/// Number of shapes of a program with `structs` structs.
+pub(crate) fn count(structs: usize) -> usize {
+    1 + structs + array_elems(structs).count()
+}
+
+/// Position of the shape of `ty` in the table.
+pub(crate) fn index(ty: Ty, structs: usize) -> usize {
+    match ty {
+        Ty::Str => 0,
+        Ty::Struct(id) => 1 + id.0,
+        Ty::Array(elem) => 1 + structs + array_elems(structs).position(|e| e == elem).expect("an element type"),
+        other => unreachable!("`{other:?}` is not an object"),
     }
 }
 
