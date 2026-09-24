@@ -377,7 +377,7 @@ Objectif : `brew install grenat` sur macOS, `yay -S grenat` sur Arch / Omarchy, 
 
 | Canal | Commande | Quand |
 |---|---|---|
-| Tap Homebrew (`mehdifarsi/homebrew-grenat`) | `brew install mehdifarsi/grenat/grenat` | dès la v0.1 |
+| Tap Homebrew (`itsmedit/homebrew-grenat`) | `brew install itsmedit/grenat/grenat` | dès la v0.1 |
 | homebrew-core | `brew install grenat` | quand le projet est « notable » (~75 étoiles), release stable, build depuis les sources |
 | AUR `grenat` (sources) et `grenat-bin` (précompilé) | `yay -S grenat` | dès la v0.1 |
 | Dépôt Arch `extra` | `pacman -S grenat` | quand un packager Arch l'adopte |
