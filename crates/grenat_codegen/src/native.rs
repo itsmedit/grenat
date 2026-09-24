@@ -16,7 +16,6 @@ use crate::data::{Data, Returned};
 use crate::eligibility::Compiled;
 use crate::infer::Signature;
 use crate::marshal::Marshal;
-use crate::shapes::Shapes;
 use crate::structs::Structs;
 use crate::ty::Ty;
 
@@ -43,14 +42,13 @@ pub struct Native {
     entries: HashMap<usize, Entry>,
     report: Report,
     structs: Structs,
-    /// Referenced by the code through its table of shapes.
-    shapes: Shapes,
+    /// Addresses of the shapes (data of the code), in shape order.
+    shapes: Vec<*const grenat_runtime::Shape>,
     /// Keeps the code alive (the JIT's memory; nothing for linked code).
     _code: Box<dyn Any>,
 }
 
-// SAFETY: the code, the shapes and the table of shapes are never mutated once
-// loaded. Compiled functions only touch their arguments, the objects they
+// SAFETY: the code and the shapes are never mutated once loaded. Compiled functions only touch their arguments, the objects they
 // create, and a caller-owned `Context`: objects never leave the thread of the
 // call (values cross the boundary by copy), so concurrent calls from several
 // tasks never share state.
@@ -64,7 +62,7 @@ impl Native {
         trampolines: Vec<Trampoline>,
         report: Report,
         structs: Structs,
-        shapes: Shapes,
+        shapes: Vec<*const grenat_runtime::Shape>,
         code: Box<dyn Any>,
     ) -> Native {
         let entries = selected

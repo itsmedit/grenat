@@ -2,11 +2,12 @@
 //!
 //! [`object`] emits the compiled functions into an object file, together with
 //! an [`Image`] exported as `grenat_image`: the program's source, the names
-//! of the compiled functions, their trampolines and the table of shapes. The
+//! of the compiled functions, their trampolines and their shapes. The
 //! object is linked with the host library (`grenat_host`), which parses the
 //! source again at startup, runs it, and calls the linked code through
 //! [`Native::link`]: nothing is compiled at run time.
 
+use cranelift_codegen::ir::{FuncRef, GlobalValue};
 use cranelift_module::{DataDescription, DataId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use grenat_ast::Program;
@@ -15,7 +16,6 @@ use grenat_runtime::Shape;
 use crate::eligibility::select;
 use crate::emit::{emit, isa};
 use crate::native::{Native, Report, Trampoline};
-use crate::shapes::Shapes;
 use crate::structs::Structs;
 
 /// Name of the exported [`Image`].
@@ -31,13 +31,12 @@ pub struct Image {
     names_len: u64,
     functions: *const *const u8,
     function_count: u64,
-    /// Pointers to shapes, written once at startup by [`Native::link`].
-    shapes: *mut *const u8,
+    /// The shapes, in shape order (see [`shapes`](crate::shapes)).
+    shapes: *const *const Shape,
     shape_count: u64,
 }
 
-// SAFETY: an image is immutable, except its table of shapes, which
-// `Native::link` fills once before any native code runs.
+// SAFETY: an image is immutable data of the executable.
 unsafe impl Sync for Image {}
 
 impl Image {
@@ -80,28 +79,24 @@ pub fn object(program: &Program, source: &str) -> Result<Object, String> {
     let source_id = bytes(&mut module, source.as_bytes())?;
     let names_id = bytes(&mut module, names.as_bytes())?;
 
-    let functions = module.declare_anonymous_data(false, false).map_err(fail)?;
-    let mut table = DataDescription::new();
-    // explicit zeros: a zero-filled (bss) section cannot hold relocations
-    table.define(vec![0; 8 * emitted.trampolines.len().max(1)].into_boxed_slice());
-    // pointers: the linkers require them aligned
-    table.set_align(8);
-    for (i, id) in emitted.trampolines.iter().enumerate() {
-        let func = module.declare_func_in_data(*id, &mut table);
-        table.write_function_addr((i * 8) as u32, func);
-    }
-    module.define_data(functions, &table).map_err(fail)?;
+    let functions = pointers(&mut module, &emitted.trampolines, |module, id, data| {
+        let func = module.declare_func_in_data(*id, data);
+        (Some(func), None)
+    })?;
+    let shapes = pointers(&mut module, &emitted.shapes, |module, id, data| {
+        (None, Some(module.declare_data_in_data(*id, data)))
+    })?;
 
     let image = module.declare_data(IMAGE_SYMBOL, Linkage::Export, false, false).map_err(fail)?;
     let mut data = DataDescription::new();
     let mut contents = vec![0u8; 64];
-    let lengths = [source.len(), names.len(), emitted.trampolines.len(), crate::shapes::count(structs.count())];
+    let lengths = [source.len(), names.len(), emitted.trampolines.len(), emitted.shapes.len()];
     for (i, len) in lengths.into_iter().enumerate() {
         contents[16 * i + 8..16 * i + 16].copy_from_slice(&(len as u64).to_ne_bytes());
     }
     data.define(contents.into_boxed_slice());
     data.set_align(8);
-    for (i, id) in [source_id, names_id, functions, emitted.shapes].into_iter().enumerate() {
+    for (i, id) in [source_id, names_id, functions, shapes].into_iter().enumerate() {
         let global = module.declare_data_in_data(id, &mut data);
         data.write_data_addr((16 * i) as u32, global, 0);
     }
@@ -109,6 +104,29 @@ pub fn object(program: &Program, source: &str) -> Result<Object, String> {
 
     let bytes = module.finish().emit().map_err(|e| e.to_string())?;
     Ok(Object { bytes, report })
+}
+
+/// A read-only table of pointers (to functions or to data), one per item.
+fn pointers<T>(
+    module: &mut ObjectModule,
+    items: &[T],
+    target: impl Fn(&mut ObjectModule, &T, &mut DataDescription) -> (Option<FuncRef>, Option<GlobalValue>),
+) -> Result<DataId, String> {
+    let id = module.declare_anonymous_data(false, false).map_err(|e| e.to_string())?;
+    let mut data = DataDescription::new();
+    // explicit zeros: a zero-filled (bss) section cannot hold relocations
+    data.define(vec![0; 8 * items.len().max(1)].into_boxed_slice());
+    // pointers: the linkers require them aligned
+    data.set_align(8);
+    for (i, item) in items.iter().enumerate() {
+        match target(module, item, &mut data) {
+            (Some(func), _) => data.write_function_addr((i * 8) as u32, func),
+            (_, Some(global)) => data.write_data_addr((i * 8) as u32, global, 0),
+            _ => {}
+        }
+    }
+    module.define_data(id, &data).map_err(|e| e.to_string())?;
+    Ok(id)
 }
 
 /// Read-only bytes, NUL-terminated (a data object is never empty).
@@ -125,7 +143,7 @@ impl Native {
     ///
     /// # Safety
     /// `image` must be the image of this executable, and `program` parsed
-    /// from its source. Call it once: it fills the table of shapes.
+    /// from its source.
     pub unsafe fn link(program: &Program, image: &Image) -> Result<Native, String> {
         let structs = Structs::from_program(program);
         let (selected, interpreted) = select(program, &structs);
@@ -135,19 +153,18 @@ impl Native {
         if linked != compiled || image.function_count as usize != compiled.len() {
             return Err(format!("the executable was built by another version of Grenat ({linked:?} ≠ {compiled:?})"));
         }
-        let shapes = Shapes::build(&structs);
-        let pointers = shapes.table();
-        if image.shape_count as usize != pointers.len() {
+        if image.shape_count as usize != crate::shapes::count(structs.count()) {
             return Err("the executable was built by another version of Grenat (shapes)".into());
         }
-        // SAFETY: the image's writable table, of that size, read by no code yet;
-        // its functions are trampolines emitted by `object`
-        let trampolines = unsafe {
-            std::ptr::copy_nonoverlapping(pointers.as_ptr(), image.shapes as *mut *const Shape, pointers.len());
-            std::slice::from_raw_parts(image.functions, compiled.len())
+        // SAFETY: tables of the image, of those sizes; its functions are
+        // trampolines emitted by `object`
+        let (shapes, trampolines) = unsafe {
+            let shapes = std::slice::from_raw_parts(image.shapes, image.shape_count as usize).to_vec();
+            let trampolines = std::slice::from_raw_parts(image.functions, compiled.len())
                 .iter()
                 .map(|f| std::mem::transmute::<*const u8, Trampoline>(*f))
-                .collect()
+                .collect();
+            (shapes, trampolines)
         };
         let report = Report { compiled: compiled.iter().map(|s| s.to_string()).collect(), interpreted };
         Ok(Native::new(&selected, trampolines, report, structs, shapes, Box::new(())))

@@ -3,7 +3,7 @@
 
 use crate::array::Arr;
 use crate::record::Record;
-use crate::shape::{Shape, Slot};
+use crate::shape::{RECORD, STR, ARRAY, Shape, Slot};
 use crate::string::Str;
 
 /// Adds a reference to the object at `bits`.
@@ -43,9 +43,9 @@ pub unsafe fn release(obj: *mut u8, shape: *const Shape) {
 /// # Safety
 /// As [`release`], for the content of a slot.
 pub(crate) unsafe fn release_slot(bits: u64, slot: Slot) {
-    if let Slot::Heap(shape) = slot {
+    if !slot.is_null() {
         // SAFETY: a heap slot holds an owned reference to an object of that shape
-        unsafe { release(bits as *mut u8, shape) }
+        unsafe { release(bits as *mut u8, slot) }
     }
 }
 
@@ -66,11 +66,12 @@ unsafe fn release_fields(obj: *mut u8, fields: &[Slot]) -> usize {
 pub unsafe extern "C" fn grenat_free(obj: *mut u8, shape: *const Shape) {
     // SAFETY: the compiler passes the shape of the object's static type
     unsafe {
-        match &*shape {
-            Shape::Str => Str::free(obj as *mut Str),
-            Shape::Array(elem) => Arr::free(obj as *mut Arr, *elem),
-            Shape::Record(fields) => {
-                let count = release_fields(obj, fields);
+        let shape = &*shape;
+        match shape.kind() {
+            STR => Str::free(obj as *mut Str),
+            ARRAY => Arr::free(obj as *mut Arr, shape.slots()[0]),
+            _ => {
+                let count = release_fields(obj, shape.slots());
                 Record::free_memory(obj as *mut u64, count);
             }
         }
@@ -89,8 +90,8 @@ pub unsafe extern "C" fn grenat_drop_reuse(obj: *mut u8, shape: *const Shape) ->
             *rc -= 1;
             return std::ptr::null_mut();
         }
-        let Shape::Record(fields) = &*shape else { unreachable!("only records are reused") };
-        release_fields(obj, fields);
+        debug_assert_eq!((*shape).kind(), RECORD, "only records are reused");
+        release_fields(obj, (*shape).slots());
         obj
     }
 }
@@ -104,7 +105,7 @@ pub unsafe extern "C" fn grenat_free_token(token: *mut u8, shape: *const Shape) 
     }
     // SAFETY: a record of that shape whose fields are already released
     unsafe {
-        let Shape::Record(fields) = &*shape else { unreachable!("only records are reused") };
-        Record::free_memory(token as *mut u64, fields.len());
+        debug_assert_eq!((*shape).kind(), RECORD, "only records are reused");
+        Record::free_memory(token as *mut u64, (*shape).slots().len());
     }
 }

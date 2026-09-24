@@ -4,7 +4,7 @@ use crate::array::*;
 use crate::live::live_objects;
 use crate::record::*;
 use crate::release::*;
-use crate::shape::{Shape, Slot};
+use crate::shape::{ARRAY, RECORD, Shape, Slot};
 use crate::string::*;
 
 fn text(s: *const Str) -> String {
@@ -18,7 +18,7 @@ fn rc(obj: *const u8) -> i64 {
 #[test]
 fn strings_are_freed_with_their_last_reference() {
     let before = live_objects();
-    let shape = Shape::Str;
+    let shape = Shape::string();
     let s = Str::new("héllo");
     assert_eq!(live_objects(), before + 1);
     unsafe {
@@ -35,7 +35,7 @@ fn strings_are_freed_with_their_last_reference() {
 #[test]
 fn adding_to_a_unique_string_appends_in_place() {
     let before = live_objects();
-    let shape = Shape::Str;
+    let shape = Shape::string();
     unsafe {
         let a = Str::new("ab");
         let b = Str::new("cd");
@@ -56,7 +56,7 @@ fn adding_to_a_unique_string_appends_in_place() {
 
 #[test]
 fn string_methods_follow_the_interpreter() {
-    let shape = Shape::Str;
+    let shape = Shape::string();
     unsafe {
         let s = Str::new("  Grenat é ");
         let t = grenat_str_strip(s);
@@ -83,8 +83,10 @@ fn string_methods_follow_the_interpreter() {
 #[test]
 fn freeing_an_array_releases_its_elements() {
     let before = live_objects();
-    let str_shape = Shape::Str;
-    let shape = Shape::Array(Slot::Heap(&str_shape));
+    let str_shape = Shape::string();
+    let elem: [Slot; 1] = [&str_shape];
+    // SAFETY: `elem` outlives `shape`
+    let shape = unsafe { Shape::from_raw(ARRAY, elem.as_ptr(), 1) };
     unsafe {
         let shared = Str::new("shared");
         let a = grenat_array_new(0);
@@ -108,8 +110,10 @@ fn freeing_an_array_releases_its_elements() {
 #[test]
 fn a_dying_record_hands_its_memory_over() {
     let before = live_objects();
-    let str_shape = Shape::Str;
-    let shape = Shape::Record(vec![Slot::Scalar, Slot::Heap(&str_shape)]);
+    let str_shape = Shape::string();
+    let fields: [Slot; 2] = [std::ptr::null(), &str_shape];
+    // SAFETY: `fields` outlives `shape`
+    let shape = unsafe { Shape::from_raw(RECORD, fields.as_ptr(), 2) };
     unsafe {
         let r = grenat_record_alloc(2);
         Record::set(r, 0, 7);

@@ -3,13 +3,14 @@
 use grenat_runtime::{Arr, Record, Str};
 
 use crate::data::Data;
-use crate::shapes::Shapes;
+use crate::shapes;
 use crate::structs::Structs;
 use crate::ty::{Elem, Ty};
 
 pub(crate) struct Marshal<'a> {
     pub structs: &'a Structs,
-    pub shapes: &'a Shapes,
+    /// In shape order (see [`shapes`](crate::shapes)).
+    pub shapes: &'a [*const grenat_runtime::Shape],
 }
 
 impl Marshal<'_> {
@@ -86,7 +87,7 @@ impl Marshal<'_> {
     pub fn release(&self, bits: u64, ty: Ty) {
         if ty.is_heap() {
             // SAFETY: a live object of type `ty`, whose reference the caller owns
-            unsafe { grenat_runtime::release(bits as *mut u8, self.shapes.of(ty)) }
+            unsafe { grenat_runtime::release(bits as *mut u8, self.shapes[shapes::index(ty, self.structs.count())]) }
         }
     }
 

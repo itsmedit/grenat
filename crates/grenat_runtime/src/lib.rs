@@ -30,7 +30,7 @@ pub use live::{allocations, live_objects};
 pub use poll::{Poll, TICK as POLL_TICK, polled};
 pub use record::Record;
 pub use release::{release, retain};
-pub use shape::{Shape, Slot};
+pub use shape::{ARRAY, RECORD, STR, Shape, Slot};
 pub use string::Str;
 pub use symbols::symbols;
 

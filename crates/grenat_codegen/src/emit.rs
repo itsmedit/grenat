@@ -24,8 +24,8 @@ use crate::walk;
 pub(crate) struct Emitted {
     /// The trampoline of each compiled function, in the order of `selected`.
     pub trampolines: Vec<FuncId>,
-    /// The table of shapes, to fill before running any code.
-    pub shapes: DataId,
+    /// The shapes, in shape order (see [`shapes`](crate::shapes)).
+    pub shapes: Vec<DataId>,
 }
 
 /// The target of this machine. Position-independent code for executables.
@@ -50,11 +50,7 @@ pub(crate) fn emit(module: &mut impl Module, selected: &[Compiled], structs: &St
     let runtime = Runtime::declare(module)?;
     let ids = declare(module, selected)?;
 
-    let shapes = module.declare_data("grenat_shapes", Linkage::Local, true, false).map_err(fail)?;
-    let mut table = DataDescription::new();
-    table.define_zeroinit(8 * shapes::count(structs.count()));
-    table.set_align(8);
-    module.define_data(shapes, &table).map_err(fail)?;
+    let shapes = shapes::emit(module, structs)?;
 
     // every literal once, NUL-terminated (a data object is never empty)
     let texts: BTreeSet<String> = selected
@@ -72,7 +68,7 @@ pub(crate) fn emit(module: &mut impl Module, selected: &[Compiled], structs: &St
     }
 
     let mut builder_ctx = FunctionBuilderContext::new();
-    let parts = Parts { selected, ids: &ids, runtime: &runtime, structs, shapes, literals: &literals };
+    let parts = Parts { selected, ids: &ids, runtime: &runtime, structs, shapes: &shapes, literals: &literals };
     for (index, compiled) in selected.iter().enumerate() {
         define(module, &mut builder_ctx, &parts, index, compiled)?;
     }
@@ -112,7 +108,7 @@ struct Parts<'a, 'p> {
     ids: &'a [FuncId],
     runtime: &'a Runtime,
     structs: &'a Structs,
-    shapes: DataId,
+    shapes: &'a [DataId],
     literals: &'a HashMap<String, DataId>,
 }
 
@@ -132,7 +128,7 @@ fn define(
         .map(|(c, id)| (c.def.name.name.as_str(), module.declare_func_in_func(*id, &mut ctx.func)))
         .collect();
     let runtime = parts.runtime.import(module, &mut ctx.func);
-    let shapes = module.declare_data_in_func(parts.shapes, &mut ctx.func);
+    let shapes: Vec<_> = parts.shapes.iter().map(|id| module.declare_data_in_func(*id, &mut ctx.func)).collect();
     let literals = walk::string_literals(&compiled.def.body.stmts)
         .into_iter()
         .chain([String::new()])
@@ -141,7 +137,7 @@ fn define(
             (text, data)
         })
         .collect();
-    let env = Env { callees: &callees, runtime: &runtime, structs: parts.structs, shapes, literals: &literals };
+    let env = Env { callees: &callees, runtime: &runtime, structs: parts.structs, shapes: &shapes, literals: &literals };
     let plan = liveness::plan(compiled.def, &compiled.typed);
     let frontend = module.isa().frontend_config();
     let builder = FunctionBuilder::new(&mut ctx.func, builder_ctx);

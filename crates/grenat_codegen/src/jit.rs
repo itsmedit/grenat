@@ -7,7 +7,6 @@ use crate::eligibility::select;
 use crate::emit::{emit, isa};
 use crate::native::{Native, Report, Trampoline};
 use crate::runtime::symbols;
-use crate::shapes::Shapes;
 use crate::structs::Structs;
 
 impl Native {
@@ -25,14 +24,8 @@ impl Native {
         let emitted = emit(&mut module, &selected, &structs)?;
         module.finalize_definitions().map_err(|e| e.to_string())?;
 
-        let shapes = Shapes::build(&structs);
-        let (table, size) = module.get_finalized_data(emitted.shapes);
-        let pointers = shapes.table();
-        assert_eq!(size, pointers.len() * 8, "table of shapes");
-        // SAFETY: a writable data object of exactly that size, not yet read by any code
-        unsafe {
-            std::ptr::copy_nonoverlapping(pointers.as_ptr(), table as *mut *const grenat_runtime::Shape, pointers.len())
-        };
+        let shapes =
+            emitted.shapes.iter().map(|id| module.get_finalized_data(*id).0 as *const grenat_runtime::Shape).collect();
 
         let trampolines = emitted
             .trampolines

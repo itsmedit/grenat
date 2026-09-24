@@ -39,8 +39,8 @@ pub(crate) struct Env<'a> {
     pub callees: &'a Callees<'a>,
     pub runtime: &'a RuntimeRefs,
     pub structs: &'a StructTable,
-    /// The table of shapes (see [`shapes`](crate::shapes)).
-    pub shapes: GlobalValue,
+    /// The shapes, in shape order (see [`shapes`](crate::shapes)).
+    pub shapes: &'a [GlobalValue],
     /// The bytes of each string literal of the function.
     pub literals: &'a HashMap<String, GlobalValue>,
 }
@@ -233,11 +233,10 @@ impl<'a, 'b> Translator<'a, 'b> {
         self.b.ins().icmp_imm_s(IntCC::NotEqual, r, 0)
     }
 
-    /// Address of the shape of `ty`, read from the table.
+    /// Address of the shape of `ty` (data of the module).
     fn shape(&mut self, ty: Ty) -> Value {
-        let table = self.b.ins().symbol_value(types::I64, self.env.shapes);
         let index = crate::shapes::index(ty, self.env.structs.count());
-        self.load(types::I64, table, (index * 8) as i32)
+        self.b.ins().symbol_value(types::I64, self.env.shapes[index])
     }
 
     // ── Statements ───────────────────────────────────────────
