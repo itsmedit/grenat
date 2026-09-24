@@ -11,6 +11,8 @@ pub struct Anthropic {
     agent: ureq::Agent,
     api_key: String,
     base_url: String,
+    /// Attente avant le premier réessai, doublée ensuite (sauf `retry-after`).
+    retry_delay: Duration,
 }
 
 pub(crate) const MAX_ATTEMPTS: u32 = 4;
@@ -23,12 +25,22 @@ impl Anthropic {
             .filter(|k| !k.is_empty())
             .ok_or_else(|| LlmError::new("ANTHROPIC_API_KEY n'est pas définie (export ANTHROPIC_API_KEY=sk-ant-…)"))?;
         let base_url = std::env::var("ANTHROPIC_BASE_URL").unwrap_or_else(|_| "https://api.anthropic.com".into());
+        Ok(Anthropic::new(api_key, base_url))
+    }
+
+    pub fn new(api_key: impl Into<String>, base_url: impl Into<String>) -> Self {
         let agent = ureq::Agent::config_builder()
             .http_status_as_error(false)
             .timeout_global(Some(Duration::from_secs(600)))
             .build()
             .into();
-        Ok(Anthropic { agent, api_key, base_url: base_url.trim_end_matches('/').to_string() })
+        let base_url = base_url.into().trim_end_matches('/').to_string();
+        Anthropic { agent, api_key: api_key.into(), base_url, retry_delay: Duration::from_secs(1) }
+    }
+
+    pub fn with_retry_delay(mut self, delay: Duration) -> Self {
+        self.retry_delay = delay;
+        self
     }
 
     fn send(&self, body: &Json) -> Result<(u16, Option<u64>, Json), String> {
@@ -64,15 +76,15 @@ impl Provider for Anthropic {
                     if !(matches!(status, 408 | 409 | 429) || status >= 500) {
                         break;
                     }
-                    retry_after.unwrap_or(1 << attempt)
+                    retry_after.map_or(self.retry_delay * (1 << attempt), Duration::from_secs)
                 }
                 Err(e) => {
                     last_error = e;
-                    1 << attempt
+                    self.retry_delay * (1 << attempt)
                 }
             };
             if attempt + 1 < MAX_ATTEMPTS {
-                std::thread::sleep(Duration::from_secs(wait.min(30)));
+                std::thread::sleep(wait.min(Duration::from_secs(30)));
             }
         }
         Err(LlmError::new(last_error))

@@ -1,0 +1,67 @@
+times                  3
+upto                   [2, 3, 4]
+to_f abs               [7.0, 3]
+zero even odd          [true, true, true]
+succ pred              [2, 0]
+between?               true
+durées                 [30s, 2min, 1h, 3d]
+round                  [3, 2.57]
+floor ceil to_i        [2, 3, 2]
+abs zero?              [1.5, true]
+strip                  ["Grenat Rubis", "Grenat Rubis  ", "  Grenat Rubis"]
+casse                  ["GRENAT RUBIS", "grenat rubis", "Grenat"]
+size reverse           [12, "cba"]
+chars lines split      [["a", "b"], ["a", "b"], ["a", "b"], ["a", "b"]]
+prédicats              [true, true, true, true]
+index                  [7, nil]
+sub gsub               ["a+b-c", "a+b+c"]
+truncate               "Grenat es…"
+ljust rjust            ["ab  |", "  ab"]
+conversions            [42, 2.5, :nom]
+répétition             "ababab"
+size count empty?      [5, 3, true]
+first last             [3, 5, [3, 1], [1, 5]]
+map select reject      [[6, 2, 8, 2, 10], [3, 1, 1, 5], [4]]
+find index             [4, 2, nil]
+any all none           [true, false, true]
+include?               true
+sum min max            [14, 1, 5, 140]
+sort sort_by           [[1, 1, 3, 4, 5], [5, 4, 3, 1, 1]]
+min_by max_by          ["b", "aa"]
+reverse uniq           [[5, 1, 4, 1, 3], [3, 1, 4, 5]]
+join                   "3-1-4-1-5"
+take drop              [[3, 1], [1, 5]]
+partition              [[3, 1, 1, 5], [4]]
+flat_map zip           [[1, 1, 2, 2], [[1, "a"], [2, "b"]]]
+reduce                 [14, 86]
+group_by tally         [{true => [3, 1, 1, 5], false => [4]}, {3 => 1, 1 => 2, 4 => 1, 5 => 1}]
+compact                [1, 2]
+push unshift           [0, 1, 2, 3]
+pop shift              [3, 0, [1, 2]]
+delete                 [2]
+each_with_index        ["0:a", "1:b"]
++ -                    [[1, 2, 3], [1, 3]]
+indices                [3, 5, [1, 4], nil]
+parallel_map           [1, 4, 9]
+size keys values       [2, [:a, :b], [1, 2]]
+key? fetch             [true, 2, 0]
+[] []=                 1
+select reject          [{b: 2, c: 3}, {a: 1}]
+map                    ["a=1", "b=2", "c=3"]
+merge                  {a: 1, b: 2}
+delete                 [3, {a: 1, b: 2}]
+any? all?              [true, true]
+range                  [[1, 2, 3, 4], true, 1, 4, 4, 10]
+range exclusive        [1, 2, 3]
+Result                 [true, true, 5, 0]
+or_else                9
+nil                    [true, false, ""]
+inspect to_s           [":a", "1.5"]
+is_a?                  [true, true, false]
+Math                   [4.0, 3.14]
+Json                   ["{\"a\":[1,true]}", [1, 2]]
+Env                    nil
+Env fetch              "défaut"
+File                   [true, true, "MIT License"]
+Dir                    true
+Time                   true

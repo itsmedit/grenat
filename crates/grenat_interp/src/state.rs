@@ -61,6 +61,8 @@ pub(crate) struct Shared<'p> {
     pub llm_calls: AtomicU64,
     pub spawner: Spawner<'p>,
     pub next_id: AtomicU64,
+    /// Choix d'un agent dans un pool (choix et réservation atomiques).
+    pub pool_pick: Mutex<()>,
     /// Détection d'interblocage : tâche → agent qu'elle attend.
     pub waits: Mutex<HashMap<u64, Arc<AgentRef<'p>>>>,
     /// Tâches secondaires en cours.
@@ -115,6 +117,7 @@ impl<'p> Interp<'p> {
             llm_calls: AtomicU64::new(0),
             spawner,
             next_id: AtomicU64::new(1),
+            pool_pick: Mutex::new(()),
             waits: Mutex::new(HashMap::new()),
             active: Mutex::new(0),
             idle: Condvar::new(),

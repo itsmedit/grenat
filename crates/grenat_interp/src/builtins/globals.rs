@@ -150,8 +150,14 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             }
         })(),
         "sleep" => (|| {
-            let seconds = number(&arg(&args, 0, "sleep")?).unwrap_or(0.0);
-            std::thread::sleep(std::time::Duration::from_secs_f64(seconds.max(0.0)));
+            let seconds = number(&arg(&args, 0, "sleep")?).unwrap_or(0.0).max(0.0);
+            // par tranches, pour qu'une tâche annulée (`race`, `parallel_map`) s'arrête vite
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs_f64(seconds);
+            while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()) {
+                interp.check_cancel()?;
+                std::thread::sleep(left.min(std::time::Duration::from_millis(20)));
+            }
+            interp.check_cancel()?;
             Ok(Value::Nil)
         })(),
         "exit" => Err(Ctrl::Exit(args.pos.first().and_then(|v| number(v)).unwrap_or(0.0) as i32)),

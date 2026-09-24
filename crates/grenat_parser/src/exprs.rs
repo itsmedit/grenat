@@ -111,7 +111,18 @@ impl<'d> Parser<'d> {
             _ => return self.postfix(),
         };
         let start = self.bump().span;
-        // `-2 ** 2` vaut -(2 ** 2), comme en Ruby
+        // `-3.abs` : littéral négatif collé, comme en Ruby (mais `-2 ** 2` vaut -(2 ** 2))
+        if op == UnOp::Neg && !self.peek().space_before && *self.nth(1) != T::StarStar {
+            let literal = match self.kind() {
+                T::Int(n) => n.checked_neg().map(ExprKind::Int),
+                T::Float(f) => Some(ExprKind::Float(-f)),
+                _ => None,
+            };
+            if let Some(kind) = literal {
+                let span = start.to(self.bump().span);
+                return self.postfix_from(Expr::new(kind, span));
+            }
+        }
         let e = if op == UnOp::Neg { self.binary(24)? } else { self.unary()? };
         let span = start.to(e.span);
         Ok(Expr::new(ExprKind::Unary { op, expr: Box::new(e) }, span))

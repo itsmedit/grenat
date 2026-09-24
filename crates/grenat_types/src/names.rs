@@ -10,6 +10,8 @@ pub(crate) const ERROR_NAMES: &[&str] = &[
     "LlmRefusal",
     "MaxTurnsExceeded",
     "NoMatchingPattern",
+    "AgentDown",
+    "Cancelled",
 ];
 
 pub(crate) fn is_error_name(name: &str) -> bool {

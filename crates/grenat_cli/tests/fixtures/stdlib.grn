@@ -1,0 +1,111 @@
+# Tour de la bibliothèque intégrée : chaque méthode, une ligne de sortie.
+# `grenat run` vérifie d'abord le programme : vérificateur et interpréteur doivent s'accorder.
+
+def show(label: String, value: Any)
+  puts "#{label.ljust(22)} #{value.inspect}"
+end
+
+def main uses fs.read, env, time
+  # Int
+  total = 0
+  3.times { |i| total += i }
+  show "times", total
+  seen = []
+  2.upto(4) { |i| seen << i }
+  show "upto", seen
+  show "to_f abs", [7.to_f, -3.abs]
+  show "zero even odd", [0.zero?, 4.even?, 3.odd?]
+  show "succ pred", [1.succ, 1.pred]
+  show "between?", 5.between?(1, 9)
+  show "durées", [30.s, 2.min, 1.h, 3.days]
+
+  # Float
+  show "round", [2.567.round, 2.567.round(2)]
+  show "floor ceil to_i", [2.7.floor, 2.1.ceil, 2.9.to_i]
+  show "abs zero?", [-1.5.abs, 0.0.zero?]
+
+  # String
+  s = "  Grenat Rubis  "
+  show "strip", [s.strip, s.lstrip, s.rstrip]
+  t = s.strip
+  show "casse", [t.upcase, t.downcase, "gRENAT".capitalize]
+  show "size reverse", [t.size, "abc".reverse]
+  show "chars lines split", ["ab".chars, "a\nb".lines, "a,b".split(","), "a b".split]
+  show "prédicats", ["".empty?, t.include?("Rub"), t.start_with?("Gre"), t.end_with?("is")]
+  show "index", [t.index("R"), t.index("z")]
+  show "sub gsub", ["a-b-c".sub("-", "+"), "a-b-c".gsub("-", "+")]
+  show "truncate", "Grenat est un langage".truncate(10)
+  show "ljust rjust", ["ab".ljust(4) + "|", "ab".rjust(4)]
+  show "conversions", ["42".to_i, "2.5".to_f, "nom".to_sym]
+  show "répétition", "ab" * 3
+
+  # Array
+  xs = [3, 1, 4, 1, 5]
+  show "size count empty?", [xs.size, xs.count { |x| x > 1 }, [].empty?]
+  show "first last", [xs.first, xs.last, xs.first(2), xs.last(2)]
+  show "map select reject", [xs.map { |x| x * 2 }, xs.select(&.odd?), xs.reject(&.odd?)]
+  show "find index", [xs.find { |x| x > 3 }, xs.index(4), xs.find_index(9)]
+  show "any all none", [xs.any? { |x| x > 4 }, xs.all?(&.odd?), xs.none? { |x| x > 9 }]
+  show "include?", xs.include?(4)
+  show "sum min max", [xs.sum, xs.min, xs.max, xs.sum { |x| x * 10 }]
+  show "sort sort_by", [xs.sort, xs.sort_by { |x| -x }]
+  show "min_by max_by", [["aa", "b"].min_by(&:size), ["aa", "b"].max_by(&:size)]
+  show "reverse uniq", [xs.reverse, xs.uniq]
+  show "join", xs.join("-")
+  show "take drop", [xs.take(2), xs.drop(3)]
+  show "partition", xs.partition(&.odd?)
+  show "flat_map zip", [[1, 2].flat_map { |x| [x, x] }, [1, 2].zip(["a", "b"])]
+  show "reduce", [xs.reduce { |a, x| a + x }, xs.reduce(100) { |a, x| a - x }]
+  show "group_by tally", [xs.group_by(&.odd?), xs.tally]
+  show "compact", [1, nil, 2].compact
+  ys = [1, 2]
+  ys.push(3)
+  ys.unshift(0)
+  show "push unshift", ys
+  show "pop shift", [ys.pop, ys.shift, ys]
+  ys.delete(1)
+  show "delete", ys
+  pairs = []
+  ["a", "b"].each_with_index { |x, i| pairs << "#{i}:#{x}" }
+  show "each_with_index", pairs
+  show "+ -", [[1, 2] + [3], [1, 2, 3] - [2]]
+  show "indices", [xs[0], xs[-1], xs[1..2], xs[9]]
+  show "parallel_map", [1, 2, 3].parallel_map(limit: 2) { |x| x * x }
+
+  # Hash
+  h = {a: 1, b: 2}
+  show "size keys values", [h.size, h.keys, h.values]
+  show "key? fetch", [h.key?(:a), h.fetch(:b), h.fetch(:z, 0)]
+  show "[] []=", h[:a]
+  h[:c] = 3
+  show "select reject", [h.select { |k, v| v > 1 }, h.reject { |k, v| v > 1 }]
+  show "map", h.map { |k, v| "#{k}=#{v}" }
+  show "merge", {a: 1}.merge({b: 2})
+  show "delete", [h.delete(:c), h]
+  show "any? all?", [h.any? { |k, v| v > 1 }, h.all? { |k, v| v > 0 }]
+
+  # Range
+  r = 1..4
+  show "range", [r.to_a, r.include?(3), r.first, r.last, r.size, r.sum]
+  show "range exclusive", (1...4).to_a
+
+  # Result et nil
+  ok = Ok(5)
+  err = Err(ParseError("illisible"))
+  show "Result", [ok.ok?, err.err?, ok.value, err.unwrap_or(0)]
+  show "or_else", err.or_else { |e| e.message.size }
+  show "nil", [nil.nil?, 1.nil?, nil.to_s]
+
+  # universelles
+  show "inspect to_s", [:a.inspect, 1.5.to_s]
+  show "is_a?", [1.is_a?(Int), "a".is_a?(String), 1.is_a?(String)]
+
+  # modules
+  show "Math", [Math.sqrt(16.0), Math.pi.round(2)]
+  show "Json", [Json.dump({a: [1, true]}), Json.parse("[1, 2]")]
+  show "Env", Env.get("GRENAT_TEST_ABSENT")
+  show "Env fetch", Env.fetch("GRENAT_TEST_ABSENT", "défaut")
+  show "File", [File.exist?("Cargo.toml"), File.directory?("crates"), File.lines("LICENSE-MIT").first]
+  show "Dir", Dir.list("examples").include?("bases.grn")
+  show "Time", Time.now > 0
+end

@@ -162,11 +162,7 @@ impl<'p> Checker<'p> {
                 }
             }
             TypeKind::Supervisor => {
-                for option in &def.options {
-                    if let Arg::Named { value: Some(v), .. } | Arg::Pos(v) = option {
-                        self.expr(&mut cx, v);
-                    }
-                }
+                self.check_supervisor_options(&mut cx, &def.options);
                 for d in directives {
                     match (d.name.name.as_str(), d.args.first()) {
                         ("child", Some(Arg::Pos(Expr { kind: ExprKind::Const(path), span }))) => {
@@ -274,6 +270,55 @@ impl<'p> Checker<'p> {
                     a.span,
                     format!("`{}:` attend `{expected}`, reçu `{}`", a.name.as_deref().unwrap_or(""), a.v.ty),
                 );
+            }
+        }
+    }
+
+    /// `supervisor Desk, strategy: :one_for_one, max_restarts: 3, within: 1.min`
+    pub(crate) fn check_supervisor_options(&mut self, cx: &mut Ctx<'p>, options: &'p [Arg]) {
+        const STRATEGIES: [&str; 3] = ["one_for_one", "one_for_all", "rest_for_one"];
+        for option in options {
+            let (name, value) = match option {
+                Arg::Named { name, value: Some(value) } => (name, value),
+                Arg::Pos(value) | Arg::BlockPass(value) => {
+                    self.error(
+                        E_DECL,
+                        value.span,
+                        "les options d'un superviseur sont nommées : `strategy:`, `max_restarts:`, `within:`",
+                    );
+                    continue;
+                }
+                Arg::Named { name, value: None } => {
+                    self.error(E_DECL, name.span, format!("valeur attendue pour `{}:`", name.name));
+                    continue;
+                }
+            };
+            let v = self.expr(cx, value);
+            match name.name.as_str() {
+                "strategy" => match &value.kind {
+                    ExprKind::Symbol(s) if STRATEGIES.contains(&s.as_str()) => {}
+                    ExprKind::Symbol(s) => self.error_help(
+                        E_DECL,
+                        value.span,
+                        format!("stratégie de supervision inconnue `:{s}`"),
+                        suggest(s, STRATEGIES)
+                            .or_else(|| Some("stratégies : :one_for_one, :one_for_all, :rest_for_one".into())),
+                    ),
+                    _ => self.error(E_TYPE, value.span, "`strategy:` attend un symbole, par exemple `:one_for_one`"),
+                },
+                "max_restarts" if !self.compat(&v.ty, &Ty::Int) => {
+                    self.error(E_TYPE, value.span, format!("`max_restarts:` attend un `Int`, reçu `{}`", v.ty));
+                }
+                "within" if !(self.compat(&v.ty, &Ty::Duration) || self.compat(&v.ty, &Ty::Float)) => {
+                    self.error(E_TYPE, value.span, format!("`within:` attend une durée (`1.min`), reçu `{}`", v.ty));
+                }
+                "max_restarts" | "within" => {}
+                other => self.error_help(
+                    E_DECL,
+                    name.span,
+                    format!("option de superviseur inconnue `{other}:`"),
+                    suggest(other, ["strategy", "max_restarts", "within"]),
+                ),
             }
         }
     }

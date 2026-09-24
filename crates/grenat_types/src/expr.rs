@@ -409,7 +409,12 @@ impl<'p> Checker<'p> {
                 }
                 Ty::user(agent)
             }
-            (Ty::Unknown, _) => Ty::Unknown,
+            // indice déjà signalé (constante inconnue…) : pas d'erreur en cascade
+            (Ty::Unknown, _) | (_, Ty::Unknown) => Ty::Unknown,
+            (Ty::Type(name), _) => {
+                self.error(E_TYPE, span, format!("`{name}` ne peut pas être indexé"));
+                Ty::Unknown
+            }
             (other, _) => {
                 self.error(E_TYPE, span, format!("`{other}` ne peut pas être indexé"));
                 Ty::Unknown

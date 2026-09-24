@@ -27,9 +27,11 @@ end
 
 ## État
 
-**Phase 2 — vérification statique** : avant d'exécuter quoi que ce soit, `grenat` vérifie
-les noms, les types, les effets déclarés et la teinte des valeurs produites par les LLM.
-Une réponse de modèle non validée qui part vers le réseau est une **erreur de compilation**.
+**Phase 3 — agents concurrents** : les agents sont des acteurs (un message à la fois,
+interblocages détectés, supervision avec redémarrage), `parallel_map` et `race` sont
+réellement parallèles. Avant d'exécuter quoi que ce soit, `grenat` vérifie les noms, les
+types, les effets et la teinte : une réponse de modèle non validée qui part vers le réseau
+est une **erreur de compilation**.
 
 ```sh
 cargo build
@@ -41,7 +43,7 @@ target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl       #
 
 target/debug/grenat check examples/*.grn     # noms, types, effets, teinte
 target/debug/grenat test mon_fichier.grn     # blocs `test "…" do … end`
-cargo test
+cargo test                                   # ~140 tests : unitaires, intégration, CLI, client HTTP
 ```
 
 ## Organisation

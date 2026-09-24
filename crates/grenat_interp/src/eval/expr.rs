@@ -49,6 +49,7 @@ impl<'p> Interp<'p> {
     pub(crate) fn eval_stmts(&mut self, stmts: &'p [Expr]) -> R<'p> {
         let mut last = Value::Nil;
         for stmt in stmts {
+            self.check_cancel()?;
             last = self.eval(stmt)?;
         }
         Ok(last)

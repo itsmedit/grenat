@@ -88,6 +88,7 @@ impl<'p> Interp<'p> {
                 ("max_restarts", Value::Int(n)) if n >= 0 => supervision.max_restarts = n as usize,
                 ("within", Value::Duration(d)) => supervision.within = d,
                 ("within", Value::Int(n)) => supervision.within = n as f64,
+                ("within", Value::Float(f)) => supervision.within = f,
                 (option, value) => {
                     return raise(
                         "ArgumentError",
@@ -134,10 +135,14 @@ impl<'p> Interp<'p> {
     pub(crate) fn send(&mut self, target: &Value<'p>, method: &str, args: Args<'p>) -> Option<R<'p>> {
         let agent = match target {
             Value::Agent(a) => a.clone(),
-            // pool : l'agent le moins chargé
-            Value::Pool(pool) => pool.iter().min_by_key(|a| a.load()).expect("pool non vide").clone(),
+            // pool : l'agent le moins chargé, choisi et réservé d'un seul geste
+            Value::Pool(pool) => {
+                let _pick = self.pool_pick.borrow();
+                pool.iter().min_by_key(|a| a.load()).expect("pool non vide").clone()
+            }
             _ => return None,
         };
+        agent.queued.fetch_add(1, AtomicOrdering::Relaxed);
         match method {
             "ask" => Some(self.agent_ask(agent, args)),
             "tell" => {
@@ -158,17 +163,26 @@ impl<'p> Interp<'p> {
     }
 
     /// Enregistre que cette tâche attend `target` ; échoue si l'attente formerait un cycle.
+    /// Enregistre que cette tâche attend `target` ; échoue si l'attente formerait un cycle.
     pub(crate) fn wait_for(&self, target: &Arc<AgentRef<'p>>) -> Result<(), Ctrl<'p>> {
         let mut waits = self.waits.borrow_mut();
-        let mut chain = vec![target.ty.to_string()];
+        // agents dont cette tâche exécute actuellement un handler, du plus ancien au plus récent
+        let mine: Vec<&str> = self.agents.iter().map(|f| &*f.agent.ty).collect();
+        let me = mine.last().copied().unwrap_or("la tâche");
+        let mut chain = vec![me.to_string(), target.ty.to_string()];
         let mut agent = target.clone();
         for _ in 0..1_000 {
             let Some(owner) = *agent.owner.borrow() else { break };
             if owner == self.task_id {
-                let message = if chain.len() == 1 {
+                // cycle refermé dans cette tâche : on repart de l'agent concerné
+                let state = agent.state.borrow().clone();
+                let from = self.agents.iter().rposition(|f| Arc::ptr_eq(&f.agent, &state)).unwrap_or(0);
+                let mut cycle: Vec<String> = mine[from..].iter().map(|t| t.to_string()).collect();
+                cycle.extend(chain.drain(1..));
+                let message = if cycle.len() == 2 && cycle[0] == cycle[1] {
                     format!("`{}` s'envoie un message à lui-même et attendrait sa propre réponse", target.ty)
                 } else {
-                    format!("cycle d'attente entre agents : {}", chain.join(" → "))
+                    format!("cycle d'attente entre agents : {}", cycle.join(" → "))
                 };
                 return raise("DeadlockError", message);
             }
@@ -185,6 +199,8 @@ impl<'p> Interp<'p> {
     }
 
     pub(crate) fn agent_ask(&mut self, agent: Arc<AgentRef<'p>>, args: Args<'p>) -> R<'p> {
+        // la place réservée par `send` est rendue quand le tour commence, ou si l'envoi échoue avant
+        let reservation = Reservation(&agent);
         let Some(message) = args.pos.into_iter().next() else {
             return raise("ArgumentError", "`ask` attend un message, par exemple `ask(Research(topic: t))`");
         };
@@ -214,10 +230,9 @@ impl<'p> Interp<'p> {
 
         // un message à la fois : on attend le tour de l'agent
         self.wait_for(&agent)?;
-        agent.queued.fetch_add(1, AtomicOrdering::Relaxed);
         let turn = agent.turn.borrow();
         self.waits.borrow_mut().remove(&self.task_id);
-        agent.queued.fetch_sub(1, AtomicOrdering::Relaxed);
+        drop(reservation);
         *agent.owner.borrow_mut() = Some(self.task_id);
         let state = agent.state.borrow().clone();
 
@@ -296,5 +311,14 @@ impl<'p> Interp<'p> {
             ));
         }
         Ok(())
+    }
+}
+
+/// Place réservée dans la file d'un agent (répartition des pools).
+struct Reservation<'a, 'p>(&'a AgentRef<'p>);
+
+impl Drop for Reservation<'_, '_> {
+    fn drop(&mut self) {
+        self.0.queued.fetch_sub(1, AtomicOrdering::Relaxed);
     }
 }

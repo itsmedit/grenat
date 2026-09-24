@@ -183,3 +183,15 @@ fn errors_are_reported_with_recovery() {
     assert!(d.message.contains("`end` attendu pour fermer `def`"), "{}", d.message);
     assert_eq!(d.notes.len(), 1);
 }
+
+#[test]
+fn negative_literals_bind_before_method_calls() {
+    // `-3.abs` est `(-3).abs`, comme en Ruby
+    let ExprKind::Call { recv: Some(recv), .. } = stmt("-3.abs") else { panic!() };
+    assert_eq!(recv.kind, ExprKind::Int(-3));
+    assert!(matches!(stmt("-1.5"), ExprKind::Float(f) if f == -1.5));
+    // … mais un moins séparé, ou devant `**`, reste un opérateur
+    assert!(matches!(stmt("- 3.abs"), ExprKind::Unary { op: UnOp::Neg, .. }));
+    assert!(matches!(stmt("-2 ** 2"), ExprKind::Unary { op: UnOp::Neg, .. }));
+    assert!(matches!(stmt("x -1"), ExprKind::Binary { op: BinOp::Sub, .. }));
+}

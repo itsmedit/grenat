@@ -413,7 +413,7 @@ Arborescence installée :
 | **0.5** | `grenat fmt` (conservation des commentaires) | formateur canonique |
 | **1** ✅ | Interpréteur, `prompt`, `tool`, agents, budgets, teinte, client Anthropic, `grenat run/test` | premier agent qui tourne |
 | **2** ✅ | Vérification des noms, types, effets et teinte `~T` **avant l'exécution** ; capacités restreintes à l'exécution | les erreurs de sécurité avant l'exécution |
-| **3** | Runtime d'acteurs (tokio), agents concurrents, `parallel_map`/`race` réels, supervision | multi-agents |
+| **3** ✅ | Agents-acteurs concurrents, `parallel_map`/`race` réels, annulation, interblocages détectés, supervision | multi-agents |
 | **4** | Codegen Cranelift + RC Perceus | binaires natifs rapides |
 | **5** | Workflows durables (journal des `step`), cassettes, `mock`, `eval` | prêt pour la production |
 | **6** | LSP, LLVM release, macros, gestionnaire de paquets | écosystème |
@@ -437,15 +437,28 @@ L'interpréteur exécute directement l'AST. Ce qui marche :
 - **Effets** : inférés dans le corps, propagés par les appels (y compris `ask` et les outils d'un agent), comparés à `uses`, en tenant compte des restrictions littérales (`fs.read("./docs")` couvre `./docs/a.md`).
 - **À l'exécution** : les restrictions `fs.read(…)` / `fs.write(…)` sont appliquées (`CapabilityError`, y compris contre `../`). Une méthode appelée sur une valeur teintée garde un `self` teinté. La teinte reste vérifiée à l'exécution, en défense en profondeur.
 
+### État de la phase 3
+
+Chaque tâche (programme principal, élément de `parallel_map`, branche de `race`, message `tell`) a sa propre pile d'appels ; l'état global et les valeurs sont partagés (`Arc`/`Mutex`).
+
+- **Acteurs** : un agent traite **un message à la fois**. `ask` exécute le handler dans la tâche de l'appelant, sous le verrou de l'agent : un agent inactif ne coûte pas de thread. `tell` part en tâche de fond ; son échec est journalisé (`[tell] l'agent … a échoué`) et le programme attend la fin des tâches de fond avant de se terminer.
+- **Interblocages détectés** : un message à soi-même, ou un cycle d'attente entre agents (même à travers plusieurs tâches), lève `DeadlockError` avec le cycle (`A → B → A`) au lieu de bloquer.
+- **`spawn_pool(T, size: n)`** : chaque message va à l'agent le moins chargé, choisi et réservé atomiquement.
+- **`parallel_map(limit: n)`** (8 par défaut) : résultats dans l'ordre ; la première erreur est levée et annule le reste.
+- **`race do … end`** : chaque instruction est une branche ; la première qui réussit gagne, les autres sont annulées ; si toutes échouent, la première erreur est levée.
+- **Annulation coopérative** : vérifiée à chaque instruction, appel, bloc, tour de boucle et pendant `sleep` (erreur `Cancelled`).
+- **Budgets partagés** : les tâches créées dans un `within budget(…)` dépensent le même budget.
+- **Supervision** : un handler qui lève une erreur fait redémarrer l'agent (état `@…` neuf) selon `strategy:` — `:one_for_one` (lui seul), `:one_for_all` (tous les enfants), `:rest_for_one` (lui et ceux déclarés après). Au-delà de `max_restarts` (3 par défaut) dans la fenêtre `within:` (60 s), l'agent est arrêté et les messages suivants lèvent `AgentDown`. L'appelant reçoit toujours l'erreur. Un agent non supervisé garde son état.
+
 Simplifications provisoires, levées dans les phases suivantes :
 
 | Aujourd'hui | Plus tard |
 |---|---|
 | Typage graduel, `T?` accepté là où `T` est attendu | inférence complète, vérification de `nil` |
-| Agents exécutés de façon synchrone ; `parallel_map`, `race`, `spawn_pool` séquentiels | concurrence réelle (phase 3) |
-| Superviseur : démarrage paresseux des enfants, pas de redémarrage | stratégies de supervision (phase 3) |
+| Tâches = threads système (128 Mo de pile réservée, virtuelle) | fils légers M:N avec le code natif (phase 4) |
+| Une tâche annulée termine son appel LLM en cours (facturé) avant de s'arrêter | annulation des requêtes HTTP en vol |
 | `step` exécute son bloc sans journal | journal durable (phase 5) |
-| Restriction `net("hôte")` vérifiée statiquement seulement (le runtime ne fait pas encore de réseau hors LLM) | client HTTP de la bibliothèque standard |
+| Restriction `net("hôte")` vérifiée statiquement seulement | client HTTP de la bibliothèque standard |
 
 Pour les modèles qui le recommandent (`claude-opus-5`, `claude-fable-5-1`), le client active le repli côté serveur (`fallbacks: "default"`) : une requête refusée par un classifieur est rejouée sur un autre modèle au lieu d'échouer. On le désactive avec `model :x, …, fallbacks: false`.
 

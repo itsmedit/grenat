@@ -1,0 +1,108 @@
+//! Langage de base : fermetures, modules, structs, Result, erreurs, tests Grenat.
+
+mod common;
+
+use common::*;
+use grenat_interp::{Options, run_tests};
+
+#[test]
+fn closures_capture_and_mutate_outer_variables() {
+    assert_eq!(run("total = 0\n[1, 2, 3].each { |x| total += x }\nputs total\n"), "6\n");
+}
+
+#[test]
+fn return_inside_a_block_returns_from_the_method() {
+    let src = "def first_even(xs: Array(Int)) -> Int?\n  xs.each { |x| return x if x.even? }\n  nil\nend\np first_even([1, 3, 4, 5])\n";
+    assert_eq!(run(src), "4\n");
+}
+
+#[test]
+fn main_receives_arguments() {
+    assert_eq!(run("def main(args: Array(String))\n  puts args.first\nend\n"), "arg1\n");
+}
+
+#[test]
+fn modules_are_included() {
+    let src = "\
+module Describable
+  abstract def describe -> String
+  def shout = describe.upcase
+end
+struct Invoice
+  include Describable
+  amount: Int
+  def describe = \"facture de #{amount}\"
+end
+puts Invoice(amount: 3).shout
+";
+    assert_eq!(run(src), "FACTURE DE 3\n");
+}
+
+#[test]
+fn structs_are_immutable_but_copyable() {
+    let src = "struct P\n  x: Int\n  y: Int = 0\nend\na = P(x: 1)\nb = a.with(y: 2)\np a, b\n";
+    assert_eq!(run(src), "P(x: 1, y: 0)\nP(x: 1, y: 2)\n");
+    let e = run_err("struct P\n  x: Int\nend\na = P(x: 1)\na.x = 2\n", vec![]);
+    assert_eq!(e.ty, "TypeError");
+}
+
+#[test]
+fn case_without_match_raises() {
+    let e = run_err("enum E\n  A\n  B\nend\ncase B\nin A then 1\nend\n", vec![]);
+    assert_eq!(e.ty, "NoMatchingPattern");
+}
+
+#[test]
+fn errors_carry_location_and_trace() {
+    let src = "def inner\n  inconnue\nend\ndef outer = inner\nouter\n";
+    let e = run_err(src, vec![]);
+    assert_eq!(e.ty, "NameError");
+    assert_eq!(&src[e.span.unwrap().range()], "inconnue");
+    let names: Vec<_> = e.trace.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, ["inner", "outer"]);
+}
+
+#[test]
+fn result_and_try_operator() {
+    let src = "\
+def parse(s: String) -> Result(Int, ParseError)
+  return Err(ParseError(\"vide\")) if s.empty?
+  Ok(s.to_i)
+end
+def double(s: String) = parse(s)? * 2
+p double(\"21\")
+begin
+  double(\"\")
+rescue ParseError => e
+  puts e.message
+end
+p parse(\"\").or_else { |e| -1 }
+";
+    assert_eq!(run(src), "42\nvide\n-1\n");
+}
+
+#[test]
+fn deep_recursion_is_reported_not_crashed() {
+    let e = run_err("def f(n: Int) = f(n + 1)\nf(0)\n", vec![]);
+    assert_eq!(e.ty, "StackOverflow");
+}
+
+#[test]
+fn grenat_test_blocks() {
+    let src = "\
+test \"addition\" do
+  assert_equal 4, 2 + 2
+end
+test \"échec\" do
+  assert 1 > 2, \"un n'est pas plus grand que deux\"
+end
+test \"erreurs\" do
+  assert_raises ZeroDivisionError { 1 / 0 }
+end
+";
+    let parsed = grenat_parser::parse(src);
+    let outcomes = run_tests(&parsed.program, Options::default()).unwrap();
+    let summary: Vec<_> =
+        outcomes.iter().map(|o| (o.name.as_str(), o.error.as_ref().map(|e| e.message.as_str()))).collect();
+    assert_eq!(summary, [("addition", None), ("échec", Some("un n'est pas plus grand que deux")), ("erreurs", None)]);
+}
