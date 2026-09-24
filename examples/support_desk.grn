@@ -6,7 +6,7 @@
 # Writer rédige la réponse, un humain approuve avant tout envoi.
 
 model :fast,  provider: :anthropic, name: "claude-haiku-4-5"
-model :smart, provider: :anthropic, name: "claude-opus-5-5"
+model :smart, provider: :anthropic, name: "claude-opus-5"
 
 # ── Domaine ────────────────────────────────────────────────
 

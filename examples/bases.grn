@@ -1,0 +1,72 @@
+# bases.grn — le langage de base, sans LLM.
+#
+#   grenat run examples/bases.grn
+
+# Fonctions : types aux frontières, inférence à l'intérieur
+def fib(n: Int) -> Int
+  return n if n < 2
+  fib(n - 1) + fib(n - 2)
+end
+
+# Structs : valeurs immuables, méthodes courtes
+struct Point
+  x: Float
+  y: Float
+
+  def norm = Math.sqrt(x * x + y * y)
+end
+
+# Enums algébriques et pattern matching
+enum Shape
+  Circle(radius: Float)
+  Rect(w: Float, h: Float)
+end
+
+def area(shape: Shape) -> Float
+  case shape
+  in Circle(r) then 3.14159 * r * r
+  in Rect(w, h) then w * h
+  end
+end
+
+# Classes : état mutable dans les @variables
+class Counter
+  @count: Int = 0
+
+  def incr! = @count += 1
+  def count = @count
+end
+
+# Erreurs : valeurs `Result` et opérateur `?`
+def parse_age(text: String) -> Result(Int, ParseError)
+  return Err(ParseError("« #{text} » n'est pas un âge")) unless text.to_i > 0
+  Ok(text.to_i)
+end
+
+def main
+  puts "fib(25) = #{fib(25)}"
+  puts "|(3, 4)| = #{Point(x: 3.0, y: 4.0).norm}"
+
+  shapes = [Circle(radius: 1.0), Rect(w: 2.0, h: 3.0)]
+  puts "aire totale = #{shapes.sum { |s| area(s) }.round(2)}"
+
+  counter = Counter.new
+  5.times { counter.incr! }
+  puts "compteur = #{counter.count}"
+
+  names = ["ada", "linus", "matz"]
+  puts names.map(&:capitalize).join(", ")
+
+  evens, odds = (1..10).to_a.partition(&.even?)
+  puts "pairs #{evens}, impairs #{odds}"
+
+  ages = {ada: 36, linus: 54}
+  ages.each { |name, age| puts "#{name} a #{age} ans" }
+
+  puts parse_age("42")?
+  begin
+    parse_age("hier")?
+  rescue ParseError => e
+    puts "erreur rattrapée : #{e.message}"
+  end
+end

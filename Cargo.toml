@@ -13,6 +13,10 @@ rust-version = "1.88"
 grenat_lexer = { path = "crates/grenat_lexer" }
 grenat_ast = { path = "crates/grenat_ast" }
 grenat_parser = { path = "crates/grenat_parser" }
+grenat_llm = { path = "crates/grenat_llm" }
+grenat_interp = { path = "crates/grenat_interp" }
+serde_json = "1"
+ureq = { version = "3", features = ["json"] }
 
 [profile.release]
 lto = "thin"

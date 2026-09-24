@@ -23,18 +23,22 @@ end
 ```
 
 - Spécification : [`SPEC.md`](SPEC.md)
-- Exemple complet : [`examples/support_desk.grn`](examples/support_desk.grn)
+- Exemples : [`bases.grn`](examples/bases.grn), [`explorateur.grn`](examples/explorateur.grn) (agent réel), [`support_desk.grn`](examples/support_desk.grn) (syntaxe cible complète)
 
 ## État
 
-**Phase 0 — syntaxe** : lexer, parser et AST complets pour toute la grammaire de la spec.
-L'exécution arrive en phase 1 (voir la feuille de route dans la spec).
+**Phase 1 — interpréteur** : les programmes Grenat s'exécutent, prompts typés, outils,
+agents et budgets compris. Le détail et les limites actuelles sont dans la feuille de route de la spec.
 
 ```sh
 cargo build
-target/debug/grenat check examples/*.grn     # vérifie la syntaxe
-target/debug/grenat parse  examples/support_desk.grn   # affiche l'AST
-target/debug/grenat tokens examples/support_desk.grn   # affiche les tokens
+target/debug/grenat run examples/bases.grn            # le langage de base, sans LLM
+
+export ANTHROPIC_API_KEY=sk-ant-…
+target/debug/grenat run --log examples/explorateur.grn crates/grenat_parser   # un vrai agent
+
+target/debug/grenat test mon_fichier.grn     # blocs `test "…" do … end`
+target/debug/grenat check examples/*.grn     # syntaxe seule
 cargo test
 ```
 
@@ -45,9 +49,11 @@ cargo test
 | `grenat_lexer` | tokens, interpolation, heredocs, commentaires `##` |
 | `grenat_ast` | arbre syntaxique |
 | `grenat_parser` | descente récursive + Pratt, diagnostics avec récupération |
+| `grenat_llm` | client de l'API Claude (sortie structurée, outils, repli), fournisseur scripté pour les tests |
+| `grenat_interp` | interpréteur : valeurs, évaluation, prompts, agents, budgets, teinte |
 | `grenat_cli` | binaire `grenat` |
 
-Aucune dépendance externe pour l'instant.
+Deux dépendances externes seulement : `ureq` (HTTP + rustls) et `serde_json`.
 
 ## Licence
 

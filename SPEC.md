@@ -139,7 +139,7 @@ Le compilateur **refuse** un appel dont l'effet n'est pas couvert par l'appelant
 
 ```ruby
 model :fast,  provider: :anthropic, name: "claude-haiku-4-5",  temperature: 0.2
-model :smart, provider: :anthropic, name: "claude-opus-5-5"
+model :smart, provider: :anthropic, name: "claude-opus-5"
 model :local, provider: :ollama,    name: "llama3.3"
 ```
 
@@ -398,13 +398,36 @@ Arborescence installée :
 
 | Phase | Contenu | Résultat |
 |---|---|---|
-| **0** | Lexer + parser + AST + `grenat check/parse/tokens` | on parse tous les exemples et tous les blocs de cette spec |
+| **0** ✅ | Lexer + parser + AST + `grenat check/parse/tokens` | on parse tous les exemples et tous les blocs de cette spec |
 | **0.5** | `grenat fmt` (conservation des commentaires) | formateur canonique |
-| **1** | Interpréteur HIR, types de base, `prompt`, `tool`, modèle Anthropic | premier agent qui tourne |
-| **2** | Inférence de types + effets + teinte `~T` | les erreurs de sécurité à la compilation |
-| **3** | Runtime d'acteurs (tokio), `agent`, `spawn/ask/tell`, budgets, supervision | multi-agents |
+| **1** ✅ | Interpréteur, `prompt`, `tool`, agents, budgets, teinte, client Anthropic, `grenat run/test` | premier agent qui tourne |
+| **2** | Inférence de types + effets + teinte `~T` **à la compilation** | les erreurs de sécurité avant l'exécution |
+| **3** | Runtime d'acteurs (tokio), agents concurrents, `parallel_map`/`race` réels, supervision | multi-agents |
 | **4** | Codegen Cranelift + RC Perceus | binaires natifs rapides |
-| **5** | Workflows durables, cassettes, `eval` | prêt pour la production |
+| **5** | Workflows durables (journal des `step`), cassettes, `mock`, `eval` | prêt pour la production |
 | **6** | LSP, LLVM release, macros, gestionnaire de paquets | écosystème |
+
+### État de la phase 1
+
+L'interpréteur exécute directement l'AST. Ce qui marche :
+
+- le langage de base : fonctions, blocs et fermetures, `struct`, `class`, `module`/`include`, `enum`, `case/in`, `Result` et `?`, `rescue`/`ensure`, bibliothèque de base (`Array`, `Hash`, `String`, `File`, `Dir`, `Math`, `Json`, `Env`) ;
+- `prompt` : le type de retour devient un JSON Schema (sortie structurée), les `##` deviennent les descriptions, la réponse est validée, relancée une fois si invalide, et renvoyée **teintée** ;
+- `agent` : `spawn`, `ask`/`tell`, état `@…`, boucle `run` avec les `tool` déclarés et un outil `final_answer` typé par le retour du handler ;
+- teinte `~T` : propagée par les accès, l'interpolation, les opérateurs et les blocs ; `TaintError` si elle atteint une fonction à effet `net`, `shell`, `fs.write` ou `human` ; `.check`, `.approve(by: :human)`, `.trust!` ;
+- budgets `usd`/`tokens`/`time` (`within budget(…)`, directive `budget` des agents), coût calculé par modèle ;
+- `Runtime.on_approval`, `approve!`, `grenat test` avec `assert`, `assert_equal`, `assert_raises`.
+
+Simplifications provisoires, levées dans les phases suivantes :
+
+| Aujourd'hui | Plus tard |
+|---|---|
+| Effets et teinte vérifiés **à l'exécution** | à la compilation (phase 2) |
+| Agents exécutés de façon synchrone ; `parallel_map`, `race`, `spawn_pool` séquentiels | concurrence réelle (phase 3) |
+| Superviseur : démarrage paresseux des enfants, pas de redémarrage | stratégies de supervision (phase 3) |
+| `step` exécute son bloc sans journal | journal durable (phase 5) |
+| Capacités `fs.read("./docs")`, `net("hôte")` non restreintes | vérifiées par le runtime (phase 2) |
+
+Pour les modèles qui le recommandent (`claude-opus-5`, `claude-fable-5-1`), le client active le repli côté serveur (`fallbacks: "default"`) : une requête refusée par un classifieur est rejouée sur un autre modèle au lieu d'échouer. On le désactive avec `model :x, …, fallbacks: false`.
 
 Objectif de performance : pour le code CPU, rester **entre 1× et 2× Rust**, comme Crystal ou Swift. Côté agents, supporter **100 000 agents concurrents** sur une seule machine (un acteur au repos ≈ 2 Ko).

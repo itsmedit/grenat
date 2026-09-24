@@ -534,7 +534,12 @@ impl<'s> Lexer<'s> {
         let after_opener = matches!(
             self.tokens.last().map(|t| &t.kind),
             None | Some(
-                TokenKind::LParen | TokenKind::LBracket | TokenKind::LBrace | TokenKind::Comma | TokenKind::Pipe
+                TokenKind::LParen
+                    | TokenKind::LBracket
+                    | TokenKind::LBrace
+                    | TokenKind::Comma
+                    | TokenKind::Pipe
+                    | TokenKind::Amp
             )
         );
         if self.peek().is_some_and(is_ident_start) && (self.space_before || after_opener) {

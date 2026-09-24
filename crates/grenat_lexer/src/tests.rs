@@ -153,3 +153,8 @@ fn unterminated_string_recovers_at_end_of_line() {
     assert_eq!(lexed.errors.len(), 1, "{:?}", lexed.errors);
     assert!(lexed.tokens.iter().any(|t| t.kind == ident("next_line")));
 }
+
+#[test]
+fn symbol_after_block_pass() {
+    assert_eq!(kinds("map(&:upcase)"), vec![ident("map"), LParen, Amp, Symbol("upcase".into()), RParen, Eof]);
+}

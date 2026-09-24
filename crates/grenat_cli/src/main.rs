@@ -12,10 +12,16 @@ const USAGE: &str = "\
 grenat — langage de programmation agentique
 
 Usage :
+  grenat run [--log] <fichier.grn> [args…]   exécute le programme (puis `main`)
+  grenat test <fichier.grn>...               exécute les blocs `test \"…\" do … end`
   grenat check <fichier.grn>...   vérifie la syntaxe
   grenat parse <fichier.grn>      affiche l'arbre syntaxique
   grenat tokens <fichier.grn>     affiche les tokens
   grenat --version
+
+Variables d'environnement :
+  ANTHROPIC_API_KEY   clé de l'API Claude (prompts et agents)
+  GRENAT_LOG=1        journalise chaque appel LLM et d'outil (comme --log)
 ";
 
 fn main() -> ExitCode {
@@ -24,7 +30,9 @@ fn main() -> ExitCode {
         Some("check") if args.len() > 1 => check(&args[1..]),
         Some("parse") if args.len() == 2 => dump_ast(&args[1]),
         Some("tokens") if args.len() == 2 => dump_tokens(&args[1]),
-        Some(cmd @ ("run" | "build" | "test" | "eval" | "fmt")) => {
+        Some("run") if args.len() > 1 => run(&args[1..]),
+        Some("test") if args.len() > 1 => test(&args[1..]),
+        Some(cmd @ ("build" | "eval" | "fmt")) => {
             eprintln!("`grenat {cmd}` arrive dans une prochaine phase (voir SPEC.md, feuille de route)");
             ExitCode::FAILURE
         }
@@ -76,6 +84,95 @@ fn check(paths: &[String]) -> ExitCode {
         eprintln!("✗ {failed} fichier(s) en erreur sur {total}");
         ExitCode::FAILURE
     }
+}
+
+/// Parse `path` et affiche ses diagnostics ; `None` si le fichier est invalide.
+fn load(path: &str) -> Option<(String, grenat_ast::Program)> {
+    let src = read(path)?;
+    let parsed = grenat_parser::parse(&src);
+    report(path, &src, &parsed.diagnostics).then_some((src, parsed.program))
+}
+
+/// L'interpréteur parcourt l'AST récursivement : il tourne sur une grande pile.
+fn with_big_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .stack_size(512 * 1024 * 1024)
+            .spawn_scoped(s, f)
+            .expect("thread")
+            .join()
+            .expect("interpréteur")
+    })
+}
+
+fn render_runtime_error(path: &str, src: &str, error: &grenat_interp::RuntimeError) {
+    let mut diag =
+        grenat_parser::Diagnostic::new(error.span.unwrap_or_default(), format!("{} : {}", error.ty, error.message));
+    for (function, span) in &error.trace {
+        diag = diag.with_note(*span, format!("dans `{function}`"));
+    }
+    eprint!("{}", report::render(path, src, &diag, use_color()));
+}
+
+fn run(args: &[String]) -> ExitCode {
+    let log = args[0] == "--log" || env::var_os("GRENAT_LOG").is_some_and(|v| v != "0");
+    let args = if args[0] == "--log" { &args[1..] } else { args };
+    let Some(path) = args.first() else {
+        eprint!("{USAGE}");
+        return ExitCode::from(2);
+    };
+    let Some((src, program)) = load(path) else { return ExitCode::FAILURE };
+    let program_args = args[1..].to_vec();
+    let run = || grenat_interp::run_main(&program, program_args, grenat_interp::Options { log, ..Default::default() });
+    match with_big_stack(run) {
+        Ok(summary) => {
+            if summary.llm_calls > 0 {
+                let line = format!(
+                    "— {} appel(s) LLM · {} tokens · ${:.4}",
+                    summary.llm_calls, summary.tokens, summary.cost_usd
+                );
+                eprintln!("{}", if use_color() { format!("\x1b[2m{line}\x1b[0m") } else { line });
+            }
+            ExitCode::from(summary.exit_code.clamp(0, 255) as u8)
+        }
+        Err(error) => {
+            render_runtime_error(path, &src, &error);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn test(paths: &[String]) -> ExitCode {
+    let (mut passed, mut failed) = (0, 0);
+    for path in paths {
+        let Some((src, program)) = load(path) else {
+            failed += 1;
+            continue;
+        };
+        match with_big_stack(|| grenat_interp::run_tests(&program, grenat_interp::Options::default())) {
+            Ok(outcomes) => {
+                for outcome in outcomes {
+                    match outcome.error {
+                        None => {
+                            passed += 1;
+                            eprintln!("✓ {}", outcome.name);
+                        }
+                        Some(error) => {
+                            failed += 1;
+                            eprintln!("✗ {}", outcome.name);
+                            render_runtime_error(path, &src, &error);
+                        }
+                    }
+                }
+            }
+            Err(error) => {
+                failed += 1;
+                render_runtime_error(path, &src, &error);
+            }
+        }
+    }
+    eprintln!("\n{passed} réussi(s), {failed} échoué(s)");
+    if failed == 0 { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }
 
 fn dump_ast(path: &str) -> ExitCode {

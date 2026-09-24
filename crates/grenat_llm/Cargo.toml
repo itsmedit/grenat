@@ -1,0 +1,12 @@
+[package]
+name = "grenat_llm"
+description = "Accès aux modèles de langage pour le runtime Grenat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+ureq.workspace = true

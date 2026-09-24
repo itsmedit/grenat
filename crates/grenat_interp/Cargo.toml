@@ -1,18 +1,17 @@
 [package]
-name = "grenat_cli"
-description = "Compilateur et outils en ligne de commande du langage Grenat"
+name = "grenat_interp"
+description = "Interpréteur du langage Grenat (phase 1)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
-[[bin]]
-name = "grenat"
-path = "src/main.rs"
-
 [dependencies]
-grenat_lexer.workspace = true
 grenat_ast.workspace = true
+grenat_llm.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
 grenat_parser.workspace = true
-grenat_interp.workspace = true
+serde_json.workspace = true
