@@ -19,30 +19,7 @@ use grenat_lexer::{Comment, Keyword as K, StrPart, Token, TokenKind as T, lex};
 
 const MAX_DIAGNOSTICS: usize = 100;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Diagnostic {
-    pub span: Span,
-    pub message: String,
-    /// Emplacements secondaires (« `def` ouvert ici »).
-    pub notes: Vec<(Span, String)>,
-    pub help: Option<String>,
-}
-
-impl Diagnostic {
-    pub fn new(span: Span, message: impl Into<String>) -> Self {
-        Diagnostic { span, message: message.into(), notes: Vec::new(), help: None }
-    }
-
-    pub fn with_note(mut self, span: Span, message: impl Into<String>) -> Self {
-        self.notes.push((span, message.into()));
-        self
-    }
-
-    pub fn with_help(mut self, help: impl Into<String>) -> Self {
-        self.help = Some(help.into());
-        self
-    }
-}
+pub use grenat_ast::Diagnostic;
 
 #[derive(Debug)]
 pub struct Parsed {

@@ -1,6 +1,6 @@
 # support_desk.grn — un service client multi-agents complet.
 #
-#   grenat run examples/support_desk.grn -- tickets.jsonl
+#   grenat run examples/support_desk.grn examples/tickets.jsonl
 #
 # Triage classe chaque ticket, Researcher cherche dans la doc,
 # Writer rédige la réponse, un humain approuve avant tout envoi.
@@ -23,13 +23,6 @@ enum Category
   Spam
 end
 
-struct Ticket
-  id: Int
-  from: Email
-  subject: String
-  body: String
-end
-
 struct Triage
   category: Category
   priority: Priority
@@ -41,6 +34,59 @@ struct Answer
   body: String              ## réponse au client, dans sa langue, ton chaleureux
   sources: Array(Path)      ## pages de doc utilisées
   confidence: Float         ## entre 0.0 et 1.0
+end
+
+enum Outcome
+  Skipped(id: Int)
+  Sent(id: Int, cost: Money)
+
+  def self.skipped(id: Int) = Skipped(id)
+  def self.sent(id: Int, cost: Money) = Sent(id, cost)
+
+  def sent?
+    case self
+    in Sent then true
+    else false
+    end
+  end
+end
+
+struct Ticket
+  id: Int
+  from: Email
+  subject: String
+  body: String
+
+  def self.from_json(line: String) -> Result(Ticket, ParseError)
+    h = Json.parse(line)
+    Ok(Ticket(id: h["id"], from: h["from"], subject: h["subject"], body: h["body"]))
+  end
+end
+
+# ── Intégrations (bouchons de l'exemple : à remplacer par les vraies) ──
+
+struct Hit
+  path: Path
+  score: Float
+end
+
+struct DocIndex
+  root: Path
+  def search(query: String, limit: Int) -> Array(Hit) = []
+end
+
+module Docs
+  def self.index(root: Path) -> DocIndex = DocIndex(root:)
+end
+
+module Smtp
+  def self.send(to: Email, subject: String, body: String) -> Unit uses net("smtp.mail.com")
+    puts "[smtp] à #{to} — #{subject}\n#{body}"
+  end
+end
+
+module Pager
+  def self.notify(message: String) -> Unit = warn "[pager] #{message}"
 end
 
 # ── Prompts ────────────────────────────────────────────────
@@ -108,7 +154,8 @@ agent Dispatcher
     answer = @writers.ask(Draft(ticket:, triage:))
 
     # Une réponse ~Answer ne peut pas aller vers send_reply (effet net + human)
-    # sans validation : le compilateur refuserait `send_reply(..., answer.body)`.
+    # sans validation : `send_reply(ticket.from, answer.body)` est refusé par
+    # `grenat check` (E0412).
     safe = answer
       .check { |a| a.confidence >= 0.7 && a.sources.any? }
       .or_else { answer.approve(by: :human) }

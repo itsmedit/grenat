@@ -49,11 +49,11 @@ agent Explorer
 end
 
 ## Présente un projet en une phrase percutante.
-prompt pitch(summary: String) -> String using :fast
+prompt pitch(summary: String) -> ~String using :fast
   user "Écris une seule phrase (200 caractères max) qui donne envie de découvrir ce projet : #{summary}"
 end
 
-def main(args: Array(String))
+def main(args: Array(String)) uses llm, fs.read
   path = args.first || "."
   report = spawn(Explorer).ask(Explore(path:))
 

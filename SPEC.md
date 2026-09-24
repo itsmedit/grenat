@@ -332,7 +332,7 @@ grenat/
 │   ├── grenat_ast        # arbre syntaxique typé, spans
 │   ├── grenat_parser     # descente récursive + Pratt, récupération d'erreurs → AST
 │   ├── grenat_hir        # résolution des noms, désucrage (blocs, &., ?, on/tool/prompt)
-│   ├── grenat_types      # inférence HM bidirectionnelle + lignes d'effets + teinte ~T
+│   ├── grenat_types      # vérification graduelle : noms, types, effets, teinte ~T
 │   ├── grenat_mir        # IR SSA, insertion RC Perceus, monomorphisation
 │   ├── grenat_codegen    # Cranelift (dev, compile vite) → LLVM (release, exécute vite)
 │   ├── grenat_runtime    # staticlib liée à chaque binaire :
@@ -344,19 +344,30 @@ grenat/
 └── std/                  # bibliothèque standard écrite en Grenat
 ```
 
-Messages d'erreur visés : le niveau d'Elm et de Rust (crate `ariadne`).
+Messages d'erreur : chaque diagnostic a un code stable, la ligne fautive et, pour la teinte, **l'endroit où la valeur a été produite par le LLM**. Sortie réelle de `grenat check` quand on envoie la réponse non validée de l'agent dans `support_desk.grn` :
 
 ```
-error[E0412]: une valeur LLM teintée atteint un effet `shell`
-  ┌─ agent.grn:14:9
-  │
-12│   plan = planner(goal)          # ~Plan
-  │          ------------- produit ici par le modèle :fast
-14│   run(plan.command)
-  │       ^^^^^^^^^^^^ `run` exige `String`, reçu `~String`
-  │
-  = aide : validez d'abord avec `plan.check { … }` ou `plan.approve(by: :human)`
+erreur[E0412]: une valeur produite par un LLM atteint `send_reply` (effet `net`) sans validation
+   --> support_desk.grn:163:29
+    |
+163 |     send_reply(ticket.from, answer.body)
+    |                             ^^^^^^^^^^^
+note: produite ici par un LLM
+   --> support_desk.grn:132:5
+    |
+132 |     run <<~T
+    |     ^^^^^^^^
+  = aide : validez-la avec `.check { … }`, `.approve(by: :human)` ou `.trust!`
 ```
+
+| Code | Famille |
+|---|---|
+| E0100 | nom inconnu (variable, fonction, type, constante, modèle, outil), avec suggestion |
+| E0200 | type, arité, argument nommé, champ ou méthode inconnus |
+| E0300 | effet utilisé mais non déclaré ; `main` et les `tool` doivent déclarer les leurs |
+| E0412 | valeur teintée `~T` qui atteint un effet dangereux sans validation |
+| E0413 | `prompt` ou handler utilisant `run` dont le type de retour n'est pas teinté |
+| E0500 | déclaration invalide (effet inconnu, sortie de LLM non sérialisable, `run` hors agent…) |
 
 ---
 
@@ -401,7 +412,7 @@ Arborescence installée :
 | **0** ✅ | Lexer + parser + AST + `grenat check/parse/tokens` | on parse tous les exemples et tous les blocs de cette spec |
 | **0.5** | `grenat fmt` (conservation des commentaires) | formateur canonique |
 | **1** ✅ | Interpréteur, `prompt`, `tool`, agents, budgets, teinte, client Anthropic, `grenat run/test` | premier agent qui tourne |
-| **2** | Inférence de types + effets + teinte `~T` **à la compilation** | les erreurs de sécurité avant l'exécution |
+| **2** ✅ | Vérification des noms, types, effets et teinte `~T` **avant l'exécution** ; capacités restreintes à l'exécution | les erreurs de sécurité avant l'exécution |
 | **3** | Runtime d'acteurs (tokio), agents concurrents, `parallel_map`/`race` réels, supervision | multi-agents |
 | **4** | Codegen Cranelift + RC Perceus | binaires natifs rapides |
 | **5** | Workflows durables (journal des `step`), cassettes, `mock`, `eval` | prêt pour la production |
@@ -418,15 +429,23 @@ L'interpréteur exécute directement l'AST. Ce qui marche :
 - budgets `usd`/`tokens`/`time` (`within budget(…)`, directive `budget` des agents), coût calculé par modèle ;
 - `Runtime.on_approval`, `approve!`, `grenat test` avec `assert`, `assert_equal`, `assert_raises`.
 
+### État de la phase 2
+
+`grenat check` et `grenat run` vérifient le programme avant de l'exécuter (`--unchecked` pour s'en passer). Le vérificateur est **graduel** : ce qu'il ne sait pas typer (JSON, valeurs dynamiques) devient inconnu et n'est jamais signalé, pour éviter les faux positifs.
+
+- **Teinte** : l'analyse suit une valeur `~T` à travers les champs, l'interpolation, les opérateurs, les blocs, les tableaux (`<<`, `push`), l'état `@…` des agents et les appels de fonction. Chaque fonction est vérifiée pour la teinte réelle de ses arguments, si bien qu'une fonction utilitaire fonctionne sur une valeur propre comme sur une valeur teintée, sans annotation.
+- **Effets** : inférés dans le corps, propagés par les appels (y compris `ask` et les outils d'un agent), comparés à `uses`, en tenant compte des restrictions littérales (`fs.read("./docs")` couvre `./docs/a.md`).
+- **À l'exécution** : les restrictions `fs.read(…)` / `fs.write(…)` sont appliquées (`CapabilityError`, y compris contre `../`). Une méthode appelée sur une valeur teintée garde un `self` teinté. La teinte reste vérifiée à l'exécution, en défense en profondeur.
+
 Simplifications provisoires, levées dans les phases suivantes :
 
 | Aujourd'hui | Plus tard |
 |---|---|
-| Effets et teinte vérifiés **à l'exécution** | à la compilation (phase 2) |
+| Typage graduel, `T?` accepté là où `T` est attendu | inférence complète, vérification de `nil` |
 | Agents exécutés de façon synchrone ; `parallel_map`, `race`, `spawn_pool` séquentiels | concurrence réelle (phase 3) |
 | Superviseur : démarrage paresseux des enfants, pas de redémarrage | stratégies de supervision (phase 3) |
 | `step` exécute son bloc sans journal | journal durable (phase 5) |
-| Capacités `fs.read("./docs")`, `net("hôte")` non restreintes | vérifiées par le runtime (phase 2) |
+| Restriction `net("hôte")` vérifiée statiquement seulement (le runtime ne fait pas encore de réseau hors LLM) | client HTTP de la bibliothèque standard |
 
 Pour les modèles qui le recommandent (`claude-opus-5`, `claude-fable-5-1`), le client active le repli côté serveur (`fallbacks: "default"`) : une requête refusée par un classifieur est rejouée sur un autre modèle au lieu d'échouer. On le désactive avec `model :x, …, fallbacks: false`.
 

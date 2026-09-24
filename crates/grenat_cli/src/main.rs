@@ -12,9 +12,10 @@ const USAGE: &str = "\
 grenat — langage de programmation agentique
 
 Usage :
-  grenat run [--log] <fichier.grn> [args…]   exécute le programme (puis `main`)
+  grenat run [--log] [--unchecked] <fichier.grn> [args…]
+                                   vérifie puis exécute le programme (puis `main`)
   grenat test <fichier.grn>...               exécute les blocs `test \"…\" do … end`
-  grenat check <fichier.grn>...   vérifie la syntaxe
+  grenat check <fichier.grn>...   vérifie noms, types, effets et teinte
   grenat parse <fichier.grn>      affiche l'arbre syntaxique
   grenat tokens <fichier.grn>     affiche les tokens
   grenat --version
@@ -71,8 +72,7 @@ fn report(path: &str, src: &str, diagnostics: &[grenat_parser::Diagnostic]) -> b
 fn check(paths: &[String]) -> ExitCode {
     let mut failed = 0;
     for path in paths {
-        let ok = read(path).is_some_and(|src| report(path, &src, &grenat_parser::parse(&src).diagnostics));
-        if !ok {
+        if load(path, false).is_none() {
             failed += 1;
         }
     }
@@ -86,11 +86,17 @@ fn check(paths: &[String]) -> ExitCode {
     }
 }
 
-/// Parse `path` et affiche ses diagnostics ; `None` si le fichier est invalide.
-fn load(path: &str) -> Option<(String, grenat_ast::Program)> {
+/// Parse et vérifie `path` (sauf `unchecked`) ; `None` si le fichier est invalide.
+fn load(path: &str, unchecked: bool) -> Option<(String, grenat_ast::Program)> {
     let src = read(path)?;
     let parsed = grenat_parser::parse(&src);
-    report(path, &src, &parsed.diagnostics).then_some((src, parsed.program))
+    if !report(path, &src, &parsed.diagnostics) {
+        return None;
+    }
+    if !unchecked && !report(path, &src, &grenat_types::check(&parsed.program)) {
+        return None;
+    }
+    Some((src, parsed.program))
 }
 
 /// L'interpréteur parcourt l'AST récursivement : il tourne sur une grande pile.
@@ -115,13 +121,24 @@ fn render_runtime_error(path: &str, src: &str, error: &grenat_interp::RuntimeErr
 }
 
 fn run(args: &[String]) -> ExitCode {
-    let log = args[0] == "--log" || env::var_os("GRENAT_LOG").is_some_and(|v| v != "0");
-    let args = if args[0] == "--log" { &args[1..] } else { args };
+    let mut args = args;
+    let (mut log, mut unchecked) = (env::var_os("GRENAT_LOG").is_some_and(|v| v != "0"), false);
+    while let Some(flag) = args.first().filter(|a| a.starts_with("--")) {
+        match flag.as_str() {
+            "--log" => log = true,
+            "--unchecked" => unchecked = true,
+            other => {
+                eprintln!("option inconnue {other}");
+                return ExitCode::from(2);
+            }
+        }
+        args = &args[1..];
+    }
     let Some(path) = args.first() else {
         eprint!("{USAGE}");
         return ExitCode::from(2);
     };
-    let Some((src, program)) = load(path) else { return ExitCode::FAILURE };
+    let Some((src, program)) = load(path, unchecked) else { return ExitCode::FAILURE };
     let program_args = args[1..].to_vec();
     let run = || grenat_interp::run_main(&program, program_args, grenat_interp::Options { log, ..Default::default() });
     match with_big_stack(run) {
@@ -145,7 +162,7 @@ fn run(args: &[String]) -> ExitCode {
 fn test(paths: &[String]) -> ExitCode {
     let (mut passed, mut failed) = (0, 0);
     for path in paths {
-        let Some((src, program)) = load(path) else {
+        let Some((src, program)) = load(path, false) else {
             failed += 1;
             continue;
         };

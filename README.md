@@ -23,22 +23,24 @@ end
 ```
 
 - Spécification : [`SPEC.md`](SPEC.md)
-- Exemples : [`bases.grn`](examples/bases.grn), [`explorateur.grn`](examples/explorateur.grn) (agent réel), [`support_desk.grn`](examples/support_desk.grn) (syntaxe cible complète)
+- Exemples : [`bases.grn`](examples/bases.grn), [`explorateur.grn`](examples/explorateur.grn) (agent réel), [`support_desk.grn`](examples/support_desk.grn) (multi-agents, approbation humaine)
 
 ## État
 
-**Phase 1 — interpréteur** : les programmes Grenat s'exécutent, prompts typés, outils,
-agents et budgets compris. Le détail et les limites actuelles sont dans la feuille de route de la spec.
+**Phase 2 — vérification statique** : avant d'exécuter quoi que ce soit, `grenat` vérifie
+les noms, les types, les effets déclarés et la teinte des valeurs produites par les LLM.
+Une réponse de modèle non validée qui part vers le réseau est une **erreur de compilation**.
 
 ```sh
 cargo build
 target/debug/grenat run examples/bases.grn            # le langage de base, sans LLM
 
 export ANTHROPIC_API_KEY=sk-ant-…
-target/debug/grenat run --log examples/explorateur.grn crates/grenat_parser   # un vrai agent
+target/debug/grenat run --log examples/explorateur.grn crates/grenat_parser    # un vrai agent
+target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl       # multi-agents + approbation
 
+target/debug/grenat check examples/*.grn     # noms, types, effets, teinte
 target/debug/grenat test mon_fichier.grn     # blocs `test "…" do … end`
-target/debug/grenat check examples/*.grn     # syntaxe seule
 cargo test
 ```
 
@@ -50,7 +52,8 @@ cargo test
 | `grenat_ast` | arbre syntaxique |
 | `grenat_parser` | descente récursive + Pratt, diagnostics avec récupération |
 | `grenat_llm` | client de l'API Claude (sortie structurée, outils, repli), fournisseur scripté pour les tests |
-| `grenat_interp` | interpréteur : valeurs, évaluation, prompts, agents, budgets, teinte |
+| `grenat_types` | vérificateur : noms, types, effets, teinte `~T` (E0100–E0500) |
+| `grenat_interp` | interpréteur : valeurs, évaluation, prompts, agents, budgets, teinte, capacités |
 | `grenat_cli` | binaire `grenat` |
 
 Deux dépendances externes seulement : `ureq` (HTTP + rustls) et `serde_json`.

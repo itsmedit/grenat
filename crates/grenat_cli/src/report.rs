@@ -21,7 +21,11 @@ impl Painter {
 
 pub fn render(path: &str, src: &str, diag: &Diagnostic, color: bool) -> String {
     let p = Painter(color);
-    let mut out = format!("{}: {}\n", p.paint("1;31", "erreur"), p.paint("1", &diag.message));
+    let title = match diag.code {
+        Some(code) => format!("erreur[{code}]"),
+        None => "erreur".into(),
+    };
+    let mut out = format!("{}: {}\n", p.paint("1;31", &title), p.paint("1", &diag.message));
     snippet(&mut out, &p, path, src, diag.span, "1;31");
     for (span, note) in &diag.notes {
         out.push_str(&format!("{}: {note}\n", p.paint("1;36", "note")));

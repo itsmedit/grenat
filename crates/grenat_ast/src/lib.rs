@@ -6,6 +6,39 @@
 
 pub use grenat_lexer::Span;
 
+/// Erreur rapportée par une étape du compilateur (parser, vérificateur).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Diagnostic {
+    pub span: Span,
+    pub message: String,
+    /// Code stable, par exemple `E0412` pour une valeur teintée.
+    pub code: Option<&'static str>,
+    /// Emplacements secondaires (« `def` ouvert ici »).
+    pub notes: Vec<(Span, String)>,
+    pub help: Option<String>,
+}
+
+impl Diagnostic {
+    pub fn new(span: Span, message: impl Into<String>) -> Self {
+        Diagnostic { span, message: message.into(), code: None, notes: Vec::new(), help: None }
+    }
+
+    pub fn with_code(mut self, code: &'static str) -> Self {
+        self.code = Some(code);
+        self
+    }
+
+    pub fn with_note(mut self, span: Span, message: impl Into<String>) -> Self {
+        self.notes.push((span, message.into()));
+        self
+    }
+
+    pub fn with_help(mut self, help: impl Into<String>) -> Self {
+        self.help = Some(help.into());
+        self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ident {
     pub name: String,

@@ -1,0 +1,203 @@
+//! Signatures de la bibliothèque intégrée — le reflet exact de ce que
+//! l'interpréteur accepte (`grenat_interp/src/builtins.rs`).
+
+use crate::ty::Ty;
+
+/// Méthodes définies sur toutes les valeurs.
+pub fn universal(name: &str) -> Option<Ty> {
+    Some(match name {
+        "nil?" | "tainted?" | "is_a?" => Ty::Bool,
+        "to_s" | "inspect" => Ty::Str,
+        "class" => Ty::Unknown,
+        _ => return None,
+    })
+}
+
+/// Types des paramètres du bloc passé à `recv.name { |…| }`.
+pub fn block_params(recv: &Ty, name: &str, arg0: Option<&Ty>) -> Vec<Ty> {
+    match (recv.base(), name) {
+        (Ty::Int, "times" | "upto") => vec![Ty::Int],
+        (Ty::Array(t), "each_with_index") => vec![(**t).clone(), Ty::Int],
+        (Ty::Array(t), "reduce" | "inject") => vec![arg0.cloned().unwrap_or_else(|| (**t).clone()), (**t).clone()],
+        (Ty::Array(t), _) => vec![(**t).clone()],
+        (Ty::Range, "reduce" | "inject") => vec![arg0.cloned().unwrap_or(Ty::Int), Ty::Int],
+        (Ty::Range, _) => vec![Ty::Int],
+        (Ty::Hash(k, v), _) => vec![(**k).clone(), (**v).clone()],
+        (Ty::Result(_, e), "or_else") => vec![(**e).clone()],
+        _ => Vec::new(),
+    }
+}
+
+/// Type de retour de `recv.name(…)` ; `None` si la méthode n'existe pas.
+pub fn method(recv: &Ty, name: &str, nargs: usize, block: Option<&Ty>) -> Option<Ty> {
+    use Ty::*;
+    let has_args = nargs > 0;
+    Some(match recv.base() {
+        Int => match name {
+            "times" | "upto" | "to_i" | "round" | "floor" | "ceil" | "abs" | "succ" | "pred" => Int,
+            "to_f" => Float,
+            "zero?" | "even?" | "odd?" | "between?" => Bool,
+            "s" | "sec" | "second" | "seconds" | "min" | "minute" | "minutes" | "h" | "hour" | "hours" | "day"
+            | "days" => Duration,
+            _ => return None,
+        },
+        Float => match name {
+            "round" if has_args => Float,
+            "round" | "floor" | "ceil" | "to_i" => Int,
+            "to_f" | "abs" => Float,
+            "zero?" | "between?" => Bool,
+            _ => return None,
+        },
+        Money => match name {
+            "to_f" => Float,
+            _ => return None,
+        },
+        Duration => match name {
+            "seconds" | "to_f" | "minutes" => Float,
+            _ => return None,
+        },
+        Str => match name {
+            "size" | "length" | "to_i" => Int,
+            "upcase" | "downcase" | "capitalize" | "strip" | "lstrip" | "rstrip" | "reverse" | "sub" | "gsub"
+            | "truncate" | "ljust" | "rjust" => Str,
+            "chars" | "lines" | "split" => Ty::array(Str),
+            "empty?" | "include?" | "start_with?" | "end_with?" => Bool,
+            "index" => Ty::opt(Int),
+            "to_f" => Float,
+            "to_sym" => Sym,
+            _ => return None,
+        },
+        Sym => match name {
+            "to_sym" => Sym,
+            "size" | "length" => Int,
+            _ => return None,
+        },
+        Array(t) => array_method(t, name, has_args, block)?,
+        Range => match name {
+            "include?" | "cover?" => Bool,
+            "first" | "last" if !has_args => Int,
+            "size" | "count" if block.is_none() => Int,
+            _ => array_method(&Int, name, has_args, block)?,
+        },
+        Hash(k, v) => match name {
+            "size" | "length" | "count" => Int,
+            "empty?" | "key?" | "has_key?" | "include?" | "any?" | "all?" => Bool,
+            "keys" => Ty::array((**k).clone()),
+            "values" => Ty::array((**v).clone()),
+            "fetch" | "delete" => (**v).clone(),
+            "merge" | "select" | "filter" | "reject" | "each" => recv.base().clone(),
+            "map" => Ty::array(block.cloned().unwrap_or(Unknown)),
+            "to_a" | "sort_by" => Ty::array(Unknown),
+            "find" | "sum" | "min_by" | "max_by" => Unknown,
+            _ => return None,
+        },
+        Result(t, e) => match name {
+            "ok?" | "err?" => Bool,
+            "value" | "unwrap" | "unwrap_or" => (**t).clone(),
+            "error" => (**e).clone(),
+            "or_else" => crate::ty::join(t, block.unwrap_or(&Unknown)),
+            _ => return None,
+        },
+        Budget => match name {
+            "spent" => Money,
+            "tokens" => Int,
+            "remaining" => Ty::opt(Money),
+            _ => return None,
+        },
+        _ => return None,
+    })
+}
+
+fn array_method(t: &Ty, name: &str, has_args: bool, block: Option<&Ty>) -> Option<Ty> {
+    use Ty::*;
+    let elem = t.clone();
+    let same = || Ty::array(elem.clone());
+    let block_ty = || block.cloned().unwrap_or(Unknown);
+    Some(match name {
+        "size" | "length" | "count" => Int,
+        "empty?" | "any?" | "all?" | "none?" | "include?" => Bool,
+        "first" | "last" if has_args => same(),
+        "first" | "last" | "find" | "detect" | "min" | "max" | "min_by" | "max_by" | "pop" | "shift" | "delete" => {
+            elem.clone()
+        }
+        "index" | "find_index" => Ty::opt(Int),
+        "each" | "each_with_index" | "select" | "filter" | "reject" | "sort" | "sort_by" | "reverse" | "push"
+        | "append" | "unshift" | "uniq" | "compact" | "take" | "drop" | "to_a" | "dup" => same(),
+        "map" | "collect" | "parallel_map" => Ty::array(block_ty()),
+        "flat_map" => match block_ty() {
+            Array(inner) => Array(inner),
+            other => Ty::array(other),
+        },
+        "partition" => Ty::array(same()),
+        "sum" if block.is_some() => block_ty(),
+        "sum" => elem.clone(),
+        "join" => Str,
+        "zip" => Ty::array(Ty::array(Unknown)),
+        "reduce" | "inject" => block_ty(),
+        "group_by" => Hash(Box::new(block_ty()), Box::new(same())),
+        "tally" => Hash(Box::new(elem.clone()), Box::new(Int)),
+        _ => return None,
+    })
+}
+
+/// `Module.name(…)` : type de retour et effet.
+pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static str>)> {
+    use Ty::*;
+    Some(match (module, name) {
+        ("File", "read") => (Str, Some("fs.read")),
+        ("File", "lines") => (Ty::array(Str), Some("fs.read")),
+        ("File", "exist?" | "directory?") => (Bool, Some("fs.read")),
+        ("File", "write") => (Nil, Some("fs.write")),
+        ("Dir", "list") => (Ty::array(Str), Some("fs.read")),
+        ("Math", "pi" | "sqrt" | "log" | "sin" | "cos" | "exp") => (Float, None),
+        ("Env", "get") => (Ty::opt(Str), Some("env")),
+        ("Env", "fetch") => (Str, Some("env")),
+        ("Json", "dump" | "generate") => (Str, None),
+        ("Json", "parse") => (Unknown, None),
+        ("Runtime", "on_approval") => (Nil, None),
+        ("Cli", "confirm") => (Bool, Some("human")),
+        ("Cli", "ask") => (Ty::opt(Str), Some("human")),
+        ("Time", "now") => (Float, Some("time")),
+        _ => return None,
+    })
+}
+
+pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time"];
+
+pub const TYPE_NAMES: &[&str] =
+    &["Int", "Float", "String", "Bool", "Array", "Hash", "Symbol", "Nil", "Range", "Money", "Duration"];
+
+pub const GLOBALS: &[&str] = &[
+    "puts",
+    "print",
+    "p",
+    "warn",
+    "raise",
+    "spawn",
+    "spawn_pool",
+    "budget",
+    "within",
+    "step",
+    "approve!",
+    "with_human",
+    "deny_all",
+    "approve_all",
+    "test",
+    "assert",
+    "assert_equal",
+    "assert_raises",
+    "loop",
+    "sleep",
+    "exit",
+    "race",
+];
+
+/// Champs connus des erreurs intégrées.
+pub fn error_field(error: &str, name: &str) -> Option<Ty> {
+    Some(match (error, name) {
+        (_, "message" | "type" | "full_message") => Ty::Str,
+        ("BudgetExceeded", "spent") => Ty::Money,
+        ("BudgetExceeded", "tokens") => Ty::Int,
+        _ => return None,
+    })
+}

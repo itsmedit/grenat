@@ -149,6 +149,9 @@ pub(crate) struct TypeInfo<'p> {
     pub directives: Vec<&'p Directive>,
 }
 
+/// Capacités déclarées par `uses` : (effet, restriction évaluée).
+pub(crate) type Capabilities = Vec<(String, Option<String>)>;
+
 pub(crate) struct Frame<'p> {
     pub self_val: Option<Value<'p>>,
     pub scope: Scope<'p>,
@@ -187,6 +190,8 @@ pub(crate) struct Interp<'p> {
     pub agents: Vec<AgentFrame<'p>>,
     /// Enfants de superviseur démarrés : (superviseur, agent) → instance.
     pub children: HashMap<(String, String), Value<'p>>,
+    /// Capacités déclarées par les fonctions en cours d'exécution : (fonction, [(effet, restriction)]).
+    pub capabilities: Vec<(String, Capabilities)>,
     pub approver: Option<Value<'p>>,
     pub tests: Vec<(String, Value<'p>)>,
     pub output: Output,
@@ -212,6 +217,7 @@ impl<'p> Interp<'p> {
             prompts: Vec::new(),
             agents: Vec::new(),
             children: HashMap::new(),
+            capabilities: Vec::new(),
             approver: None,
             tests: Vec::new(),
             output: options.output,

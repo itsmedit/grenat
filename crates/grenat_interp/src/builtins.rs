@@ -220,6 +220,19 @@ pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &s
         "to_s" => return interp.display(&recv).map(Value::str),
         "inspect" => return Ok(Value::str(recv.inspect())),
         "tainted?" => return Ok(Value::Bool(false)),
+        // sur une valeur non teintée, la validation est un simple passage
+        "trust!" | "approve" => return Ok(recv),
+        "check" => {
+            let body = block(&args, name)?;
+            return Ok(if interp.call_block(&body, vec![recv.clone()])?.truthy() {
+                Value::ok(recv)
+            } else {
+                Value::err(Value::Error(Rc::new(ErrorVal::new(
+                    "CheckError",
+                    format!("validation refusée pour {}", recv.inspect()),
+                ))))
+            });
+        }
         "is_a?" => {
             let Value::Type(ty) = arg(&args, 0, name)? else {
                 return raise("TypeError", "`is_a?` attend un type");
@@ -801,17 +814,24 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
     match (ty, name) {
         ("File", "read") => {
             let path = str_arg(&args, 0, name)?;
+            interp.check_fs("fs.read", &path)?;
             std::fs::read_to_string(&*path).map(Value::str).or_else(|e| io_error("lecture de", &path, e))
         }
         ("File", "lines") => {
             let path = str_arg(&args, 0, name)?;
+            interp.check_fs("fs.read", &path)?;
             let text = std::fs::read_to_string(&*path).or_else(|e| io_error("lecture de", &path, e))?;
             Ok(Value::array(text.lines().map(Value::str).collect()))
         }
-        ("File", "directory?") => Ok(Value::Bool(std::path::Path::new(&*str_arg(&args, 0, name)?).is_dir())),
-        ("File", "exist?") => Ok(Value::Bool(std::path::Path::new(&*str_arg(&args, 0, name)?).exists())),
+        ("File", "directory?" | "exist?") => {
+            let path = str_arg(&args, 0, name)?;
+            interp.check_fs("fs.read", &path)?;
+            let p = std::path::Path::new(&*path);
+            Ok(Value::Bool(if name == "exist?" { p.exists() } else { p.is_dir() }))
+        }
         ("File", "write") => {
             let (path, content) = (str_arg(&args, 0, name)?, arg(&args, 1, name)?);
+            interp.check_fs("fs.write", &path)?;
             if content.contains_taint() {
                 return raise(
                     "TaintError",
@@ -823,6 +843,7 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         }
         ("Dir", "list") => {
             let path = str_arg(&args, 0, name)?;
+            interp.check_fs("fs.read", &path)?;
             let entries = std::fs::read_dir(&*path).or_else(|e| io_error("lecture du dossier", &path, e))?;
             let mut names: Vec<String> =
                 entries.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();

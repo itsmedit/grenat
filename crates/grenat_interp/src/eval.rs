@@ -363,12 +363,14 @@ impl<'p> Interp<'p> {
         raise("NameError", format!("variable ou fonction inconnue `{name}`"))
     }
 
+    /// Champ de `self` ; teinté si `self` l'est (méthode appelée sur une valeur `~T`).
     fn self_field(&self, receiver: &Value<'p>, name: &str) -> Option<Value<'p>> {
-        match receiver {
+        let found = match receiver.untainted() {
             Value::Record(r) => field(&r.fields, name).cloned(),
             Value::Variant(v) => field(&v.fields, name).cloned(),
             _ => None,
-        }
+        }?;
+        Some(if receiver.is_tainted() { found.taint() } else { found })
     }
 
     fn resolve_const(&mut self, path: &'p [Ident]) -> R<'p> {
@@ -861,7 +863,7 @@ impl<'p> Interp<'p> {
     }
 
     pub(crate) fn method_of(&self, receiver: &Value<'p>, name: &str) -> Option<&'p FnDef> {
-        let ty: &str = match receiver {
+        let ty: &str = match receiver.untainted() {
             Value::Record(r) => &r.ty,
             Value::Object(o) => &o.ty,
             Value::Variant(v) => &v.enum_name,
@@ -878,7 +880,12 @@ impl<'p> Interp<'p> {
             return raise("ArgumentError", format!("`{}` ne prend pas de bloc", def.name.name));
         }
         if let Some(effect) = dangerous_effect(def) {
-            let tainted = args.pos.iter().chain(args.named.iter().map(|(_, v)| v)).any(Value::contains_taint);
+            let tainted = args
+                .pos
+                .iter()
+                .chain(args.named.iter().map(|(_, v)| v))
+                .chain(self_val.iter())
+                .any(Value::contains_taint);
             if tainted {
                 return raise(
                     "TaintError",
@@ -890,11 +897,18 @@ impl<'p> Interp<'p> {
                 );
             }
         }
+        let caps = self.declared_capabilities(def)?;
         self.push_frame(self_val, new_scope(None))?;
+        if let Some(caps) = caps {
+            self.capabilities.push((def.name.name.clone(), caps));
+        }
         let result = self.bind_params(&def.params, args, &def.name.name).and_then(|()| match def.kind {
             FnKind::Prompt => self.run_prompt(def),
             _ => self.eval_body(&def.body),
         });
+        if !def.effects.is_empty() {
+            self.capabilities.pop();
+        }
         self.pop_frame();
         match result {
             Ok(v) | Err(Ctrl::Return(v)) => Ok(v),
@@ -1000,6 +1014,11 @@ impl<'p> Interp<'p> {
                 } else {
                     raise("ApprovalDenied", "valeur refusée par l'humain")
                 }
+            }
+            // méthode utilisateur : `self` reste teinté, ses champs aussi
+            _ if self.method_of(&inner, name).is_some() => {
+                let def = self.method_of(&inner, name).expect("vérifié");
+                self.call_fn(def, args, Some(receiver))
             }
             _ => {
                 if let Some(Value::Closure(c)) = &args.block {
@@ -1285,6 +1304,69 @@ impl<'p> Interp<'p> {
                 Ok(matches!(answer.trim().to_lowercase().as_str(), "o" | "oui" | "y" | "yes"))
             }
         }
+    }
+}
+
+// ── Capacités ────────────────────────────────────────────────
+
+/// Normalisation lexicale d'un chemin : `./docs/../docs/a` → `docs/a`.
+fn path_components(path: &str) -> (bool, Vec<String>) {
+    let absolute = path.starts_with('/');
+    let mut parts: Vec<String> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." if parts.last().is_some_and(|p| p != "..") => {
+                parts.pop();
+            }
+            other => parts.push(other.to_string()),
+        }
+    }
+    (absolute, parts)
+}
+
+/// `declared` (restriction de `uses`) autorise-t-il l'accès à `path` ?
+fn path_allowed(declared: &str, path: &str) -> bool {
+    let (d_abs, d) = path_components(declared);
+    let (p_abs, p) = path_components(path);
+    d_abs == p_abs && !p.first().is_some_and(|c| c == "..") && p.starts_with(&d)
+}
+
+impl<'p> Interp<'p> {
+    /// Capacités déclarées par `uses` (restrictions évaluées) ; `None` si rien n'est déclaré.
+    fn declared_capabilities(&mut self, def: &'p FnDef) -> Result<Option<crate::Capabilities>, Ctrl<'p>> {
+        if def.effects.is_empty() {
+            return Ok(None);
+        }
+        let mut caps = Vec::new();
+        for effect in &def.effects {
+            let path = effect.path.iter().map(|i| i.name.as_str()).collect::<Vec<_>>().join(".");
+            let arg = match effect.args.first() {
+                Some(e) => Some(self.eval(e)?.to_display()),
+                None => None,
+            };
+            caps.push((path, arg));
+        }
+        Ok(Some(caps))
+    }
+
+    /// Vérifie qu'un accès disque est couvert par chaque fonction de la pile qui déclare ses effets.
+    pub(crate) fn check_fs(&self, effect: &str, path: &str) -> Result<(), Ctrl<'p>> {
+        for (owner, caps) in &self.capabilities {
+            let allowed = caps.iter().any(|(declared, arg)| {
+                let covers = declared == effect || effect.starts_with(&format!("{declared}."));
+                covers && arg.as_deref().is_none_or(|prefix| path_allowed(prefix, path))
+            });
+            if !allowed {
+                let declared: Vec<String> =
+                    caps.iter().map(|(p, a)| a.as_ref().map_or(p.clone(), |a| format!("{p}(\"{a}\")"))).collect();
+                return raise(
+                    "CapabilityError",
+                    format!("`{effect}` sur `{path}` n'est pas autorisé par `{owner}` (uses {})", declared.join(", ")),
+                );
+            }
+        }
+        Ok(())
     }
 }
 

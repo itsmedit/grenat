@@ -16,3 +16,4 @@ grenat_lexer.workspace = true
 grenat_ast.workspace = true
 grenat_parser.workspace = true
 grenat_interp.workspace = true
+grenat_types.workspace = true

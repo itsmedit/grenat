@@ -13,9 +13,14 @@ struct Run {
     requests: Vec<serde_json::Value>,
 }
 
-/// Exécute sur une pile de 512 Mo, comme la CLI.
 fn run_with(src: &str, replies: Vec<Response>, input: &[&str]) -> Run {
+    run_full(src, replies, input, &["arg1"])
+}
+
+/// Exécute sur une pile de 512 Mo, comme la CLI.
+fn run_full(src: &str, replies: Vec<Response>, input: &[&str], args: &[&str]) -> Run {
     let src = src.to_string();
+    let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let input: VecDeque<String> = input.iter().map(|s| s.to_string()).collect();
     std::thread::Builder::new()
         .stack_size(512 * 1024 * 1024)
@@ -30,7 +35,7 @@ fn run_with(src: &str, replies: Vec<Response>, input: &[&str]) -> Run {
                 input: Some(input),
                 log: false,
             };
-            let result = run_main(&parsed.program, vec!["arg1".into()], options);
+            let result = run_main(&parsed.program, args, options);
             let output = buffer.borrow().clone();
             Run { result, output, requests: provider.requests() }
         })
@@ -426,4 +431,64 @@ fn explorateur_example_runs_end_to_end() {
 fn bases_example_runs() {
     let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/bases.grn")).unwrap();
     assert!(run(&src).starts_with("fib(25) = 75025\n"));
+}
+
+#[test]
+fn support_desk_example_runs_end_to_end() {
+    let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/support_desk.grn")).unwrap();
+    let triage = |category: &str| {
+        Response::json_reply(json!({"category": category, "priority": "Normal", "language": "fr", "reason": "motif"}))
+    };
+    let replies = vec![
+        triage("Question"),
+        Response::tool_call(
+            "t1",
+            "final_answer",
+            json!({"body": "Menu Factures > Exporter.", "sources": ["docs/export.md"], "confidence": 0.9}),
+        ),
+        triage("Spam"),
+    ];
+    let r = run_full(&src, replies, &["o"], &["../../examples/tickets.jsonl"]);
+    if let Err(e) = &r.result {
+        panic!("{e:?}\n{}", r.output);
+    }
+    assert!(r.output.contains("Envoyer à ana@example.com ?"), "{}", r.output);
+    assert!(
+        r.output.contains("[smtp] à ana@example.com — Re: votre demande\nMenu Factures > Exporter.\n"),
+        "{}",
+        r.output
+    );
+    assert!(r.output.ends_with("✓ 1 envoyés, 1 ignorés — coût $0.0014\n"), "{}", r.output);
+    assert_eq!(r.requests.len(), 3);
+    assert_eq!(r.requests[1]["model"], "claude-opus-5");
+}
+
+// ── Phase 2 : exécution alignée sur le vérificateur ──────────
+
+#[test]
+fn methods_on_tainted_values_keep_self_tainted() {
+    let src = format!(
+        "{SUMMARY}{MAILER}struct Box2\n  inner: Summary\n  def mail = send(\"a\", inner.title)\nend\nb = Box2(inner: summarize(\"x\"))\nb.mail\n"
+    );
+    let e = run_err(&src, vec![summary_reply()]);
+    assert_eq!(e.ty, "TaintError");
+}
+
+#[test]
+fn validation_methods_accept_clean_values() {
+    let src = "p \"a\".trust!, [1].check { |x| x.size > 0 }.ok?\n";
+    assert_eq!(run(src), "\"a\"\ntrue\n");
+}
+
+#[test]
+fn filesystem_capabilities_are_enforced() {
+    let src = "def load(path: String) -> String uses fs.read(\"./src\")\n  File.read(path)\nend\nputs load(\"src/lib.rs\").lines.first\nload(\"Cargo.toml\")\n";
+    let r = run_with(src, vec![], &[]);
+    assert!(r.output.starts_with("//! Interpréteur"), "{}", r.output);
+    let e = r.result.unwrap_err();
+    assert_eq!(e.ty, "CapabilityError");
+    assert!(e.message.contains("`load` (uses fs.read(\"./src\"))"), "{}", e.message);
+
+    let escape = "def load(path: String) -> String uses fs.read(\"./src\")\n  File.read(path)\nend\nload(\"src/../Cargo.toml\")\n";
+    assert_eq!(run_err(escape, vec![]).ty, "CapabilityError");
 }
