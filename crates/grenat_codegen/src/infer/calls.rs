@@ -3,8 +3,8 @@
 use grenat_ast::{Arg, Block, Expr};
 
 use super::methods::constant;
-use super::{Construct, Flow, Infer, Reject, positional};
-use crate::ty::Ty;
+use super::{Construct, Flow, Infer, Method, Reject, Target, positional};
+use crate::ty::{Elem, Ty};
 
 impl Infer<'_, '_> {
     pub(super) fn call(
@@ -27,6 +27,7 @@ impl Infer<'_, '_> {
             },
             (None, Some(_)) => Err(format!("calls `{name}` with a block")),
             (None, None) if name.starts_with(|c: char| c.is_uppercase()) => self.construct(call, name, args),
+            (None, None) if self.is_builtin(name) => self.builtin(call, name, args),
             (None, None) => self.function(name, args),
         }
     }
@@ -46,7 +47,61 @@ impl Infer<'_, '_> {
             self.expect(arg, t, *expected, "passes")
                 .map_err(|_| format!("passes `{}` where `{name}` expects `{}`", self.show(t), self.show(*expected)))?;
         }
-        Ok(Flow::Value(sig.ret))
+        Ok(sig.ret.map_or(Flow::Unit, Flow::Value))
+    }
+
+    /// `puts`, `print`, `p`, `exit` of a standalone program (the interpreter's
+    /// own otherwise), unless the program defines its own.
+    pub(super) fn is_builtin(&self, name: &str) -> bool {
+        self.target == Target::Standalone
+            && matches!(name, "puts" | "print" | "p" | "exit")
+            && !self.sigs.contains_key(name)
+            && !self.typed.vars.contains_key(name)
+    }
+
+    /// `puts`, `print`, `p`, `exit` of a standalone program.
+    pub(super) fn builtin(&mut self, call: &Expr, name: &str, args: &[Arg]) -> Result<Flow, Reject> {
+        let args = positional(args, name)?;
+        let method = match name {
+            "puts" => Method::Puts,
+            "print" => Method::Print,
+            "p" => Method::Inspect,
+            "exit" => {
+                match args.as_slice() {
+                    [] => {}
+                    [code] => {
+                        if self.value(code, None)? != Ty::Int {
+                            return Err("calls `exit` with a non-`Int` code".into());
+                        }
+                    }
+                    _ => return Err("calls `exit` with several codes".into()),
+                }
+                self.typed.methods.insert(call as *const Expr, Method::Exit);
+                return Ok(Flow::Never);
+            }
+            _ => return Err(format!("calls `{name}`, which is not compiled")),
+        };
+        for arg in args {
+            let t = self.value(arg, None)?;
+            self.printable(t, name)?;
+        }
+        self.typed.methods.insert(call as *const Expr, method);
+        Ok(Flow::Unit)
+    }
+
+    /// Printed as the interpreter prints it: no struct with its own `to_s`.
+    fn printable(&self, t: Ty, name: &str) -> Result<(), Reject> {
+        match t {
+            Ty::Struct(id) if self.structs.get(id).has_method("to_s") => {
+                Err(format!("calls `{name}` on a `{}`, which defines `to_s`", self.show(t)))
+            }
+            Ty::Struct(id) => {
+                self.structs.get(id).fields.iter().try_for_each(|(_, f)| self.printable(*f, name))
+            }
+            Ty::Array(Elem::Unknown) => Err(format!("calls `{name}` on `[]`")),
+            Ty::Array(elem) => self.printable(elem.ty().expect("known"), name),
+            _ => Ok(()),
+        }
     }
 
     /// `Point(x: 1.0, y: 2.0)` or `Point.new(…)`: fields are filled as the

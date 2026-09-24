@@ -9,6 +9,7 @@ use cranelift_module::{FuncId, Linkage, Module};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Rt {
     Poll,
+    Write,
     Free,
     DropReuse,
     FreeToken,
@@ -45,8 +46,9 @@ const I: Type = types::I64;
 const F: Type = types::F64;
 
 impl Rt {
-    const ALL: [Rt; 31] = [
+    const ALL: [Rt; 32] = [
         Rt::Poll,
+        Rt::Write,
         Rt::Free,
         Rt::DropReuse,
         Rt::FreeToken,
@@ -83,6 +85,7 @@ impl Rt {
     fn info(self) -> (&'static str, &'static [Type], &'static [Type]) {
         match self {
             Rt::Poll => ("grenat_poll", &[I], &[I]),
+            Rt::Write => ("grenat_write", &[I, I, I, I], &[]),
             Rt::Free => ("grenat_free", &[I, I], &[]),
             Rt::DropReuse => ("grenat_drop_reuse", &[I, I], &[I]),
             Rt::FreeToken => ("grenat_free_token", &[I, I], &[]),

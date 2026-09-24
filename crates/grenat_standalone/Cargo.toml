@@ -1,0 +1,19 @@
+[package]
+name = "grenat_standalone"
+description = "Entry point linked into the executables of `grenat build --native`"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+# it defines `main`: tested end to end through `grenat build --native` (see grenat_cli)
+test = false
+doctest = false
+
+[dependencies]
+grenat_ast.workspace = true
+grenat_report.workspace = true
+grenat_runtime.workspace = true

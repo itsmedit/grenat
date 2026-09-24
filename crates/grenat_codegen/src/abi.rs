@@ -10,24 +10,12 @@
 
 use std::fmt;
 
-/// Exchanged with the trampoline of a compiled function.
-#[repr(C)]
-pub(crate) struct Context<'a> {
-    /// Written by native code: 0, or a [`Trap`] code.
-    pub status: i64,
-    /// Depth at which [`Trap::StackOverflow`] is raised (the interpreter's remaining budget).
-    pub limit: i64,
-    /// The call's checkpoint, read by native code (its flag first).
-    pub poll: grenat_runtime::Poll<'a>,
-}
+use grenat_runtime::status;
 
-pub(crate) const STATUS_OFFSET: i32 = 0;
-pub(crate) const LIMIT_OFFSET: i32 = 8;
-pub(crate) const POLL_OFFSET: i32 = 16;
-
-/// Status of a call whose result native code cannot represent (`nil`…):
-/// the interpreter runs the call again instead.
-pub(crate) const DEOPT: i64 = 4;
+pub(crate) use grenat_runtime::abi::{
+    Context, EXIT_CODE_OFFSET, LIMIT_OFFSET, POLL_OFFSET, SITE_OFFSET, STATUS_OFFSET,
+};
+pub(crate) use grenat_runtime::status::DEOPT;
 
 /// Why a native call gave no value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,33 +36,28 @@ impl Failure {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Trap {
     /// `OverflowError`
-    Overflow = 1,
+    Overflow = status::OVERFLOW as isize,
     /// `ZeroDivisionError`
-    DivisionByZero = 2,
+    DivisionByZero = status::DIVISION_BY_ZERO as isize,
     /// `StackOverflow`
-    StackOverflow = 3,
+    StackOverflow = status::STACK_OVERFLOW as isize,
     /// `Cancelled`: the task was cancelled while native code ran.
-    Cancelled = 5,
+    Cancelled = status::CANCELLED as isize,
 }
 
 impl Trap {
     pub(crate) fn from_status(status: i64) -> Trap {
         match status {
-            1 => Trap::Overflow,
-            2 => Trap::DivisionByZero,
-            5 => Trap::Cancelled,
+            status::OVERFLOW => Trap::Overflow,
+            status::DIVISION_BY_ZERO => Trap::DivisionByZero,
+            status::CANCELLED => Trap::Cancelled,
             _ => Trap::StackOverflow,
         }
     }
 
     /// Grenat error type and message, identical to the interpreter's.
     pub fn error(self) -> (&'static str, &'static str) {
-        match self {
-            Trap::Overflow => ("OverflowError", "integer overflow"),
-            Trap::DivisionByZero => ("ZeroDivisionError", "division by zero"),
-            Trap::StackOverflow => ("StackOverflow", "recursion too deep"),
-            Trap::Cancelled => ("Cancelled", "task cancelled"),
-        }
+        status::error(self as i64).expect("an error status")
     }
 }
 

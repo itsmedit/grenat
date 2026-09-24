@@ -446,8 +446,8 @@ version = "0.1.0"
 dependencies = [
  "grenat_ast",
  "grenat_interp",
- "grenat_lexer",
  "grenat_parser",
+ "grenat_report",
  "grenat_types",
 ]
 
@@ -501,8 +501,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "grenat_report"
+version = "0.1.0"
+dependencies = [
+ "grenat_ast",
+]
+
+[[package]]
 name = "grenat_runtime"
 version = "0.1.0"
+
+[[package]]
+name = "grenat_standalone"
+version = "0.1.0"
+dependencies = [
+ "grenat_ast",
+ "grenat_report",
+ "grenat_runtime",
+]
 
 [[package]]
 name = "grenat_types"

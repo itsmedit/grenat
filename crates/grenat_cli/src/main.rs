@@ -16,8 +16,9 @@ grenat — an agentic programming language
 Usage:
   grenat run [--log] [--unchecked] [--no-jit] <file.grn> [args…]
                                  check, then run the program (and `main`)
-  grenat build <file.grn> [-o <executable>]
+  grenat build [--native] <file.grn> [-o <executable>]
                                  compile the program ahead of time into an executable
+                                 (--native: the whole program, without the interpreter)
   grenat test <file.grn>...      run the `test \"…\" do … end` blocks
   grenat check <file.grn>...     check names, types, effects and taint
   grenat parse <file.grn>        print the syntax tree
@@ -28,7 +29,7 @@ Environment variables:
   ANTHROPIC_API_KEY   Claude API key (prompts and agents)
   GRENAT_LOG=1        log every LLM and tool call, and what the JIT compiled (same as --log)
   GRENAT_JIT=0        interpret everything (same as --no-jit; also in built executables)
-  GRENAT_HOME         where `grenat build` finds lib/grenat/libgrenat_host.a
+  GRENAT_HOME         where `grenat build` finds lib/grenat/libgrenat_{host,standalone}.a
   GRENAT_KEEP_OBJECT  keep the object file of `grenat build` (in the temporary directory)
   CC                  the linker used by `grenat build` (default: cc)
 ";

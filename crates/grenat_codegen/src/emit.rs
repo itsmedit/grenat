@@ -1,6 +1,7 @@
 //! Emission of the compiled functions into a Cranelift module: in memory for
 //! the JIT, or into an object file for `grenat build`. Both get the same code.
 
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 
 use cranelift_codegen::ir::{AbiParam, InstBuilder, MemFlagsData, types};
@@ -15,6 +16,7 @@ use crate::infer::Signature;
 use crate::liveness;
 use crate::runtime::Runtime;
 use crate::shapes;
+use crate::site::Site;
 use crate::structs::Structs;
 use crate::translate::{Callees, Env, Translator};
 use crate::ty::Ty;
@@ -26,6 +28,8 @@ pub(crate) struct Emitted {
     pub trampolines: Vec<FuncId>,
     /// The shapes, in shape order (see [`shapes`](crate::shapes)).
     pub shapes: Vec<DataId>,
+    /// Where native code may stop, by site number.
+    pub sites: Vec<Site>,
 }
 
 /// The target of this machine. Position-independent code for executables.
@@ -53,11 +57,7 @@ pub(crate) fn emit(module: &mut impl Module, selected: &[Compiled], structs: &St
     let shapes = shapes::emit(module, structs)?;
 
     // every literal once, NUL-terminated (a data object is never empty)
-    let texts: BTreeSet<String> = selected
-        .iter()
-        .flat_map(|c| walk::string_literals(&c.def.body.stmts))
-        .chain([String::new()])
-        .collect();
+    let texts: BTreeSet<String> = selected.iter().flat_map(|c| function_literals(c, structs)).collect();
     let mut literals = HashMap::new();
     for text in texts {
         let id = module.declare_anonymous_data(false, false).map_err(fail)?;
@@ -68,7 +68,8 @@ pub(crate) fn emit(module: &mut impl Module, selected: &[Compiled], structs: &St
     }
 
     let mut builder_ctx = FunctionBuilderContext::new();
-    let parts = Parts { selected, ids: &ids, runtime: &runtime, structs, shapes: &shapes, literals: &literals };
+    let sites = RefCell::new(Vec::new());
+    let parts = Parts { selected, ids: &ids, runtime: &runtime, structs, shapes: &shapes, literals: &literals, sites: &sites };
     for (index, compiled) in selected.iter().enumerate() {
         define(module, &mut builder_ctx, &parts, index, compiled)?;
     }
@@ -77,7 +78,21 @@ pub(crate) fn emit(module: &mut impl Module, selected: &[Compiled], structs: &St
         .enumerate()
         .map(|(i, c)| define_trampoline(module, &mut builder_ctx, ids[i], &c.sig, i))
         .collect::<Result<_, _>>()?;
-    Ok(Emitted { trampolines, shapes })
+    Ok(Emitted { trampolines, shapes, sites: sites.into_inner() })
+}
+
+/// Cranelift type of the result (a procedure returns a meaningless `i64`).
+pub(crate) fn ret_type(sig: &Signature) -> cranelift_codegen::ir::Type {
+    sig.ret.map_or(types::I64, Ty::clif)
+}
+
+/// The literals a function refers to: its strings, the empty string, and
+/// the descriptors of what it prints.
+fn function_literals(compiled: &Compiled, structs: &Structs) -> Vec<String> {
+    let mut texts = walk::string_literals(&compiled.def.body.stmts);
+    texts.push(String::new());
+    texts.extend(crate::translate::descriptors(compiled.def, &compiled.typed, structs));
+    texts
 }
 
 fn native_signature(module: &impl Module, sig: &Signature) -> cranelift_codegen::ir::Signature {
@@ -87,7 +102,7 @@ fn native_signature(module: &impl Module, sig: &Signature) -> cranelift_codegen:
     }
     // recursion depth, the call's context; then (value, status)
     s.params.extend([AbiParam::new(types::I64); 2]);
-    s.returns.extend([AbiParam::new(sig.ret.clif()), AbiParam::new(types::I64)]);
+    s.returns.extend([AbiParam::new(ret_type(sig)), AbiParam::new(types::I64)]);
     s
 }
 
@@ -110,6 +125,7 @@ struct Parts<'a, 'p> {
     structs: &'a Structs,
     shapes: &'a [DataId],
     literals: &'a HashMap<String, DataId>,
+    sites: &'a RefCell<Vec<Site>>,
 }
 
 fn define(
@@ -129,15 +145,14 @@ fn define(
         .collect();
     let runtime = parts.runtime.import(module, &mut ctx.func);
     let shapes: Vec<_> = parts.shapes.iter().map(|id| module.declare_data_in_func(*id, &mut ctx.func)).collect();
-    let literals = walk::string_literals(&compiled.def.body.stmts)
+    let literals = function_literals(compiled, parts.structs)
         .into_iter()
-        .chain([String::new()])
         .map(|text| {
             let data = module.declare_data_in_func(parts.literals[&text], &mut ctx.func);
             (text, data)
         })
         .collect();
-    let env = Env { callees: &callees, runtime: &runtime, structs: parts.structs, shapes: &shapes, literals: &literals };
+    let env = Env { callees: &callees, runtime: &runtime, structs: parts.structs, shapes: &shapes, literals: &literals, sites: parts.sites };
     let plan = liveness::plan(compiled.def, &compiled.typed);
     let frontend = module.isa().frontend_config();
     let builder = FunctionBuilder::new(&mut ctx.func, builder_ctx);
@@ -191,8 +206,8 @@ fn define_trampoline(
         let (result, status) = (b.inst_results(call)[0], b.inst_results(call)[1]);
         b.ins().store(MemFlagsData::trusted(), status, context, STATUS_OFFSET);
         let bits = match sig.ret {
-            Ty::Float => b.ins().bitcast(types::I64, MemFlagsData::new(), result),
-            Ty::Bool => b.ins().uextend(types::I64, result),
+            Some(Ty::Float) => b.ins().bitcast(types::I64, MemFlagsData::new(), result),
+            Some(Ty::Bool) => b.ins().uextend(types::I64, result),
             _ => result,
         };
         b.ins().return_(&[bits]);

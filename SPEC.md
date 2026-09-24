@@ -342,7 +342,9 @@ grenat/
 │   │                     #   durable journal (SQLite), wasmtime sandbox
 │   ├── grenat_interp     # HIR interpreter (phase 1, to validate the semantics)
 │   ├── grenat_driver     # load, check and run a program: shared by the CLI and built executables
-│   ├── grenat_host       # static library linked into every executable (runtime + interpreter + main)
+│   ├── grenat_host       # static library linked into executables (runtime + interpreter + main)
+│   ├── grenat_standalone # static library linked into `--native` executables (runtime + main)
+│   ├── grenat_report     # diagnostic rendering, shared by the CLI and executables
 │   └── grenat_cli        # grenat run | build | test | eval | fmt
 └── std/                  # standard library written in Grenat
 ```
@@ -417,7 +419,7 @@ Installed layout:
 | **1** ✅ | Interpreter, `prompt`, `tool`, agents, budgets, taint, Anthropic client, `grenat run/test` | the first agent runs |
 | **2** ✅ | Names, types, effects and `~T` taint checked **before execution**; capabilities enforced at run time | security errors before execution |
 | **3** ✅ | Concurrent actor agents, real `parallel_map`/`race`, cancellation, deadlock detection, supervision | multi-agent |
-| **4** 🚧 | Cranelift codegen (4a ✅ JIT for numeric functions, 4b ✅ strings/arrays/structs with Perceus RC, 4c ✅ `grenat build`, 4d ✅ M:N green threads), then fully native programs | fast native binaries |
+| **4** 🚧 | Cranelift codegen (4a ✅ JIT for numeric functions, 4b ✅ strings/arrays/structs with Perceus RC, 4c ✅ `grenat build`, 4d ✅ M:N green threads, 4e ✅ programs without the interpreter) | fast native binaries |
 | **5** | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
 | **6** | LSP, LLVM release builds, macros, package manager | ecosystem |
 
@@ -458,7 +460,7 @@ Temporary simplifications, lifted in later phases:
 | Today | Later |
 |---|---|
 | Gradual typing, `T?` accepted where `T` is expected | full inference, `nil` checking |
-| Native functions cover numbers, strings, arrays, structs, not hashes, enums, closures or agents; values cross the interpreter boundary by copy; a built executable embeds the interpreter for the rest | whole programs compiled natively |
+| Native functions cover numbers, strings, arrays, structs, not hashes, enums, closures or agents; values cross the interpreter boundary by copy; a built executable embeds the interpreter for the rest, unless the whole program compiles (`--native`) | more of the language in native code |
 | A cancelled task finishes its in-flight LLM call (billed) before stopping | cancellation of in-flight HTTP requests |
 | `step` runs its block without a journal | durable journal (phase 5) |
 | The `net("host")` restriction is only checked statically | HTTP client in the standard library |
@@ -542,7 +544,21 @@ Tasks (`parallel_map`, `race`, `tell`, the program itself) are now green threads
 
 Two pitfalls of stackful coroutines, handled in `grenat_green`: a task may resume on another thread, so the compiler must not reuse a thread-local's address across a suspension (the current task is only read in functions that are never inlined), and no OS lock may be held across a suspension point (the interpreter's long-held locks became green locks). A lock hands over to the next waiter by ticket, so a late wake-up (a timer firing after its sleeper left) cannot be spent on a task that no longer waits. A hang seen once while developing this was not reproduced afterwards (hundreds of runs, including under load); both fixes above address plausible causes.
 
-Next slices: whole programs compiled without the interpreter (native `main`, I/O, the agent runtime in native code); M:N green threads.
+### Phase 4e status: programs without the interpreter
+
+```sh
+grenat build --native app.grn   # the whole program in machine code, ~0.5 MB
+```
+
+When every function of a program compiles (`main` included) and it has no top-level statements, `--native` builds it with no interpreter inside: the object file exports its `main`, its source and its error sites, and is linked with `libgrenat_standalone.a` (the runtime and a `main` that runs it). Native code gains, for such programs, procedures (functions without a return type), `main` with or without `args: Array(String)`, `puts`, `print`, `p` (printed by the runtime from a descriptor of the value's type, exactly as the interpreter prints) and `exit`.
+
+Errors are reported as `grenat run` reports them: every trap and deoptimization of native code records a *site* (function, source span), written into the call's context when taken. What the interpreter would go on with — `nil` from `xs[99]` — stops a native program with a `NativeError` at that site: this is the one difference, and why `--native` is explicit. A program that needs the interpreter is refused with every reason (top-level statements, untyped parameters, agents, prompts…).
+
+To build it, the structures shared by compiled code and its hosts moved to `grenat_runtime` (the call context, statuses, the standalone descriptor), object shapes became plain data of the module, and diagnostic rendering moved to `grenat_report`: the standalone library needs neither Cranelift, nor the parser, nor the interpreter.
+
+`examples/objects.grn` built `--native`: 0.49 MB (0.39 MB stripped), 0.04 s; the same built with the interpreter: 6.5 MB, 0.05 s; Rust: 0.012 s. The gap is in string building: each evaluation of a literal and each `to_s` allocates a string (static literals are the next step).
+
+Next slices (native `main`, I/O, the agent runtime in native code); M:N green threads.
 
 For the models that recommend it (`claude-opus-5`, `claude-fable-5-1`), the client enables server-side fallbacks (`fallbacks: "default"`): a request refused by a classifier is replayed on another model instead of failing. Disable it with `model :x, …, fallbacks: false`.
 

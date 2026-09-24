@@ -1,7 +1,6 @@
 //! Diagnostic rendering, rustc style.
 
-use grenat_lexer::Span;
-use grenat_parser::Diagnostic;
+use grenat_ast::{Diagnostic, Span};
 
 /// Line and column (in characters), 1-based.
 pub fn line_col(src: &str, offset: usize) -> (usize, usize) {

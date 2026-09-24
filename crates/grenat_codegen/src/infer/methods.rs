@@ -54,6 +54,14 @@ pub(crate) enum Method {
     EachWithIndex,
     /// Field of a struct, by index.
     Field(usize),
+    /// `puts x, …` (standalone programs).
+    Puts,
+    /// `print x, …`
+    Print,
+    /// `p x, …`
+    Inspect,
+    /// `exit` / `exit code`
+    Exit,
 }
 
 /// String methods implemented by the runtime.

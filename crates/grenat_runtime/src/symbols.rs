@@ -5,6 +5,7 @@ use crate::poll::*;
 use crate::record::*;
 use crate::release::*;
 use crate::string::*;
+use crate::write::*;
 
 /// Every runtime function with its address, for the JIT's symbol lookup.
 pub fn symbols() -> Vec<(&'static str, *const u8)> {
@@ -13,6 +14,7 @@ pub fn symbols() -> Vec<(&'static str, *const u8)> {
     }
     table![
         grenat_poll,
+        grenat_write,
         grenat_free,
         grenat_drop_reuse,
         grenat_free_token,

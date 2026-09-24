@@ -9,25 +9,29 @@
 
 mod arrays;
 mod calls;
+mod io;
 mod numbers;
 mod ownership;
 mod strings;
 mod structs;
 
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{Block, BlockArg, FuncRef, GlobalValue, InstBuilder, MemFlagsData, Value, types};
 use cranelift_frontend::{FunctionBuilder, Variable};
-use grenat_ast::{BinOp, Expr, ExprKind, FnDef};
+use grenat_ast::{BinOp, Expr, ExprKind, FnDef, Span};
 
-use crate::abi::{LIMIT_OFFSET, POLL_OFFSET, Trap};
+use crate::abi::{LIMIT_OFFSET, POLL_OFFSET, SITE_OFFSET, Trap};
 use crate::infer::{Flow, Signature, Typed};
 use crate::liveness::{Edge, Plan};
 use crate::runtime::{Rt, RuntimeRefs};
+use crate::site::Site;
 use crate::structs::Structs as StructTable;
 use crate::ty::Ty;
 
+pub(crate) use io::descriptors;
 pub(crate) use ownership::Held;
 use ownership::Reuse;
 
@@ -43,10 +47,16 @@ pub(crate) struct Env<'a> {
     pub shapes: &'a [GlobalValue],
     /// The bytes of each string literal of the function.
     pub literals: &'a HashMap<String, GlobalValue>,
+    /// Sites of the whole program, numbered in order.
+    pub sites: &'a RefCell<Vec<Site>>,
 }
 
 pub(crate) struct Translator<'a, 'b> {
     b: FunctionBuilder<'b>,
+    /// The function (for its sites).
+    def: &'a FnDef,
+    /// Span of the expression being translated (for its sites).
+    span: Span,
     typed: &'a Typed,
     plan: &'a Plan,
     env: &'a Env<'a>,
@@ -57,7 +67,8 @@ pub(crate) struct Translator<'a, 'b> {
     /// checkpoint, read from memory (they never change during the call).
     ctx: Value,
     exit: Block,
-    ret: Ty,
+    /// `None`: a procedure.
+    ret: Option<Ty>,
     /// Variables owning a reference at the current point (see [`liveness`](crate::liveness)).
     owned: BTreeSet<String>,
     /// Owned temporaries not yet consumed, released if an error interrupts.
@@ -73,7 +84,7 @@ impl<'a, 'b> Translator<'a, 'b> {
     /// Parameters: the values, then `depth` and the context; results: the value, then the status.
     pub fn function(
         mut b: FunctionBuilder<'b>,
-        def: &FnDef,
+        def: &'a FnDef,
         sig: &Signature,
         typed: &'a Typed,
         plan: &'a Plan,
@@ -86,11 +97,13 @@ impl<'a, 'b> Translator<'a, 'b> {
         let n = sig.params.len();
         let (depth, ctx) = (params[n], params[n + 1]);
         let exit = b.create_block();
-        b.append_block_param(exit, sig.ret.clif());
+        b.append_block_param(exit, crate::emit::ret_type(sig));
         b.append_block_param(exit, types::I64);
 
         let mut t = Translator {
             b,
+            def,
+            span: def.span,
             typed,
             plan,
             env,
@@ -130,7 +143,7 @@ impl<'a, 'b> Translator<'a, 'b> {
 
         match t.stmts(&def.body.stmts) {
             Some(held) => {
-                let value = t.consume(held);
+                let value = t.result(held);
                 t.check_balanced();
                 let ok = t.b.ins().iconst(types::I64, 0);
                 t.b.ins().jump(exit, &[BlockArg::Value(value), BlockArg::Value(ok)]);
@@ -150,6 +163,15 @@ impl<'a, 'b> Translator<'a, 'b> {
 
     // ── Helpers ──────────────────────────────────────────────
 
+    /// The value returned for `held`: a procedure drops it.
+    fn result(&mut self, held: Held) -> Value {
+        if self.ret.is_some() {
+            return self.consume(held);
+        }
+        self.release(held);
+        self.b.ins().iconst(types::I64, 0)
+    }
+
     fn zero(&mut self, ty: Ty) -> Value {
         match ty {
             Ty::Float => self.b.ins().f64const(0.0),
@@ -159,7 +181,10 @@ impl<'a, 'b> Translator<'a, 'b> {
 
     /// Leaves with a zero value and `status`.
     fn jump_exit_zero(&mut self, status: Value) {
-        let zero = self.zero(self.ret);
+        let zero = match self.ret {
+            Some(ty) => self.zero(ty),
+            None => self.b.ins().iconst(types::I64, 0),
+        };
         self.b.ins().jump(self.exit, &[BlockArg::Value(zero), BlockArg::Value(status)]);
     }
 
@@ -170,12 +195,30 @@ impl<'a, 'b> Translator<'a, 'b> {
     }
 
     /// If `cond` holds: release everything held and leave with `status`
-    /// (a [`Trap`] code, or `DEOPT`).
+    /// (a [`Trap`] code).
     fn trap_if(&mut self, cond: Value, status: i64) {
+        self.stop_if(cond, status, None);
+    }
+
+    /// If `cond` holds: record the site, release everything held, and leave
+    /// with `status`.
+    fn stop_if(&mut self, cond: Value, status: i64, reason: Option<&'static str>) {
         let fail = self.b.create_block();
         let cont = self.b.create_block();
         self.b.ins().brif(cond, fail, &[], cont, &[]);
         self.b.switch_to_block(fail);
+        let site = {
+            let mut sites = self.env.sites.borrow_mut();
+            sites.push(Site {
+                function: self.def.name.name.clone(),
+                function_span: self.def.span,
+                span: self.span,
+                reason,
+            });
+            sites.len() as i64 - 1
+        };
+        let site = self.b.ins().iconst(types::I64, site);
+        self.store(site, self.ctx, SITE_OFFSET);
         let code = self.b.ins().iconst(types::I64, status);
         self.fail(code);
         self.b.switch_to_block(cont);
@@ -262,7 +305,10 @@ impl<'a, 'b> Translator<'a, 'b> {
     /// consumed or released), except a read of a variable that is not its
     /// last use, which is borrowed from the variable.
     fn eval(&mut self, e: &Expr) -> Option<Held> {
-        let held = self.eval_kind(e)?;
+        let outer = std::mem::replace(&mut self.span, e.span);
+        let held = self.eval_kind(e);
+        self.span = outer;
+        let held = held?;
         debug_assert!(held.owned || !held.ty.is_heap() || matches!(e.kind, ExprKind::Var(_)), "borrowed: {e:?}");
         Some(self.hold(held))
     }
@@ -280,6 +326,7 @@ impl<'a, 'b> Translator<'a, 'b> {
             ExprKind::Bool(b) => scalar(self.bool_const(*b)),
             ExprKind::Str(segs) => Some(self.string(segs)),
             ExprKind::Array(items) => Some(self.array_literal(e, items)),
+            ExprKind::Var(_) if self.typed.methods.contains_key(&(e as *const Expr)) => self.call(e, None, &[], None),
             ExprKind::Var(name) => Some(self.read(e, name)),
             ExprKind::Assign { target, value } => self.assign(e, target, value),
             ExprKind::OpAssign { op, target, value } => self.op_assign(e, *op, target, value),
@@ -295,8 +342,8 @@ impl<'a, 'b> Translator<'a, 'b> {
                 self.while_loop(e, cond, body);
                 None
             }
-            ExprKind::Return(Some(value)) => {
-                self.return_(value);
+            ExprKind::Return(value) => {
+                self.return_(value.as_deref());
                 None
             }
             ExprKind::Index { recv, args } => Some(self.index(e, recv, &args[0])),
@@ -375,7 +422,7 @@ impl<'a, 'b> Translator<'a, 'b> {
             ExprKind::Index { recv, args } => {
                 let array = self.operand(recv, &[&args[0], value]);
                 let index = self.scalar(&args[0]);
-                let current = self.element(array, index);
+                let current = self.element(array, index, "an index out of range (`nil`)");
                 let current = self.hold(current);
                 let rhs = self.operand(value, &[]);
                 let result = self.binary_held(op, current, rhs);
@@ -475,9 +522,11 @@ impl<'a, 'b> Translator<'a, 'b> {
         self.edge(e, Edge::Exit);
     }
 
-    fn return_(&mut self, value: &Expr) {
-        let held = self.eval(value).expect("a value");
-        let v = self.consume(held);
+    fn return_(&mut self, value: Option<&Expr>) {
+        let v = match value.and_then(|v| self.eval(v)) {
+            Some(held) => self.result(held),
+            None => self.b.ins().iconst(types::I64, 0),
+        };
         debug_assert!(self.owned.is_empty(), "still owned at `return`: {:?}", self.owned);
         // temporaries of enclosing expressions are abandoned
         self.release_all();

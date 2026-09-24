@@ -4,6 +4,7 @@ use cranelift_jit::{JITBuilder, JITModule};
 use grenat_ast::Program;
 
 use crate::eligibility::select;
+use crate::infer::Target;
 use crate::emit::{emit, isa};
 use crate::native::{Native, Report, Trampoline};
 use crate::runtime::symbols;
@@ -13,7 +14,7 @@ impl Native {
     /// Compiles every eligible function of `program` into memory.
     pub fn compile(program: &Program) -> Result<Native, String> {
         let structs = Structs::from_program(program);
-        let (selected, interpreted) = select(program, &structs);
+        let (selected, interpreted) = select(program, &structs, Target::Hosted);
         let report = Report { compiled: selected.iter().map(|c| c.def.name.name.clone()).collect(), interpreted };
 
         let mut builder = JITBuilder::with_isa(isa(false)?, cranelift_module::default_libcall_names());

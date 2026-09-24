@@ -13,6 +13,7 @@
 //! How an object's children are released is described by a [`Shape`], built
 //! once per type by the compiler and passed to the release functions.
 
+pub mod abi;
 mod array;
 mod format;
 pub mod layout;
@@ -21,8 +22,10 @@ mod poll;
 mod record;
 mod release;
 mod shape;
+pub mod status;
 mod string;
 mod symbols;
+pub mod write;
 
 pub use array::Arr;
 pub use format::float as format_float;

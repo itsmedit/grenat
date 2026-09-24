@@ -19,7 +19,7 @@ use crate::marshal::Marshal;
 use crate::structs::Structs;
 use crate::ty::Ty;
 
-pub(crate) type Trampoline = extern "C" fn(*const u64, *mut Context<'_>) -> u64;
+pub(crate) use grenat_runtime::abi::Trampoline;
 
 struct Entry {
     sig: Signature,
@@ -129,13 +129,19 @@ impl Native {
             marshal.retain(bits[i]);
         }
 
-        let mut ctx = Context { status: 0, limit: depth_limit as i64, poll: grenat_runtime::Poll::new(cancelled) };
+        let mut ctx = Context {
+            status: 0,
+            limit: depth_limit as i64,
+            site: 0,
+            exit_code: 0,
+            poll: grenat_runtime::Poll::new(cancelled),
+        };
         let ctx_ptr: *mut Context = &mut ctx;
         // SAFETY: `ctx` stays in place for the whole call
         let result = grenat_runtime::polled(unsafe { &(*ctx_ptr).poll }, || (entry.trampoline)(bits.as_ptr(), ctx_ptr));
         let outcome = match ctx.status {
             0 => {
-                let ret = entry.sig.ret;
+                let ret = entry.sig.ret.expect("hosted functions return a value");
                 let value = match kept.iter().find(|&&i| bits[i] == result) {
                     Some(&i) if matches!(ret, Ty::Array(_)) => Data::Alias(i),
                     _ => marshal.read(result, ret),

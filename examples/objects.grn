@@ -1,6 +1,7 @@
 # objects.grn — strings, arrays and structs, compiled to native code.
 #
 #   grenat run --log examples/objects.grn
+#   grenat build --native examples/objects.grn && ./objects   # without the interpreter
 #
 # Every function below is compiled by the JIT. Objects are reference counted
 # (Perceus): the loop in `drift` builds each new particle in the memory of
@@ -47,11 +48,19 @@ def csv(xs: Array(Int)) -> String
   out
 end
 
+def first(xs: Array(Int), n: Int) -> Array(Int)
+  out = []
+  n.times do |i|
+    out << xs[i]
+  end
+  out
+end
+
 def main
   p = drift(Particle(x: 0.0, y: 0.0, vx: 1.0, vy: 2.0), 2_000_000)
-  puts "particle at (#{p.x.round(2)}, #{p.y.round(2)})"
+  puts "particle at (#{p.x.floor}, #{p.y.floor})"
   found = primes(2_000_000)
   puts "#{found.length} primes below 2 000 000, the last: #{found.last}"
-  puts "csv of the first ten: #{csv(found.take(10))}"
+  puts "csv of the first ten: #{csv(first(found, 10))}"
   puts "csv length: #{csv(found).length}"
 end

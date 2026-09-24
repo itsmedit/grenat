@@ -179,14 +179,15 @@ impl Translator<'_, '_> {
     }
 
     /// Leaves with `DEOPT` if `cond` holds: the interpreter reruns the call.
-    pub(super) fn deopt_if(&mut self, cond: Value) {
-        self.trap_if(cond, DEOPT);
+    /// `reason`: what native code cannot represent, for a standalone executable.
+    pub(super) fn deopt_if(&mut self, cond: Value, reason: &'static str) {
+        self.stop_if(cond, DEOPT, Some(reason));
     }
 
     /// Deoptimizes when a runtime function returned null.
-    pub(super) fn deopt_if_null(&mut self, obj: Value) {
+    pub(super) fn deopt_if_null(&mut self, obj: Value, reason: &'static str) {
         let null = self.b.ins().icmp_imm_s(IntCC::Equal, obj, 0);
-        self.deopt_if(null);
+        self.deopt_if(null, reason);
     }
 
     // ── Drop-reuse ───────────────────────────────────────────

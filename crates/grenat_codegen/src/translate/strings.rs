@@ -12,7 +12,7 @@ use crate::ty::Ty;
 
 impl Translator<'_, '_> {
     /// Address and length of the bytes of a literal (data of the module).
-    fn literal(&mut self, text: &str) -> (Value, Value) {
+    pub(super) fn literal(&mut self, text: &str) -> (Value, Value) {
         let data = self.env.literals[text];
         (self.b.ins().symbol_value(types::I64, data), self.b.ins().iconst(types::I64, text.len() as i64))
     }
@@ -101,7 +101,7 @@ impl Translator<'_, '_> {
             BinOp::Mul => {
                 let s = self.runtime(Rt::StrRepeat, &[l.value, r.value])[0];
                 // a negative count is a `TypeError` in the interpreter
-                self.deopt_if_null(s);
+                self.deopt_if_null(s, "a negative repetition count");
                 self.release(l);
                 Held::object(s, Ty::Str)
             }
@@ -176,7 +176,7 @@ impl Translator<'_, '_> {
     /// `s[i]`: the character, or deoptimization when out of range (`nil`).
     pub(super) fn char_at(&mut self, recv: Held, index: Value) -> Held {
         let c = self.runtime(Rt::StrCharAt, &[recv.value, index])[0];
-        self.deopt_if_null(c);
+        self.deopt_if_null(c, "a character index out of range (`nil`)");
         self.release(recv);
         Held::object(c, Ty::Str)
     }

@@ -1,7 +1,7 @@
 //! Loading and running Grenat programs: what `grenat run` does, shared with
 //! the executables built by `grenat build`, which must behave identically.
 
-pub mod report;
+pub use grenat_report as report;
 
 use std::io::IsTerminal;
 use std::{env, fs};

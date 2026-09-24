@@ -7,15 +7,16 @@
 //! source again at startup, runs it, and calls the linked code through
 //! [`Native::link`]: nothing is compiled at run time.
 
-use cranelift_codegen::ir::{FuncRef, GlobalValue};
-use cranelift_module::{DataDescription, DataId, Linkage, Module};
+use cranelift_module::{Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use grenat_ast::Program;
 use grenat_runtime::Shape;
 
 use crate::eligibility::select;
+use crate::infer::Target;
 use crate::emit::{emit, isa};
 use crate::native::{Native, Report, Trampoline};
+use crate::object_data::{Strings, Word, new_record, record};
 use crate::structs::Structs;
 
 /// Name of the exported [`Image`].
@@ -68,7 +69,7 @@ pub struct Object {
 pub fn object(program: &Program, source: &str) -> Result<Object, String> {
     let fail = |e: cranelift_module::ModuleError| e.to_string();
     let structs = Structs::from_program(program);
-    let (selected, interpreted) = select(program, &structs);
+    let (selected, interpreted) = select(program, &structs, Target::Hosted);
     let report = Report { compiled: selected.iter().map(|c| c.def.name.name.clone()).collect(), interpreted };
     let builder =
         ObjectBuilder::new(isa(true)?, "grenat_program", cranelift_module::default_libcall_names()).map_err(fail)?;
@@ -76,66 +77,29 @@ pub fn object(program: &Program, source: &str) -> Result<Object, String> {
     let emitted = emit(&mut module, &selected, &structs)?;
 
     let names = selected.iter().map(|c| c.def.name.name.as_str()).collect::<Vec<_>>().join("\n");
-    let source_id = bytes(&mut module, source.as_bytes())?;
-    let names_id = bytes(&mut module, names.as_bytes())?;
-
-    let functions = pointers(&mut module, &emitted.trampolines, |module, id, data| {
-        let func = module.declare_func_in_data(*id, data);
-        (Some(func), None)
-    })?;
-    let shapes = pointers(&mut module, &emitted.shapes, |module, id, data| {
-        (None, Some(module.declare_data_in_data(*id, data)))
-    })?;
+    let mut strings = Strings::default();
+    let functions: Vec<Word> = emitted.trampolines.iter().map(|id| Word::Function(*id)).collect();
+    let functions = new_record(&mut module, &functions)?;
+    let shapes: Vec<Word> = emitted.shapes.iter().map(|id| Word::Data(*id)).collect();
+    let shapes = new_record(&mut module, &shapes)?;
 
     let image = module.declare_data(IMAGE_SYMBOL, Linkage::Export, false, false).map_err(fail)?;
-    let mut data = DataDescription::new();
-    let mut contents = vec![0u8; 64];
-    let lengths = [source.len(), names.len(), emitted.trampolines.len(), emitted.shapes.len()];
-    for (i, len) in lengths.into_iter().enumerate() {
-        contents[16 * i + 8..16 * i + 16].copy_from_slice(&(len as u64).to_ne_bytes());
-    }
-    data.define(contents.into_boxed_slice());
-    data.set_align(8);
-    for (i, id) in [source_id, names_id, functions, shapes].into_iter().enumerate() {
-        let global = module.declare_data_in_data(id, &mut data);
-        data.write_data_addr((16 * i) as u32, global, 0);
-    }
-    module.define_data(image, &data).map_err(fail)?;
+    let [source_ptr, source_len] = strings.words(&mut module, source)?;
+    let [names_ptr, names_len] = strings.words(&mut module, &names)?;
+    let words = [
+        source_ptr,
+        source_len,
+        names_ptr,
+        names_len,
+        Word::Data(functions),
+        Word::Number(emitted.trampolines.len() as u64),
+        Word::Data(shapes),
+        Word::Number(emitted.shapes.len() as u64),
+    ];
+    record(&mut module, image, &words)?;
 
     let bytes = module.finish().emit().map_err(|e| e.to_string())?;
     Ok(Object { bytes, report })
-}
-
-/// A read-only table of pointers (to functions or to data), one per item.
-fn pointers<T>(
-    module: &mut ObjectModule,
-    items: &[T],
-    target: impl Fn(&mut ObjectModule, &T, &mut DataDescription) -> (Option<FuncRef>, Option<GlobalValue>),
-) -> Result<DataId, String> {
-    let id = module.declare_anonymous_data(false, false).map_err(|e| e.to_string())?;
-    let mut data = DataDescription::new();
-    // explicit zeros: a zero-filled (bss) section cannot hold relocations
-    data.define(vec![0; 8 * items.len().max(1)].into_boxed_slice());
-    // pointers: the linkers require them aligned
-    data.set_align(8);
-    for (i, item) in items.iter().enumerate() {
-        match target(module, item, &mut data) {
-            (Some(func), _) => data.write_function_addr((i * 8) as u32, func),
-            (_, Some(global)) => data.write_data_addr((i * 8) as u32, global, 0),
-            _ => {}
-        }
-    }
-    module.define_data(id, &data).map_err(|e| e.to_string())?;
-    Ok(id)
-}
-
-/// Read-only bytes, NUL-terminated (a data object is never empty).
-fn bytes(module: &mut ObjectModule, content: &[u8]) -> Result<DataId, String> {
-    let id = module.declare_anonymous_data(false, false).map_err(|e| e.to_string())?;
-    let mut data = DataDescription::new();
-    data.define([content, &[0]].concat().into_boxed_slice());
-    module.define_data(id, &data).map_err(|e| e.to_string())?;
-    Ok(id)
 }
 
 impl Native {
@@ -146,7 +110,7 @@ impl Native {
     /// from its source.
     pub unsafe fn link(program: &Program, image: &Image) -> Result<Native, String> {
         let structs = Structs::from_program(program);
-        let (selected, interpreted) = select(program, &structs);
+        let (selected, interpreted) = select(program, &structs, Target::Hosted);
         let compiled: Vec<&str> = selected.iter().map(|c| c.def.name.name.as_str()).collect();
         // SAFETY: by contract
         let linked = unsafe { image.names() };

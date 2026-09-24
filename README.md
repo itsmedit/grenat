@@ -45,6 +45,7 @@ target/debug/grenat run examples/basics.grn            # the core language, no L
 target/debug/grenat run --log examples/fib.grn        # native code: see what the JIT compiled
 target/debug/grenat run --log examples/objects.grn    # strings, arrays, structs, natively
 target/debug/grenat build examples/objects.grn && ./objects   # a standalone executable (needs `cc`)
+target/debug/grenat build --native examples/objects.grn        # without the interpreter: ~0.5 MB
 
 export ANTHROPIC_API_KEY=sk-ant-…
 target/debug/grenat run --log examples/explorer.grn crates/grenat_parser        # a real agent
@@ -68,6 +69,8 @@ cargo test                                   # ~190 tests: unit, integration, CL
 | `grenat_runtime` | reference-counted strings, arrays and records called by native code |
 | `grenat_driver` | load, check and run a program (shared by the CLI and built executables) |
 | `grenat_host` | static library linked into the executables of `grenat build` |
+| `grenat_standalone` | static library linked into `grenat build --native` executables |
+| `grenat_report` | diagnostic rendering |
 | `grenat_green` | M:N green threads: scheduler, green locks, channels, timers |
 | `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities |
 | `grenat_cli` | the `grenat` binary |

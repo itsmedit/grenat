@@ -4,7 +4,7 @@ use cranelift_codegen::ir::{InstBuilder, Value};
 use grenat_ast::{Arg, BinOp, Block, Expr, ExprKind};
 
 use super::{Held, Translator};
-use crate::infer::Method;
+use crate::infer::{Flow, Method};
 use crate::ty::Ty;
 
 fn positional(args: &[Arg]) -> Vec<&Expr> {
@@ -32,7 +32,22 @@ impl Translator<'_, '_> {
         if self.typed.constructs.contains_key(&(e as *const Expr)) {
             return Some(self.construct(e, args));
         }
-        let Some(recv) = recv else { return Some(self.native_call(e, args)) };
+        let Some(recv) = recv else {
+            return match self.typed.methods.get(&(e as *const Expr)) {
+                Some(Method::Exit) => {
+                    self.exit(args.first().map(|a| match a {
+                        Arg::Pos(e) => e,
+                        _ => unreachable!("rejected by infer"),
+                    }));
+                    None
+                }
+                Some(&method) => {
+                    self.write(method, &positional(args));
+                    None
+                }
+                None => self.native_call(e, args),
+            };
+        };
         let method = self.typed.method(e);
         let args = positional(args);
         match method {
@@ -87,7 +102,7 @@ impl Translator<'_, '_> {
         let i = self.scalar(index);
         match self.typed.method(e) {
             Method::At => {
-                let element = self.element(held, i);
+                let element = self.element(held, i, "an index out of range (`nil`)");
                 self.release(held);
                 element
             }
@@ -98,7 +113,7 @@ impl Translator<'_, '_> {
 
     /// A call to another compiled function: arguments are handed over (the
     /// callee owns them), a failure of the callee propagates.
-    fn native_call(&mut self, e: &Expr, args: &[Arg]) -> Held {
+    fn native_call(&mut self, e: &Expr, args: &[Arg]) -> Option<Held> {
         let ExprKind::Call { name, .. } = &e.kind else { unreachable!("a call") };
         let func = self.env.callees[name.name.as_str()];
         let exprs = positional(args);
@@ -109,8 +124,10 @@ impl Translator<'_, '_> {
         let call = self.b.ins().call(func, &values);
         let (result, status) = (self.b.inst_results(call)[0], self.b.inst_results(call)[1]);
         self.propagate_trap(status);
-        let ty = self.typed.ty(e);
-        Held { value: result, ty, owned: ty.is_heap() }
+        match self.typed.flow(e) {
+            Flow::Value(ty) => Some(Held { value: result, ty, owned: ty.is_heap() }),
+            _ => None,
+        }
     }
 
     /// `lhs op rhs` (except `&&`/`||`).

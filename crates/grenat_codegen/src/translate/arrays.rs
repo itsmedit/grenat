@@ -91,12 +91,12 @@ impl Translator<'_, '_> {
     }
 
     /// `xs[i]`, not yet registered as pending.
-    pub(super) fn element(&mut self, array: Held, index: Value) -> Held {
+    pub(super) fn element(&mut self, array: Held, index: Value, reason: &'static str) -> Held {
         let len = self.length(array.value);
         let i = self.resolve_index(index, len);
         // unsigned: a still negative index is huge
         let out = self.b.ins().icmp(IntCC::UnsignedGreaterThanOrEqual, i, len);
-        self.deopt_if(out);
+        self.deopt_if(out, reason);
         self.load_element(array.value, i, elem_of(array.ty))
     }
 
@@ -109,7 +109,7 @@ impl Translator<'_, '_> {
         let beyond = self.b.ins().icmp(IntCC::SignedGreaterThan, i, len);
         // the interpreter raises `IndexError`, or fills the gap with `nil`s
         let out = self.b.ins().bor(negative, beyond);
-        self.deopt_if(out);
+        self.deopt_if(out, "an assignment out of range");
         let ty = item.ty;
         let value = self.consume(item);
         let bits = self.slot_bits(value, ty);
@@ -173,12 +173,12 @@ impl Translator<'_, '_> {
             }
             Method::First | Method::Last => {
                 let at = self.b.ins().iconst(types::I64, if method == Method::First { 0 } else { -1 });
-                self.element(array, at)
+                self.element(array, at, "the first or last element of an empty array (`nil`)")
             }
             Method::Pop => {
                 let len = self.length(a);
                 let empty = self.b.ins().icmp_imm_s(IntCC::Equal, len, 0);
-                self.deopt_if(empty);
+                self.deopt_if(empty, "`pop` on an empty array (`nil`)");
                 let last = self.b.ins().iadd_imm_s(len, -1);
                 self.store(last, a, layout::LEN);
                 // the array's reference moves to the result
@@ -207,7 +207,7 @@ impl Translator<'_, '_> {
         let len = self.length(a);
         if ty == Ty::Float {
             let empty = self.b.ins().icmp_imm_s(IntCC::Equal, len, 0);
-            self.deopt_if(empty);
+            self.deopt_if(empty, "the sum of an empty array of `Float`s (the `Int` 0)");
         }
         let header = self.b.create_block();
         let body = self.b.create_block();

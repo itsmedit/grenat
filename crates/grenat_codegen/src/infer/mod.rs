@@ -27,7 +27,18 @@ pub(crate) use methods::{Method, StrOp};
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Signature {
     pub params: Vec<Ty>,
-    pub ret: Ty,
+    /// `None`: returns nothing (a standalone program's `main`, its procedures).
+    pub ret: Option<Ty>,
+}
+
+/// What the compiled code runs within.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Target {
+    /// Called by the interpreter, which runs everything else.
+    Hosted,
+    /// A whole program without the interpreter (`grenat build --native`):
+    /// also `main`, procedures, `puts`, `print`, `p`, `exit`.
+    Standalone,
 }
 
 pub(crate) type Signatures<'p> = HashMap<&'p str, Signature>;
@@ -103,15 +114,21 @@ impl Typed {
 pub(crate) type Reject = String;
 
 /// Types `def` against the signatures of every compilable function.
-pub(crate) fn infer(def: &FnDef, sig: &Signature, sigs: &Signatures, structs: &Structs) -> Result<Typed, Reject> {
+pub(crate) fn infer(
+    def: &FnDef,
+    sig: &Signature,
+    sigs: &Signatures,
+    structs: &Structs,
+    target: Target,
+) -> Result<Typed, Reject> {
     if !def.body.rescues.is_empty() || def.body.ensure.is_some() {
         return Err("uses `rescue`/`ensure`".into());
     }
-    let first = Infer::run(def, sig, sigs, structs, HashMap::new())?;
+    let first = Infer::run(def, sig, sigs, structs, target, HashMap::new())?;
     if !first.types.values().any(|f| matches!(f, Flow::Value(t) if t.is_unknown())) {
         return Ok(first);
     }
-    let second = Infer::run(def, sig, sigs, structs, first.vars)?;
+    let second = Infer::run(def, sig, sigs, structs, target, first.vars)?;
     let unknown = second.types.values().any(|f| matches!(f, Flow::Value(t) if t.is_unknown()))
         || second.vars.values().any(|t| t.is_unknown());
     if unknown {
@@ -123,7 +140,8 @@ pub(crate) fn infer(def: &FnDef, sig: &Signature, sigs: &Signatures, structs: &S
 pub(crate) struct Infer<'a, 'p> {
     sigs: &'a Signatures<'p>,
     structs: &'a Structs,
-    ret: Ty,
+    ret: Option<Ty>,
+    target: Target,
     /// Types learned by the first pass.
     seed: HashMap<String, Ty>,
     /// Locals certainly assigned at this point of the body.
@@ -139,12 +157,14 @@ impl<'a, 'p> Infer<'a, 'p> {
         sig: &Signature,
         sigs: &'a Signatures<'p>,
         structs: &'a Structs,
+        target: Target,
         seed: HashMap<String, Ty>,
     ) -> Result<Typed, Reject> {
         let mut cx = Infer {
             sigs,
             structs,
             ret: sig.ret,
+            target,
             seed,
             assigned: HashSet::new(),
             outer: HashSet::new(),
@@ -155,11 +175,12 @@ impl<'a, 'p> Infer<'a, 'p> {
             cx.assigned.insert(param.name.name.clone());
             cx.outer.insert(param.name.name.clone());
         }
-        let body = cx.stmts(&def.body.stmts, Some(sig.ret))?;
-        match body {
-            Flow::Value(t) => cx.expect(def.body.stmts.last().expect("a value"), t, sig.ret, "returns")?,
-            Flow::Never => {}
-            Flow::Unit => return Err("its last statement has no value".into()),
+        let body = cx.stmts(&def.body.stmts, sig.ret)?;
+        match (body, sig.ret) {
+            (Flow::Value(t), Some(ret)) => cx.expect(def.body.stmts.last().expect("a value"), t, ret, "returns")?,
+            (Flow::Unit, Some(_)) => return Err("its last statement has no value".into()),
+            // a procedure: the value of its last statement is dropped
+            _ => {}
         }
         Ok(cx.typed)
     }
@@ -203,6 +224,8 @@ impl<'a, 'p> Infer<'a, 'p> {
             ExprKind::Bool(_) => Flow::Value(Ty::Bool),
             ExprKind::Str(segs) => Flow::Value(self.string(segs)?),
             ExprKind::Array(items) => Flow::Value(self.array(items, expected)?),
+            // `puts` or `exit` alone, in a standalone program
+            ExprKind::Var(name) if self.is_builtin(name) => self.builtin(e, name, &[])?,
             ExprKind::Var(name) => Flow::Value(self.read(name)?),
             ExprKind::Assign { target, value } => self.assign(target, value)?,
             ExprKind::OpAssign { op, target, value } => self.op_assign(*op, target, value)?,
@@ -215,9 +238,17 @@ impl<'a, 'p> Infer<'a, 'p> {
                 Flow::Unit
             }
             ExprKind::Return(value) => {
-                let Some(value) = value else { return Err("returns nothing".into()) };
-                let t = self.value(value, Some(self.ret))?;
-                self.expect(value, t, self.ret, "returns")?;
+                match (value, self.ret) {
+                    (Some(value), Some(ret)) => {
+                        let t = self.value(value, Some(ret))?;
+                        self.expect(value, t, ret, "returns")?;
+                    }
+                    (None, Some(_)) => return Err("returns nothing".into()),
+                    (Some(value), None) => {
+                        self.expr(value, None)?;
+                    }
+                    (None, None) => {}
+                }
                 Flow::Never
             }
             ExprKind::Index { recv, args } => Flow::Value(self.index(e, recv, args)?),

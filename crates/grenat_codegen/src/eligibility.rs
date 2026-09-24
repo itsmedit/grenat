@@ -11,7 +11,7 @@ use std::collections::HashSet;
 
 use grenat_ast::{FnDef, FnKind, Item, Program};
 
-use crate::infer::{Signature, Signatures, Typed, infer};
+use crate::infer::{Signature, Signatures, Target, Typed, infer};
 use crate::structs::Structs;
 
 pub(crate) struct Compiled<'p> {
@@ -23,12 +23,16 @@ pub(crate) struct Compiled<'p> {
 }
 
 /// Functions to compile, and the candidates left to the interpreter with the reason.
-pub(crate) fn select<'p>(program: &'p Program, structs: &Structs) -> (Vec<Compiled<'p>>, Vec<(String, String)>) {
+pub(crate) fn select<'p>(
+    program: &'p Program,
+    structs: &Structs,
+    target: Target,
+) -> (Vec<Compiled<'p>>, Vec<(String, String)>) {
     let mut candidates: Vec<(&FnDef, Signature)> = program
         .items
         .iter()
         .filter_map(|item| match item {
-            Item::Fn(def) => signature(def, structs).map(|sig| (&**def, sig)),
+            Item::Fn(def) => signature(def, structs, target).map(|sig| (&**def, sig)),
             _ => None,
         })
         .collect();
@@ -38,7 +42,7 @@ pub(crate) fn select<'p>(program: &'p Program, structs: &Structs) -> (Vec<Compil
         let mut compiled = Vec::new();
         let mut changed = false;
         for (def, sig) in std::mem::take(&mut candidates) {
-            match infer(def, &sig, &sigs, structs) {
+            match infer(def, &sig, &sigs, structs, target) {
                 Ok(typed) => compiled.push(Compiled { def, sig, typed, mutates: false }),
                 Err(reason) => {
                     rejected.push((def.name.name.clone(), reason));
@@ -75,7 +79,8 @@ fn mutations(compiled: &mut [Compiled]) {
 }
 
 /// Native signature of a candidate, or `None` for an ordinary function.
-fn signature(def: &FnDef, structs: &Structs) -> Option<Signature> {
+/// Standalone, a function without a return type is a procedure.
+fn signature(def: &FnDef, structs: &Structs, target: Target) -> Option<Signature> {
     let plain = def.kind == FnKind::Def && !def.is_abstract && !def.on_self && def.effects.is_empty();
     if !plain {
         return None;
@@ -85,6 +90,10 @@ fn signature(def: &FnDef, structs: &Structs) -> Option<Signature> {
         .iter()
         .map(|p| if p.default.is_some() { None } else { structs.ty(p.ty.as_ref()?) })
         .collect::<Option<Vec<_>>>()?;
-    let ret = structs.ty(def.ret.as_ref()?)?;
+    let ret = match (&def.ret, target) {
+        (Some(ret), _) => Some(structs.ty(ret)?),
+        (None, Target::Standalone) => None,
+        (None, Target::Hosted) => return None,
+    };
     Some(Signature { params, ret })
 }

@@ -21,14 +21,16 @@ fn ensure_host_library() {
     static BUILT: OnceLock<()> = OnceLock::new();
     BUILT.get_or_init(|| {
         let mut cargo = Command::new(env!("CARGO"));
-        cargo.args(["build", "--quiet", "-p", "grenat_host"]);
+        cargo.args(["build", "--quiet", "-p", "grenat_host", "-p", "grenat_standalone"]);
         if !cfg!(debug_assertions) {
             cargo.arg("--release");
         }
         let status = cargo.status().unwrap();
-        assert!(status.success(), "cannot build grenat_host");
-        let lib = Path::new(env!("CARGO_BIN_EXE_grenat")).with_file_name("libgrenat_host.a");
-        assert!(lib.exists(), "no {}", lib.display());
+        assert!(status.success(), "cannot build the libraries");
+        for name in ["libgrenat_host.a", "libgrenat_standalone.a"] {
+            let lib = Path::new(env!("CARGO_BIN_EXE_grenat")).with_file_name(name);
+            assert!(lib.exists(), "no {}", lib.display());
+        }
     });
 }
 
@@ -40,11 +42,18 @@ fn dir() -> PathBuf {
 
 /// Builds `src` into an executable; returns its path.
 fn build(name: &str, src: &str) -> PathBuf {
+    build_with(name, src, &[])
+}
+
+fn build_with(name: &str, src: &str, flags: &[&str]) -> PathBuf {
     ensure_host_library();
     let source = dir().join(format!("{name}.grn"));
     std::fs::write(&source, src).unwrap();
     let exe = dir().join(name);
-    let out = grenat(&["build", source.to_str().unwrap(), "-o", exe.to_str().unwrap()]);
+    let mut args = vec!["build"];
+    args.extend(flags);
+    args.extend([source.to_str().unwrap(), "-o", exe.to_str().unwrap()]);
+    let out = grenat(&args);
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert!(text(&out.stderr).starts_with(&format!("✓ built {}", exe.display())), "{}", text(&out.stderr));
     exe
@@ -138,4 +147,90 @@ fn an_invalid_program_is_not_built() {
     assert_eq!(out.status.code(), Some(1));
     assert!(!exe.exists());
     assert_eq!(grenat(&["build"]).status.code(), Some(2));
+}
+
+// ── Standalone programs (`--native`) ───────────────────────────
+
+const STANDALONE: &str = "\
+struct Point
+  x: Float
+  y: Float
+end
+
+def fib(n: Int) -> Int
+  return n if n < 2
+  fib(n - 1) + fib(n - 2)
+end
+
+def greet(name: String)
+  puts \"hello #{name}\"
+end
+
+def main(args: Array(String))
+  puts \"fib(20) = #{fib(20)}\"
+  args.each do |a|
+    greet(a)
+  end
+  p Point(x: 1.0, y: 2.5)
+  p [\"a\", \"b\\\"c\"]
+  puts [1, 2]
+  print \"no newline \", 42, true
+  puts
+  exit args.length
+end
+";
+
+#[test]
+fn a_native_program_behaves_like_grenat_run() {
+    let exe = build_with("standalone", STANDALONE, &["--native"]);
+    let source = dir().join("standalone.grn");
+    let built = run_exe(&exe, &["Ada", "Linus"], &[]);
+    let ran = grenat(&["run", source.to_str().unwrap(), "Ada", "Linus"]);
+    assert_eq!(
+        text(&built.stdout),
+        "fib(20) = 6765\nhello Ada\nhello Linus\nPoint(x: 1.0, y: 2.5)\n[\"a\", \"b\\\"c\"]\n1\n2\nno newline 42true\n"
+    );
+    assert_eq!(text(&built.stdout), text(&ran.stdout));
+    assert_eq!(built.status.code(), Some(2));
+    assert_eq!(built.status.code(), ran.status.code());
+}
+
+#[test]
+fn a_native_program_is_small() {
+    let native = build_with("small", STANDALONE, &["--native"]);
+    let hosted = build("large", STANDALONE);
+    let size = |p: &PathBuf| std::fs::metadata(p).unwrap().len();
+    // no interpreter inside
+    assert!(size(&native) * 5 < size(&hosted), "{} vs {}", size(&native), size(&hosted));
+}
+
+#[test]
+fn native_errors_are_reported_where_they_happen() {
+    let src = "def div(a: Int, b: Int) -> Int = a / b\ndef main\n  puts div(1, 0)\nend\n";
+    let exe = build_with("native_error", src, &["--native"]);
+    let out = run_exe(&exe, &[], &[]);
+    assert_eq!(out.status.code(), Some(1));
+    let err = text(&out.stderr);
+    assert!(err.starts_with("error: ZeroDivisionError: division by zero\n"), "{err}");
+    assert!(err.contains("native_error.grn:1:"), "{err}");
+    assert!(err.contains("in `div`"), "{err}");
+    // where the interpreter would go on with `nil`, a native program stops
+    let exe = build_with("native_nil", "def main\n  xs = [1]\n  p xs[3]\nend\n", &["--native"]);
+    let err = text(&run_exe(&exe, &[], &[]).stderr);
+    assert!(err.starts_with("error: NativeError: an index out of range (`nil`) cannot be represented"), "{err}");
+    assert!(err.contains("native_nil.grn:3:5"), "{err}");
+}
+
+#[test]
+fn a_program_needing_the_interpreter_is_not_built_native() {
+    let source = dir().join("hosted_only.grn");
+    std::fs::write(&source, "def show(x)\n  puts x\nend\nputs 1\ndef main\n  show(2)\nend\n").unwrap();
+    let exe = dir().join("hosted_only");
+    let out = grenat(&["build", "--native", source.to_str().unwrap(), "-o", exe.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    let err = text(&out.stderr);
+    assert!(err.contains("cannot be compiled without the interpreter"), "{err}");
+    assert!(err.contains("top-level statements need the interpreter"), "{err}");
+    assert!(err.contains("`show` cannot be compiled: its parameters need types"), "{err}");
+    assert!(!exe.exists());
 }
