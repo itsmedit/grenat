@@ -131,8 +131,8 @@ def forever(n: Int) -> Int = forever(n + 1)
     // the limit is the caller's remaining depth
     let fib = function(p, "fib");
     let value = |r: Option<Result<Returned, Failure>>| r.map(|r| r.map(|r| r.value));
-    assert_eq!(value(jit.call(fib, &[int(20)], 5)), Some(Err(Failure::Trap(Trap::StackOverflow))));
-    assert_eq!(value(jit.call(fib, &[int(20)], 20)), Some(Ok(int(6765))));
+    assert_eq!(value(jit.call(fib, &[int(20)], 5, &|| false)), Some(Err(Failure::Trap(Trap::StackOverflow))));
+    assert_eq!(value(jit.call(fib, &[int(20)], 20, &|| false)), Some(Ok(int(6765))));
 }
 
 #[test]
@@ -147,4 +147,39 @@ fn native_code_is_safe_to_call_from_many_threads() {
             });
         }
     });
+}
+
+#[test]
+fn native_loops_stop_when_their_task_is_cancelled() {
+    let src = "\
+def spin(n: Int) -> Int
+  words = [\"a\", \"b\"]
+  total = 0
+  i = 0
+  while i < n
+    total += words[i % 2].length
+    i += 1
+  end
+  total
+end
+def recurse(n: Int) -> Int = if n == 0 then 0 else 1 + recurse(n - 1) end
+";
+    let (p, jit) = compile(src);
+    let asked = std::cell::Cell::new(0);
+    let before = grenat_runtime::live_objects();
+    // cancelled at the third checkpoint (the ticker raises one every 10 ms):
+    // the loop stops, its array is released
+    let cancel_third = || {
+        asked.set(asked.get() + 1);
+        asked.get() >= 3
+    };
+    let r = jit.call(function(p, "spin"), &[int(1_000_000_000_000)], 100, &cancel_third).unwrap();
+    assert_eq!(r.map(|r| r.value), Err(Failure::Trap(Trap::Cancelled)));
+    assert_eq!(asked.get(), 3);
+    assert_eq!(grenat_runtime::live_objects(), before);
+    // function entries are checkpoints too; an already cancelled task stops at once
+    let r = jit.call(function(p, "recurse"), &[int(1_000)], 10_000, &|| true).unwrap();
+    assert_eq!(r.map(|r| r.value), Err(Failure::Trap(Trap::Cancelled)));
+    // never cancelled: runs to the end
+    assert_eq!(call(p, &jit, "spin", &[int(100_000)]), Ok(int(100_000)));
 }

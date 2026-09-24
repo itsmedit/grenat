@@ -1,6 +1,7 @@
 //! The functions compiled code calls, by symbol name.
 
 use crate::array::*;
+use crate::poll::*;
 use crate::record::*;
 use crate::release::*;
 use crate::string::*;
@@ -11,6 +12,7 @@ pub fn symbols() -> Vec<(&'static str, *const u8)> {
         ($($f:ident),* $(,)?) => { vec![$((stringify!($f), $f as *const u8)),*] };
     }
     table![
+        grenat_poll,
         grenat_free,
         grenat_drop_reuse,
         grenat_free_token,

@@ -9,7 +9,7 @@ use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_module::{DataDescription, DataId, FuncId, Linkage, Module};
 
-use crate::abi::{LIMIT_OFFSET, STATUS_OFFSET};
+use crate::abi::STATUS_OFFSET;
 use crate::eligibility::Compiled;
 use crate::infer::Signature;
 use crate::liveness;
@@ -89,8 +89,8 @@ fn native_signature(module: &impl Module, sig: &Signature) -> cranelift_codegen:
     for ty in &sig.params {
         s.params.push(AbiParam::new(ty.clif()));
     }
-    // recursion depth and its limit, then (value, status)
-    s.params.extend([AbiParam::new(types::I64), AbiParam::new(types::I64)]);
+    // recursion depth, the call's context; then (value, status)
+    s.params.extend([AbiParam::new(types::I64); 2]);
     s.returns.extend([AbiParam::new(sig.ret.clif()), AbiParam::new(types::I64)]);
     s
 }
@@ -153,7 +153,7 @@ fn define(
 }
 
 /// `extern "C" fn(args, ctx) -> u64`: unpacks the arguments, calls the function
-/// at depth 1 with the context's limit, and writes its status to the context.
+/// at depth 1 with the context, and writes its status to the context.
 fn define_trampoline(
     module: &mut impl Module,
     builder_ctx: &mut FunctionBuilderContext,
@@ -190,8 +190,7 @@ fn define_trampoline(
             })
             .collect();
         let depth = b.ins().iconst(types::I64, 1);
-        let limit = b.ins().load(types::I64, MemFlagsData::trusted(), context, LIMIT_OFFSET);
-        values.extend([depth, limit]);
+        values.extend([depth, context]);
         let call = b.ins().call(func, &values);
         let (result, status) = (b.inst_results(call)[0], b.inst_results(call)[1]);
         b.ins().store(MemFlagsData::trusted(), status, context, STATUS_OFFSET);

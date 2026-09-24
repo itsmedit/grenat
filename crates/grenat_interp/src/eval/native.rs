@@ -9,7 +9,7 @@
 //! interpreted from the start instead: native code worked on copies, so
 //! nothing it did is visible.
 
-use grenat_codegen::{Data, Failure};
+use grenat_codegen::{Data, Failure, Trap};
 
 use crate::prelude::*;
 
@@ -38,7 +38,10 @@ impl<'p> Interp<'p> {
             data.push(to_data(arg)?);
         }
         let limit = self.max_depth.saturating_sub(self.depth);
-        let result = match jit.call(def, &data, limit)? {
+        // asked at native checkpoints: a native loop stops when its task is cancelled
+        let flags = self.cancel.clone();
+        let cancelled = move || flags.iter().any(|flag| flag.load(std::sync::atomic::Ordering::Relaxed));
+        let result = match jit.call(def, &data, limit, &cancelled)? {
             Ok(returned) => {
                 for (i, items) in &arrays {
                     if let Some(content) = &returned.arrays[*i] {
@@ -52,8 +55,9 @@ impl<'p> Interp<'p> {
                 Ok(if tainted { result.taint() } else { result })
             }
             Err(Failure::Deopt) => return None,
-            // the interpreter would have left the arrays half modified
-            Err(Failure::Trap(_)) if !arrays.is_empty() => return None,
+            // the interpreter would have left the arrays half modified (a
+            // cancellation is timing-dependent anyway: it is reported as is)
+            Err(Failure::Trap(trap)) if !arrays.is_empty() && trap != Trap::Cancelled => return None,
             Err(Failure::Trap(trap)) => {
                 let (ty, message) = trap.error();
                 let error = ErrorVal::new(ty, message);

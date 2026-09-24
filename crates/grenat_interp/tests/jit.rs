@@ -255,3 +255,24 @@ fn deoptimized_calls_are_interpreted() {
     let r = with_jit(&format!("{OBJECTS}p at([1], 7)\n"), true);
     assert_eq!(r.ok(), "nil\n");
 }
+
+#[test]
+fn a_cancelled_task_stops_inside_native_code() {
+    let src = "\
+def spin(n: Int) -> Int
+  i = 0
+  while i < n
+    i += 1
+  end
+  i
+end
+p(race do
+  spin(1_000_000_000_000)
+  spin(10)
+end)
+";
+    let started = std::time::Instant::now();
+    let r = with_jit(src, true);
+    assert_eq!(r.ok(), "10\n");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5), "{:?}", started.elapsed());
+}

@@ -8,6 +8,7 @@ use cranelift_module::{FuncId, Linkage, Module};
 /// A function of `grenat_runtime`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Rt {
+    Poll,
     Free,
     DropReuse,
     FreeToken,
@@ -44,7 +45,8 @@ const I: Type = types::I64;
 const F: Type = types::F64;
 
 impl Rt {
-    const ALL: [Rt; 30] = [
+    const ALL: [Rt; 31] = [
+        Rt::Poll,
         Rt::Free,
         Rt::DropReuse,
         Rt::FreeToken,
@@ -80,6 +82,7 @@ impl Rt {
     /// Symbol, parameter types, result types. Pointers and booleans are `i64`.
     fn info(self) -> (&'static str, &'static [Type], &'static [Type]) {
         match self {
+            Rt::Poll => ("grenat_poll", &[I], &[I]),
             Rt::Free => ("grenat_free", &[I, I], &[]),
             Rt::DropReuse => ("grenat_drop_reuse", &[I, I], &[I]),
             Rt::FreeToken => ("grenat_free_token", &[I, I], &[]),

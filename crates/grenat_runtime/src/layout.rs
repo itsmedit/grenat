@@ -9,6 +9,8 @@ pub const RC: i32 = 0;
 pub const LEN: i32 = 8;
 /// Pointer to the elements of an array.
 pub const DATA: i32 = 24;
+/// Flag of a [`Poll`](crate::Poll): a checkpoint is requested.
+pub const POLL_REQUESTED: i32 = 0;
 /// Size of a value slot.
 pub const SLOT: i32 = 8;
 

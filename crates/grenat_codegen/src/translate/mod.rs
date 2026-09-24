@@ -21,7 +21,7 @@ use cranelift_codegen::ir::{Block, BlockArg, FuncRef, GlobalValue, InstBuilder, 
 use cranelift_frontend::{FunctionBuilder, Variable};
 use grenat_ast::{BinOp, Expr, ExprKind, FnDef};
 
-use crate::abi::Trap;
+use crate::abi::{LIMIT_OFFSET, POLL_OFFSET, Trap};
 use crate::infer::{Flow, Signature, Typed};
 use crate::liveness::{Edge, Plan};
 use crate::runtime::{Rt, RuntimeRefs};
@@ -51,9 +51,11 @@ pub(crate) struct Translator<'a, 'b> {
     plan: &'a Plan,
     env: &'a Env<'a>,
     vars: HashMap<String, (Variable, Ty)>,
-    /// Recursion depth of this call and its limit, passed in registers.
+    /// Recursion depth of this call, passed in a register.
     depth: Value,
-    limit: Value,
+    /// The [`Context`](crate::abi) of the native call: recursion limit and
+    /// checkpoint, read from memory (they never change during the call).
+    ctx: Value,
     exit: Block,
     ret: Ty,
     /// Variables owning a reference at the current point (see [`liveness`](crate::liveness)).
@@ -68,7 +70,7 @@ pub(crate) struct Translator<'a, 'b> {
 
 impl<'a, 'b> Translator<'a, 'b> {
     /// Emits the whole function: entry (depth check), body, exit block.
-    /// Parameters: the values, then `depth` and `limit`; results: the value, then the status.
+    /// Parameters: the values, then `depth` and the context; results: the value, then the status.
     pub fn function(
         mut b: FunctionBuilder<'b>,
         def: &FnDef,
@@ -81,7 +83,8 @@ impl<'a, 'b> Translator<'a, 'b> {
         b.append_block_params_for_function_params(entry);
         b.switch_to_block(entry);
         let params = b.block_params(entry).to_vec();
-        let (depth, limit) = (params[sig.params.len()], params[sig.params.len() + 1]);
+        let n = sig.params.len();
+        let (depth, ctx) = (params[n], params[n + 1]);
         let exit = b.create_block();
         b.append_block_param(exit, sig.ret.clif());
         b.append_block_param(exit, types::I64);
@@ -93,7 +96,7 @@ impl<'a, 'b> Translator<'a, 'b> {
             env,
             vars: HashMap::new(),
             depth,
-            limit,
+            ctx,
             exit,
             ret: sig.ret,
             owned: BTreeSet::new(),
@@ -117,8 +120,10 @@ impl<'a, 'b> Translator<'a, 'b> {
             t.vars.insert(name.clone(), (var, *ty));
         }
 
+        let limit = t.load(types::I64, ctx, LIMIT_OFFSET);
         let too_deep = t.b.ins().icmp(IntCC::SignedGreaterThan, depth, limit);
         t.trap_if(too_deep, Trap::StackOverflow as i64);
+        t.checkpoint();
         for name in &plan.entry {
             t.drop_var(name);
         }
@@ -174,6 +179,23 @@ impl<'a, 'b> Translator<'a, 'b> {
         let code = self.b.ins().iconst(types::I64, status);
         self.fail(code);
         self.b.switch_to_block(cont);
+    }
+
+    /// On every function entry and loop iteration: if the host requested a
+    /// checkpoint (see `grenat_runtime::Poll`), asks it whether the task was
+    /// cancelled — a native loop is otherwise impossible to stop. A read of a
+    /// flag that rarely changes: no dependency between iterations.
+    pub(super) fn checkpoint(&mut self) {
+        let requested = self.b.ins().load(types::I8, MemFlagsData::new(), self.ctx, POLL_OFFSET);
+        let poll = self.b.ins().iadd_imm_s(self.ctx, i64::from(POLL_OFFSET));
+        let ask = self.b.create_block();
+        let done = self.b.create_block();
+        self.b.ins().brif(requested, ask, &[], done, &[]);
+        self.b.switch_to_block(ask);
+        let stop = self.runtime_bool(Rt::Poll, &[poll]);
+        self.trap_if(stop, Trap::Cancelled as i64);
+        self.b.ins().jump(done, &[]);
+        self.b.switch_to_block(done);
     }
 
     /// After a native call: leave at once with the callee's status if it failed.
@@ -445,6 +467,7 @@ impl<'a, 'b> Translator<'a, 'b> {
                 self.release(held);
             }
             debug_assert_eq!(self.owned, at_header, "a loop body changes ownership");
+            self.checkpoint();
             self.b.ins().jump(header, &[]);
         }
 

@@ -29,7 +29,7 @@ pub fn function<'p>(program: &'p Program, name: &str) -> &'p FnDef {
 /// leaves any object alive (every call must free what it allocates, errors included).
 pub fn call_full(program: &Program, jit: &Native, name: &str, args: &[Data]) -> Result<Returned, Failure> {
     let before = live_objects();
-    let result = jit.call(function(program, name), args, 10_000).unwrap_or_else(|| panic!("`{name}` is not compiled"));
+    let result = jit.call(function(program, name), args, 10_000, &|| false).unwrap_or_else(|| panic!("`{name}` is not compiled"));
     assert_eq!(live_objects(), before, "`{name}` leaks objects");
     result
 }

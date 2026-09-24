@@ -20,7 +20,7 @@ use crate::shapes::Shapes;
 use crate::structs::Structs;
 use crate::ty::Ty;
 
-pub(crate) type Trampoline = extern "C" fn(*const u64, *mut Context) -> u64;
+pub(crate) type Trampoline = extern "C" fn(*const u64, *mut Context<'_>) -> u64;
 
 struct Entry {
     sig: Signature,
@@ -88,7 +88,17 @@ impl Native {
     /// Calls the native version of `def`. `None` if it is not compiled or if
     /// the arguments do not have exactly its parameter types (the caller then
     /// interprets the call, which keeps the semantics identical).
-    pub fn call(&self, def: &FnDef, args: &[Data], depth_limit: usize) -> Option<Result<Returned, Failure>> {
+    ///
+    /// `cancelled` is asked regularly while native code runs (every
+    /// `grenat_runtime::POLL_TICK`): `true` stops the call with
+    /// [`Trap::Cancelled`](crate::Trap::Cancelled).
+    pub fn call(
+        &self,
+        def: &FnDef,
+        args: &[Data],
+        depth_limit: usize,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Option<Result<Returned, Failure>> {
         let entry = self.entries.get(&(def as *const FnDef as usize))?;
         let params = &entry.sig.params;
         let marshal = Marshal { structs: &self.structs, shapes: &self.shapes };
@@ -121,8 +131,10 @@ impl Native {
             marshal.retain(bits[i]);
         }
 
-        let mut ctx = Context { status: 0, limit: depth_limit as i64 };
-        let result = (entry.trampoline)(bits.as_ptr(), &mut ctx);
+        let mut ctx = Context { status: 0, limit: depth_limit as i64, poll: grenat_runtime::Poll::new(cancelled) };
+        let ctx_ptr: *mut Context = &mut ctx;
+        // SAFETY: `ctx` stays in place for the whole call
+        let result = grenat_runtime::polled(unsafe { &(*ctx_ptr).poll }, || (entry.trampoline)(bits.as_ptr(), ctx_ptr));
         let outcome = match ctx.status {
             0 => {
                 let ret = entry.sig.ret;

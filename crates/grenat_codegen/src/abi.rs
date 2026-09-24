@@ -1,27 +1,29 @@
 //! Calling contract between native functions and the interpreter.
 //!
 //! Every compiled function takes its parameters (scalars, or pointers to
-//! objects it then owns) followed by two integers, the current recursion
-//! `depth` and its `limit`, and returns two values: its result and a status
+//! objects it then owns) followed by the current recursion `depth` and the
+//! address of the call's [`Context`] (recursion limit, checkpoint), and returns two values: its result and a status
 //! (0, a [`Trap`] code, or `DEOPT`). Native code never unwinds: a failing
 //! callee returns a non-zero status and every caller releases what it holds
 //! and returns it immediately. Only the trampoline, at the boundary with the
-//! interpreter, reads and writes a [`Context`].
+//! interpreter, writes the status into the [`Context`].
 
 use std::fmt;
 
 /// Exchanged with the trampoline of a compiled function.
 #[repr(C)]
-#[derive(Debug, Default)]
-pub(crate) struct Context {
+pub(crate) struct Context<'a> {
     /// Written by native code: 0, or a [`Trap`] code.
     pub status: i64,
     /// Depth at which [`Trap::StackOverflow`] is raised (the interpreter's remaining budget).
     pub limit: i64,
+    /// The call's checkpoint, read by native code (its flag first).
+    pub poll: grenat_runtime::Poll<'a>,
 }
 
 pub(crate) const STATUS_OFFSET: i32 = 0;
 pub(crate) const LIMIT_OFFSET: i32 = 8;
+pub(crate) const POLL_OFFSET: i32 = 16;
 
 /// Status of a call whose result native code cannot represent (`nil`…):
 /// the interpreter runs the call again instead.
@@ -51,6 +53,8 @@ pub enum Trap {
     DivisionByZero = 2,
     /// `StackOverflow`
     StackOverflow = 3,
+    /// `Cancelled`: the task was cancelled while native code ran.
+    Cancelled = 5,
 }
 
 impl Trap {
@@ -58,6 +62,7 @@ impl Trap {
         match status {
             1 => Trap::Overflow,
             2 => Trap::DivisionByZero,
+            5 => Trap::Cancelled,
             _ => Trap::StackOverflow,
         }
     }
@@ -68,6 +73,7 @@ impl Trap {
             Trap::Overflow => ("OverflowError", "integer overflow"),
             Trap::DivisionByZero => ("ZeroDivisionError", "division by zero"),
             Trap::StackOverflow => ("StackOverflow", "recursion too deep"),
+            Trap::Cancelled => ("Cancelled", "task cancelled"),
         }
     }
 }

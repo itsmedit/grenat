@@ -105,7 +105,7 @@ impl Translator<'_, '_> {
         let held: Vec<Held> = exprs.iter().enumerate().map(|(i, a)| self.operand(a, &exprs[i + 1..])).collect();
         let mut values: Vec<Value> = held.into_iter().map(|h| self.consume(h)).collect();
         let depth = self.b.ins().iadd_imm_s(self.depth, 1);
-        values.extend([depth, self.limit]);
+        values.extend([depth, self.ctx]);
         let call = self.b.ins().call(func, &values);
         let (result, status) = (self.b.inst_results(call)[0], self.b.inst_results(call)[1]);
         self.propagate_trap(status);

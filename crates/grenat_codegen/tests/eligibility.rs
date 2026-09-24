@@ -91,10 +91,10 @@ fn arguments_must_match_the_signature_exactly() {
     let (program, jit) = compile("def half(x: Float) -> Float = x / 2.0\n");
     let half = function(program, "half");
     // an Int would be divided as an Int by the interpreter: the caller must interpret this call
-    assert!(jit.call(half, &[Data::Int(3)], 100).is_none());
-    assert!(jit.call(half, &[], 100).is_none());
+    assert!(jit.call(half, &[Data::Int(3)], 100, &|| false).is_none());
+    assert!(jit.call(half, &[], 100, &|| false).is_none());
     let returned = Returned { value: Data::Float(1.5), arrays: vec![None] };
-    assert_eq!(jit.call(half, &[Data::Float(3.0)], 100), Some(Ok(returned)));
+    assert_eq!(jit.call(half, &[Data::Float(3.0)], 100, &|| false), Some(Ok(returned)));
 }
 
 fn compile_ok(src: &str, name: &str) {

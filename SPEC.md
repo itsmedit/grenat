@@ -459,7 +459,7 @@ Temporary simplifications, lifted in later phases:
 |---|---|
 | Gradual typing, `T?` accepted where `T` is expected | full inference, `nil` checking |
 | Tasks are OS threads (128 MB of reserved, virtual stack) | M:N green threads with native code (later phase 4 slice) |
-| Native functions cover numbers, strings, arrays, structs, not hashes, enums, closures or agents; a native loop is not cancellable mid-run; values cross the interpreter boundary by copy; a built executable embeds the interpreter for the rest | whole programs compiled natively, cancellation checkpoints in native loops |
+| Native functions cover numbers, strings, arrays, structs, not hashes, enums, closures or agents; values cross the interpreter boundary by copy; a built executable embeds the interpreter for the rest | whole programs compiled natively |
 | A cancelled task finishes its in-flight LLM call (billed) before stopping | cancellation of in-flight HTTP requests |
 | `step` runs its block without a journal | durable journal (phase 5) |
 | The `net("host")` restriction is only checked statically | HTTP client in the standard library |
@@ -523,6 +523,12 @@ At startup the executable parses its embedded source, links its native functions
 To make one code generator serve both, compiled code embeds no absolute address: string literals are data of the module and shapes are read from a table filled at load time. Two details found on the way: data holding pointers must be 8-byte aligned, and must not be zero-fill (`bss`) since such a section cannot carry relocations — Apple's linker crashes instead of reporting it.
 
 A release executable weighs ~6.5 MB (5.4 MB stripped) and runs `examples/objects.grn` in 0.05 s, as fast as the JIT: what runs natively is identical, only the compilation moved to build time.
+
+### Cancellation checkpoints in native code
+
+Every native function entry and loop iteration is a checkpoint: it reads a flag of the call's context. A ticker thread raises the flag of every running native call every 10 ms (and it starts raised), and native code then asks the host whether its task was cancelled; if so it stops with `Cancelled`, releasing everything it holds. A `race` whose losing branch is a native loop of 10¹² iterations now ends as soon as the winner does.
+
+Counting steps instead would chain every call to the previous one: an earlier version counted down in memory, then in registers passed from call to call, and both slowed `fib(38)` by 35–45 %; so did a third hidden parameter (one more register to save around each recursive call). The final version passes one pointer (depth and context) and reads one byte: `fib(38)` runs in 0.23 s, as before.
 
 Next slices: whole programs compiled without the interpreter (native `main`, I/O, the agent runtime in native code); M:N green threads.
 

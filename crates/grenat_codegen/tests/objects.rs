@@ -171,7 +171,7 @@ fn array_edge_cases_deoptimize_or_trap_without_leaking() {
     assert_eq!(call_full(p, &jit, "gap", &[ints(&[1])]), Err(Failure::Deopt));
     assert_eq!(call(p, &jit, "overflow", &[ints(&[i64::MAX, 1])]), Err(Trap::Overflow));
     // elements of the wrong type: interpreted
-    assert!(jit.call(function(p, "sum"), &[strings(&["a"])], 100).is_none());
+    assert!(jit.call(function(p, "sum"), &[strings(&["a"])], 100, &|| false).is_none());
 }
 
 const STRUCTS: &str = "
@@ -214,9 +214,9 @@ fn structs_are_built_read_and_reused() {
     );
     assert_eq!(call(p, &jit, "norm", &[point(3.0, 4.0)]), Ok(float(5.0)));
     // a record of another type, or with a field of another type: interpreted
-    assert!(jit.call(function(p, "norm"), &[record("Other", &[])], 100).is_none());
+    assert!(jit.call(function(p, "norm"), &[record("Other", &[])], 100, &|| false).is_none());
     let wrong = record("Point", &[("x", int(1)), ("y", float(2.0))]);
-    assert!(jit.call(function(p, "norm"), &[wrong], 100).is_none());
+    assert!(jit.call(function(p, "norm"), &[wrong], 100, &|| false).is_none());
 }
 
 #[test]

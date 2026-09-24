@@ -323,6 +323,7 @@ impl Translator<'_, '_> {
         }
         self.loops -= 1;
         debug_assert_eq!(self.owned, at_header, "a block changes ownership");
+        self.checkpoint();
         self.b.ins().jump(latch, &[BlockArg::Value(i)]);
 
         // `upto` stops at its bound before incrementing: no overflow at `Int::MAX`
