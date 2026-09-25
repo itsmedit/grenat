@@ -1,6 +1,7 @@
 //! `grenat`: entry point of the toolchain.
 
 mod build;
+mod fmt;
 mod link;
 
 use std::env;
@@ -21,6 +22,8 @@ Usage:
                                  (--native: the whole program, without the interpreter)
   grenat test <file.grn>...      run the `test \"…\" do … end` blocks
   grenat check <file.grn>...     check names, types, effects and taint
+  grenat fmt [--check] <file.grn | dir>...
+                                 rewrite in the canonical layout (--check: only report)
   grenat parse <file.grn>        print the syntax tree
   grenat tokens <file.grn>       print the tokens
   grenat --version
@@ -43,7 +46,8 @@ fn main() -> ExitCode {
         Some("run") if args.len() > 1 => run(&args[1..]),
         Some("test") if args.len() > 1 => test(&args[1..]),
         Some("build") if args.len() > 1 => build::build(&args[1..]),
-        Some(cmd @ ("eval" | "fmt")) => {
+        Some("fmt") => fmt::fmt(&args[1..]),
+        Some(cmd @ "eval") => {
             eprintln!("`grenat {cmd}` is coming in a later phase (see the roadmap in SPEC.md)");
             ExitCode::FAILURE
         }

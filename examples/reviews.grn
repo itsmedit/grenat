@@ -15,9 +15,9 @@ end
 
 ## What the model returns for one review (the `##` comments are sent to it).
 struct Analysis
-  sentiment: String       ## "positive", "neutral" or "negative"
-  topics: Array(String)   ## at most 3 short topics, lowercase
-  summary: String         ## one sentence, in English
+  sentiment: String      ## "positive", "neutral" or "negative"
+  topics: Array(String)  ## at most 3 short topics, lowercase
+  summary: String        ## one sentence, in English
 end
 
 ## Analyses a customer review of a coffee shop.

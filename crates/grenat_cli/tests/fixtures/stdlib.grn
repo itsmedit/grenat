@@ -105,7 +105,11 @@ def main uses fs.read, env, time
   show "Json", [Json.dump({a: [1, true]}), Json.parse("[1, 2]")]
   show "Env", Env.get("GRENAT_TEST_ABSENT")
   show "Env fetch", Env.fetch("GRENAT_TEST_ABSENT", "default")
-  show "File", [File.exist?("Cargo.toml"), File.directory?("crates"), File.lines("LICENSE-MIT").first]
+  show "File", [
+    File.exist?("Cargo.toml"),
+    File.directory?("crates"),
+    File.lines("LICENSE-MIT").first,
+  ]
   show "Dir", Dir.list("examples").include?("basics.grn")
   show "Time", Time.now > 0
 end

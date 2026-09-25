@@ -415,7 +415,7 @@ Installed layout:
 | Phase | Content | Outcome |
 |---|---|---|
 | **0** ✅ | Lexer + parser + AST + `grenat check/parse/tokens` | every example and every code block of this spec parses |
-| **0.5** | `grenat fmt` (comment-preserving) | canonical formatter |
+| **0.5** ✅ | `grenat fmt` (comment-preserving) | canonical formatter |
 | **1** ✅ | Interpreter, `prompt`, `tool`, agents, budgets, taint, Anthropic client, `grenat run/test` | the first agent runs |
 | **2** ✅ | Names, types, effects and `~T` taint checked **before execution**; capabilities enforced at run time | security errors before execution |
 | **3** ✅ | Concurrent actor agents, real `parallel_map`/`race`, cancellation, deadlock detection, supervision | multi-agent |
@@ -423,6 +423,12 @@ Installed layout:
 | **5** | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
 | **6** | LSP, LLVM release builds, macros, package manager | ecosystem |
 | **7** | What real agents need (from ten use cases: support, code review, research, data, documents, scheduled, operations, chat, multi-agent teams, third-party tools): an I/O library with effects (`Http` client and server, `Db`, email), MCP client, multimodal prompts and the Batch API, conversations and long-term memory, a sandbox for `shell` and per-tool timeouts, triggers (`every`, webhooks) | agents in production |
+
+### Phase 0.5 status: `grenat fmt`
+
+`grenat fmt [--check] <files or directories>` rewrites Grenat code in its canonical layout (`grenat_fmt`): printed back from the syntax tree with two-space indentation, spaces around operators, only the parentheses the grammar needs (the printer uses the parser's binding powers), one blank line at most, end-of-line comments aligned, arrays, hashes, argument lists and method chains longer than 100 columns broken one item per line. What the syntax leaves to the author is kept: literals as written (`2_000_000`, escapes), modifiers (`x if c`, `x rescue y`), `unless`/`until`, `{ }` or `do … end` blocks, one-line `if … then … end`, `in X then y` and `else y`, heredocs (re-indented with their statement). Comments stay above the code they preceded, or at the end of its line.
+
+Formatting cannot change a program: the result must parse to the same tree (positions aside), keep every comment, and be stable (formatting it again changes nothing); otherwise the file is left untouched and the problem reported. Every example and every code block of this specification is checked this way by the tests; `--check` fails on files not yet formatted, for CI.
 
 ### Phase 1 status
 

@@ -19,3 +19,4 @@ grenat_interp.workspace = true
 grenat_types.workspace = true
 grenat_driver.workspace = true
 grenat_codegen.workspace = true
+grenat_fmt.workspace = true

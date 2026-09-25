@@ -4,7 +4,7 @@
 #   grenat run --log examples/explorer.grn crates/grenat_parser
 
 model :smart, provider: :anthropic, name: "claude-opus-5", effort: :low
-model :fast,  provider: :anthropic, name: "claude-haiku-4-5"
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
 
 enum Maturity
   Prototype   ## exploratory code, few or no tests

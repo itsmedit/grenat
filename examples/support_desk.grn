@@ -5,7 +5,7 @@
 # A prompt triages each ticket, a pool of Writer agents searches the docs
 # and drafts the answer, and a human approves before anything is sent.
 
-model :fast,  provider: :anthropic, name: "claude-haiku-4-5"
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
 model :smart, provider: :anthropic, name: "claude-opus-5"
 
 # ── Domain ─────────────────────────────────────────────────
@@ -26,14 +26,14 @@ end
 struct Triage
   category: Category
   priority: Priority
-  language: String          ## ISO 639-1 code of the customer's language
-  reason: String            ## one sentence justifying the classification
+  language: String  ## ISO 639-1 code of the customer's language
+  reason: String    ## one sentence justifying the classification
 end
 
 struct Answer
-  body: String              ## reply to the customer, in their language, warm tone
-  sources: Array(Path)      ## documentation pages used
-  confidence: Float         ## between 0.0 and 1.0
+  body: String          ## reply to the customer, in their language, warm tone
+  sources: Array(Path)  ## documentation pages used
+  confidence: Float     ## between 0.0 and 1.0
 end
 
 enum Outcome
@@ -181,7 +181,7 @@ end
 def main(args: Array(String)) uses llm, net("smtp.mail.com"), fs.read, human
   tickets = File.lines(args.first).map { |l| Ticket.from_json(l)? }
 
-  Runtime.on_approval { |req| Cli.confirm(req.message) }   # human = the terminal
+  Runtime.on_approval { |req| Cli.confirm(req.message) }  # human = the terminal
 
   within budget(usd: 5.00, time: 30.min) do
     outcomes = tickets.parallel_map(limit: 8) { |t| process_ticket(t) }

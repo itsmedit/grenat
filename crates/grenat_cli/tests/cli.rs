@@ -194,3 +194,31 @@ fn log_shows_what_the_jit_compiled_and_no_jit_disables_it() {
     assert_eq!(text(&out.stdout), "6765\n");
     assert!(!text(&out.stderr).contains("[jit]"));
 }
+
+#[test]
+fn fmt_rewrites_files_and_check_reports_them() {
+    let path = program("messy.grn", "def   f( n: Int )->Int\n      n*2   # double\nend\n");
+    let file = path.to_str().unwrap();
+    let out = grenat(&["fmt", "--check", file]);
+    assert_eq!(code(&out), 1);
+    assert!(text(&out.stderr).contains("messy.grn is not formatted"), "{}", text(&out.stderr));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "def   f( n: Int )->Int\n      n*2   # double\nend\n");
+
+    let out = grenat(&["fmt", file]);
+    assert_eq!(code(&out), 0, "{}", text(&out.stderr));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "def f(n: Int) -> Int\n  n * 2  # double\nend\n");
+    assert_eq!(code(&grenat(&["fmt", "--check", file])), 0);
+}
+
+#[test]
+fn fmt_leaves_an_invalid_file_alone() {
+    let path = program("broken.grn", "def f(\n");
+    let out = grenat(&["fmt", path.to_str().unwrap()]);
+    assert_eq!(code(&out), 1);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "def f(\n");
+}
+
+#[test]
+fn the_examples_are_formatted() {
+    assert_eq!(code(&grenat(&["fmt", "--check", "examples"])), 0);
+}

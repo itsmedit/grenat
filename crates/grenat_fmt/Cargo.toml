@@ -1,0 +1,13 @@
+[package]
+name = "grenat_fmt"
+description = "The Grenat code formatter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+grenat_ast.workspace = true
+grenat_lexer.workspace = true
+grenat_parser.workspace = true

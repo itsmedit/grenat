@@ -419,6 +419,7 @@ dependencies = [
  "grenat_ast",
  "grenat_codegen",
  "grenat_driver",
+ "grenat_fmt",
  "grenat_interp",
  "grenat_lexer",
  "grenat_parser",
@@ -449,6 +450,15 @@ dependencies = [
  "grenat_parser",
  "grenat_report",
  "grenat_types",
+]
+
+[[package]]
+name = "grenat_fmt"
+version = "0.1.0"
+dependencies = [
+ "grenat_ast",
+ "grenat_lexer",
+ "grenat_parser",
 ]
 
 [[package]]

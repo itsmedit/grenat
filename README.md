@@ -52,6 +52,7 @@ target/debug/grenat run --log examples/explorer.grn crates/grenat_parser        
 target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl        # multi-agent + approval
 
 target/debug/grenat check examples/*.grn     # names, types, effects, taint
+target/debug/grenat fmt examples             # canonical layout (--check: only report)
 target/debug/grenat test my_file.grn         # `test "…" do … end` blocks
 cargo test                                   # ~190 tests: unit, integration, CLI, HTTP client, JIT, build
 ```
@@ -71,6 +72,7 @@ cargo test                                   # ~190 tests: unit, integration, CL
 | `grenat_host` | static library linked into the executables of `grenat build` |
 | `grenat_standalone` | static library linked into `grenat build --native` executables |
 | `grenat_report` | diagnostic rendering |
+| `grenat_fmt` | the formatter |
 | `grenat_green` | M:N green threads: scheduler, green locks, channels, timers |
 | `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities |
 | `grenat_cli` | the `grenat` binary |
