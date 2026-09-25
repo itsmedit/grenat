@@ -134,15 +134,20 @@ impl<'p> Interp<'p> {
     /// Message to an agent or a pool: `ask` waits for the reply, `tell` does not.
     pub(crate) fn send(&mut self, target: &Value<'p>, method: &str, args: Args<'p>) -> Option<R<'p>> {
         let agent = match target {
-            Value::Agent(a) => a.clone(),
+            Value::Agent(a) => {
+                a.queued.fetch_add(1, AtomicOrdering::Relaxed);
+                a.clone()
+            }
             // pool: the least busy agent, picked and reserved in one step
+            // (under the lock: two senders never pick the same idle agent)
             Value::Pool(pool) => {
                 let _pick = self.pool_pick.borrow();
-                pool.iter().min_by_key(|a| a.load()).expect("non-empty pool").clone()
+                let agent = pool.iter().min_by_key(|a| a.load()).expect("non-empty pool").clone();
+                agent.queued.fetch_add(1, AtomicOrdering::Relaxed);
+                agent
             }
             _ => return None,
         };
-        agent.queued.fetch_add(1, AtomicOrdering::Relaxed);
         match method {
             "ask" => Some(self.agent_ask(agent, args)),
             "tell" => {
