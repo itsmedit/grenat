@@ -1,0 +1,82 @@
+# reviews.grn — customer reviews: statistics in native code, analysis by an LLM.
+#
+#   grenat run --log examples/reviews.grn
+#
+# The statistics run as machine code (see `--log`); each review is analysed
+# by a model, in parallel, within a budget, and every answer is validated
+# before it is used.
+
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+struct Review
+  stars: Int
+  text: String
+end
+
+## What the model returns for one review (the `##` comments are sent to it).
+struct Analysis
+  sentiment: String       ## "positive", "neutral" or "negative"
+  topics: Array(String)   ## at most 3 short topics, lowercase
+  summary: String         ## one sentence, in English
+end
+
+## Analyses a customer review of a coffee shop.
+prompt analyse(text: String) -> ~Analysis using :fast
+  system "You analyse customer reviews of a coffee shop. Be factual."
+  user text
+end
+
+# ── Statistics: typed functions, compiled to machine code ──
+
+def mean(stars: Array(Int)) -> Float
+  total = 0
+  stars.each do |s|
+    total += s
+  end
+  total.to_f / stars.length
+end
+
+def histogram(stars: Array(Int)) -> String
+  out = ""
+  5.times do |i|
+    n = 5 - i
+    count = 0
+    stars.each do |s|
+      if s == n
+        count += 1
+      end
+    end
+    out = out + "#{n}★ " + "█" * count + " #{count}\n"
+  end
+  out
+end
+
+# ── The program ────────────────────────────────────────────
+
+def main uses llm
+  reviews = [
+    Review(stars: 5, text: "Best flat white in the area, and the staff remembered my name."),
+    Review(stars: 4, text: "Great coffee, but the music is far too loud in the afternoon."),
+    Review(stars: 2, text: "Waited 20 minutes for a cold croissant. Not coming back."),
+    Review(stars: 5, text: "Cosy corner to work, fast wifi, excellent carrot cake."),
+    Review(stars: 3, text: "Good espresso, pricey pastries, very few seats."),
+  ]
+
+  stars = reviews.map { |r| r.stars }
+  print histogram(stars)
+  puts "average: #{mean(stars)} / 5"
+
+  within budget(usd: 0.05) do
+    analyses = reviews.parallel_map(limit: 5) do |r|
+      # an LLM answer is tainted (~Analysis): validate it before trusting it
+      analyse(r.text).check { |a| ["positive", "neutral", "negative"].include?(a.sentiment) }?
+    end
+
+    analyses.each do |a|
+      puts "#{a.sentiment.ljust(8)} #{a.summary}  [#{a.topics.join(", ")}]"
+    end
+    puts "cost: #{budget.spent}"
+  rescue BudgetExceeded => e
+    warn "Budget exhausted after #{e.spent}"
+  end
+end

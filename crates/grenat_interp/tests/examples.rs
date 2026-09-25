@@ -71,3 +71,41 @@ fn support_desk_example_runs_end_to_end() {
     assert_eq!(r.requests.len(), 3);
     assert_eq!(r.requests.iter().filter(|q| q["model"] == "claude-opus-5").count(), 1);
 }
+
+#[test]
+fn reviews_example_runs_end_to_end() {
+    let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/reviews.grn")).unwrap();
+    // the reviews are analysed in parallel: answers are computed from the request
+    let provider = Scripted::responder(|body| {
+        let review = body["messages"][0]["content"].as_str().unwrap().to_string();
+        let (sentiment, topic) = if review.contains("croissant") {
+            ("negative", "service")
+        } else if review.contains("loud") || review.contains("pricey") {
+            ("neutral", "price")
+        } else {
+            ("positive", "coffee")
+        };
+        let summary = review.split(',').next().unwrap().trim_end_matches('.').to_string();
+        Response::json_reply(json!({"sentiment": sentiment, "topics": [topic], "summary": summary}))
+    });
+    let r = run_provider(&src, provider, &[], &[]);
+    if let Err(e) = &r.result {
+        panic!("{e:?}\n{}", r.output);
+    }
+    let expected = "\
+5★ ██ 2
+4★ █ 1
+3★ █ 1
+2★ █ 1
+1★  0
+average: 3.8 / 5
+positive Best flat white in the area  [coffee]
+neutral  Great coffee  [price]
+negative Waited 20 minutes for a cold croissant. Not coming back  [service]
+positive Cosy corner to work  [coffee]
+neutral  Good espresso  [price]
+";
+    assert!(r.output.starts_with(expected), "{}", r.output);
+    assert!(r.output.contains("cost: $"), "{}", r.output);
+    assert_eq!(r.requests.len(), 5);
+}
