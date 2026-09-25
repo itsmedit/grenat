@@ -5,6 +5,7 @@
 
 mod agent;
 mod budget;
+pub mod codec;
 mod display;
 mod equality;
 mod error;

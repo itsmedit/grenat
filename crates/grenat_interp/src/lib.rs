@@ -79,11 +79,21 @@ pub struct Options {
     pub jit: bool,
     /// Native code linked into this executable (`grenat build`), instead of the JIT.
     pub linked: Option<&'static grenat_codegen::aot::Image>,
+    /// Where workflows keep their journals (default `.grenat/journal`).
+    pub journal: Option<std::path::PathBuf>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { provider: None, output: Output::Stdout, input: None, log: false, jit: true, linked: None }
+        Options {
+            provider: None,
+            output: Output::Stdout,
+            input: None,
+            log: false,
+            jit: true,
+            linked: None,
+            journal: None,
+        }
     }
 }
 

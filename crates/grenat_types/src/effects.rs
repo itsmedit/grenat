@@ -9,6 +9,10 @@ use crate::*;
 pub(crate) const KNOWN_EFFECTS: &[&str] =
     &["llm", "net", "fs", "fs.read", "fs.write", "shell", "human", "time", "random", "env"];
 
+/// Effects whose results differ from one run to the next: in a workflow,
+/// they must be inside a `step`, whose result is journaled.
+pub(crate) const NONDETERMINISTIC: &[&str] = &["llm", "net", "human", "time", "random"];
+
 /// Inferred or declared effect: `fs.read("./docs")`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Eff {
@@ -59,6 +63,28 @@ pub(crate) fn literal_string(e: &Expr) -> Option<String> {
 }
 
 impl<'p> Checker<'p> {
+    /// In a workflow, a non-deterministic effect outside a `step` would
+    /// happen again, differently, when the workflow resumes.
+    pub(crate) fn check_workflow_steps(&mut self, def: &FnDef, cx: &Ctx<'p>) {
+        let mut seen = HashSet::new();
+        for effect in &cx.unstepped {
+            if !seen.insert((effect.origin.start, effect.path.clone())) {
+                continue;
+            }
+            self.report(
+                Diagnostic::new(
+                    effect.origin,
+                    format!("`{}` outside a `step` in workflow `{}`", effect.path, def.name.name),
+                )
+                .with_code(E_WORKFLOW)
+                .with_help(
+                    "it would run again, differently, when the workflow resumes: \
+                     wrap it in `step(:name) { … }`, whose result is journaled",
+                ),
+            );
+        }
+    }
+
     pub(crate) fn effect_count(&self) -> usize {
         self.prev_effects.values().map(Vec::len).sum()
     }

@@ -39,6 +39,7 @@ impl<'p> Interp<'p> {
             task_id: self.next_id.fetch_add(1, Ordering::Relaxed),
             // measured once the task's own thread starts
             stack: StackGuard::default(),
+            workflows: self.workflows.clone(),
         }
     }
 

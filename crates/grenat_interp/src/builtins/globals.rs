@@ -93,8 +93,14 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             };
             interp.within(budget, &block(&args, "within")?)
         })(),
-        // No durable journal yet (phase 5): the block runs directly.
-        "step" => block(&args, "step").and_then(|b| interp.call_block(&b, Vec::new())),
+        // journaled inside a workflow (see `eval::workflow`)
+        "step" => (|| {
+            let name = match args.pos.first().map(Value::untainted) {
+                Some(Value::Symbol(s) | Value::Str(s)) => s.to_string(),
+                _ => return raise("ArgumentError", "`step` expects a name: `step(:research) { … }`"),
+            };
+            interp.step(&name, &block(&args, "step")?)
+        })(),
         "approve!" => (|| {
             let message = arg(&args, 0, "approve!")?.to_display();
             if interp.ask_human(&message)? {

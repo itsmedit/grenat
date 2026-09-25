@@ -272,7 +272,13 @@ impl<'p> Checker<'p> {
                 }
                 self.walk_block(cx, block, &[]).unwrap_or_else(V::unknown)
             }
-            "step" | "with_human" | "loop" => self.walk_block(cx, block, &[]).unwrap_or_else(V::unknown),
+            "step" => {
+                cx.steps += 1;
+                let v = self.walk_block(cx, block, &[]).unwrap_or_else(V::unknown);
+                cx.steps -= 1;
+                v
+            }
+            "with_human" | "loop" => self.walk_block(cx, block, &[]).unwrap_or_else(V::unknown),
             "assert_raises" => {
                 self.walk_block(cx, block, &[]);
                 V::unknown()

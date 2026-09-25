@@ -39,3 +39,19 @@ fn unknown_effect_names_are_reported() {
     let d = single("def f uses fs.raed\n  1\nend\n", "E0500", "fs.raed");
     assert_eq!(d.help.as_deref(), Some("did you mean `fs.read`?"));
 }
+
+#[test]
+fn in_a_workflow_non_deterministic_effects_are_steps() {
+    // the model call would happen again, differently, on resume
+    let src = format!(
+        "{PRELUDE}workflow publish(topic: String) -> String uses llm\n  s = summarize(topic).trust!.title\n  step(:tell) {{ s }}\nend\n"
+    );
+    let d = single(&src, "E0310", "summarize(topic)");
+    assert!(d.message.contains("`llm` outside a `step` in workflow `publish`"), "{}", d.message);
+    // inside a step, its result is journaled
+    clean(&format!(
+        "{PRELUDE}workflow publish(topic: String) -> String uses llm\n  s = step(:summary) {{ summarize(topic).trust!.title }}\n  step(:tell) {{ s }}\nend\n"
+    ));
+    // deterministic code needs no step; functions outside workflows are free
+    clean(&format!("{PRELUDE}workflow twice(n: Int) -> Int\n  n * 2\nend\ndef free(t: String) -> String uses llm = summarize(t).trust!.title\n"));
+}

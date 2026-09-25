@@ -50,6 +50,9 @@ impl<'p> Checker<'p> {
             (None, _) => {}
         }
 
+        if def.kind == FnKind::Workflow {
+            self.check_workflow_steps(def, &cx);
+        }
         let effects = self.finish_effects(def, &cx);
         self.in_progress.remove(&key);
         self.prev_effects.insert(key.0, effects.clone());

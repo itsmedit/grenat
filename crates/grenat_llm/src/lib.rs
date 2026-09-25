@@ -2,15 +2,18 @@
 //!
 //! The runtime only depends on the [`Provider`] trait: the real implementation
 //! ([`Anthropic`]) talks HTTP to the Messages API, while [`Scripted`] replays
-//! prepared replies for tests.
+//! prepared replies for tests, and [`Cassette`] records real calls once to
+//! replay them.
 
 mod anthropic;
+mod cassette;
 mod pricing;
 mod scripted;
 mod types;
 mod wire;
 
 pub use anthropic::Anthropic;
+pub use cassette::Cassette;
 pub use pricing::cost_usd;
 pub use scripted::Scripted;
 pub use types::*;
@@ -69,5 +72,36 @@ mod tests {
         assert_eq!(r.text(), "Reading.");
         assert_eq!(r.tool_uses()[0].name, "read");
         assert_eq!(r.usage.total_tokens(), 17);
+    }
+
+    #[test]
+    fn a_cassette_replays_what_it_recorded_in_any_order() {
+        let dir = std::env::temp_dir().join(format!("grenat-cassette-{}", std::process::id()));
+        let path = dir.join("calls.json");
+        let model = ModelConfig::new("anthropic", "claude-haiku-4-5");
+        let ask = |text: &str| Request {
+            model: &model,
+            system: None,
+            messages: vec![json!({"role": "user", "content": text})],
+            tools: Vec::new(),
+            output_schema: None,
+        };
+        let real = std::sync::Arc::new(Scripted::responder(|body| {
+            Response::text_reply(format!("echo {}", body["messages"][0]["content"].as_str().unwrap()))
+        }));
+        let recorder = Cassette::record(&path, real.clone());
+        assert!(recorder.is_recording());
+        assert_eq!(recorder.complete(&ask("a")).unwrap().text(), "echo a");
+        assert_eq!(recorder.complete(&ask("b")).unwrap().text(), "echo b");
+        recorder.save().unwrap();
+
+        let player = Cassette::replay(&path).unwrap();
+        assert_eq!(player.complete(&ask("b")).unwrap().text(), "echo b");
+        assert_eq!(player.complete(&ask("a")).unwrap().text(), "echo a");
+        let missing = player.complete(&ask("c")).unwrap_err();
+        assert!(missing.message.contains("GRENAT_RECORD=1"), "{}", missing.message);
+        // the real provider was only called while recording
+        assert_eq!(real.requests().len(), 2);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

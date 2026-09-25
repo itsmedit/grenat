@@ -7,7 +7,7 @@ use common::*;
 use grenat_interp::Scripted;
 
 fn with_jit(src: &str, jit: bool) -> Run {
-    run_mode(src, Scripted::new([]), &[], &[], Mode { jit, log: false })
+    run_mode(src, Scripted::new([]), &[], &[], Mode { jit, log: false, ..Mode::default() })
 }
 
 /// Runs `src` interpreted and native; asserts identical output and outcome.
@@ -56,7 +56,7 @@ def both(a: Bool, b: Bool) -> Bool = a && !b || b && !a
 #[test]
 fn the_numeric_functions_are_really_compiled() {
     let src = format!("{NUMERIC}puts 1\n");
-    let r = run_mode(&src, Scripted::new([]), &[], &[], Mode { jit: true, log: true });
+    let r = run_mode(&src, Scripted::new([]), &[], &[], Mode { jit: true, log: true, ..Mode::default() });
     assert!(
         r.output.starts_with("[jit] native: div, rem, poly, mean, clamp, collatz, fib, cmp, both\n"),
         "{}",
@@ -206,7 +206,7 @@ end
 #[test]
 fn the_object_functions_are_really_compiled() {
     let src = format!("{OBJECTS}puts 1\n");
-    let r = run_mode(&src, Scripted::new([]), &[], &[], Mode { jit: true, log: true });
+    let r = run_mode(&src, Scripted::new([]), &[], &[], Mode { jit: true, log: true, ..Mode::default() });
     assert!(
         r.output.starts_with("[jit] native: label, shift, join, grow, fresh, at, mutate_then_fail, pair\n"),
         "{}",

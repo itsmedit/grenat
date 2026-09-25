@@ -48,6 +48,10 @@ pub(crate) struct Ctx<'p> {
     pub(crate) effects: Vec<Eff>,
     pub(crate) returns: Vec<V>,
     pub(crate) run_span: Option<Span>,
+    /// Depth inside `step { … }` blocks.
+    pub(crate) steps: usize,
+    /// Non-deterministic effects used outside any `step` (an error in a workflow).
+    pub(crate) unstepped: Vec<Eff>,
 }
 
 impl<'p> Ctx<'p> {
@@ -60,6 +64,8 @@ impl<'p> Ctx<'p> {
             effects: Vec::new(),
             returns: Vec::new(),
             run_span: None,
+            steps: 0,
+            unstepped: Vec::new(),
         }
     }
 
@@ -82,6 +88,9 @@ impl<'p> Ctx<'p> {
     }
 
     pub(crate) fn add_effect(&mut self, effect: Eff) {
+        if self.steps == 0 && NONDETERMINISTIC.contains(&effect.path.as_str()) {
+            self.unstepped.push(effect.clone());
+        }
         if !self.effects.iter().any(|e| e.path == effect.path && e.arg == effect.arg) {
             self.effects.push(effect);
         }

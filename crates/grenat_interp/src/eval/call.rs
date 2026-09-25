@@ -190,12 +190,14 @@ impl<'p> Interp<'p> {
             }
         }
         let caps = self.declared_capabilities(def)?;
+        let workflow = if def.kind == FnKind::Workflow { Some(self.open_workflow(def, &args)?) } else { None };
         self.push_frame(self_val, new_scope(None))?;
         if let Some(caps) = caps {
             self.capabilities.push((def.name.name.clone(), caps));
         }
-        let result = self.bind_params(&def.params, args, &def.name.name).and_then(|()| match def.kind {
-            FnKind::Prompt => self.run_prompt(def),
+        let result = self.bind_params(&def.params, args, &def.name.name).and_then(|()| match (def.kind, workflow) {
+            (FnKind::Prompt, _) => self.run_prompt(def),
+            (FnKind::Workflow, Some(run)) => self.run_workflow(def, run),
             _ => self.eval_body(&def.body),
         });
         if !def.effects.is_empty() {

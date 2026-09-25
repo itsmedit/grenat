@@ -32,18 +32,29 @@ impl Run {
     }
 }
 
-/// Runs `src` with the given provider, on a 512 MB stack like the CLI.
 /// How to run a program in tests.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Mode {
     pub jit: bool,
     pub log: bool,
+    /// Where workflows journal; by default a new directory for each run.
+    pub journal: Option<std::path::PathBuf>,
 }
 
 impl Default for Mode {
     fn default() -> Self {
-        Mode { jit: true, log: false }
+        Mode { jit: true, log: false, journal: None }
     }
+}
+
+/// A new, empty directory under the system's temporary one.
+pub fn temp_dir(name: &str) -> std::path::PathBuf {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("grenat-test-{}-{name}-{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
 }
 
 /// Runs `src` with a given provider.
@@ -63,6 +74,7 @@ pub fn run_mode(src: &str, provider: Scripted, input: &[&str], args: &[&str], mo
         log: mode.log,
         jit: mode.jit,
         linked: None,
+        journal: Some(mode.journal.clone().unwrap_or_else(|| temp_dir("journal"))),
     };
     let started = Instant::now();
     // run_main runs the interpreter on its own large stack

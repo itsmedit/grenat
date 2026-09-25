@@ -51,6 +51,7 @@ pub(crate) use taint::*;
 pub const E_NAME: &str = "E0100";
 pub const E_TYPE: &str = "E0200";
 pub const E_EFFECT: &str = "E0300";
+pub const E_WORKFLOW: &str = "E0310";
 pub const E_TAINT: &str = "E0412";
 pub const E_TAINT_DECL: &str = "E0413";
 pub const E_DECL: &str = "E0500";
