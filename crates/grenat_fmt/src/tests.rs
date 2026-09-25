@@ -162,3 +162,9 @@ fn ternaries_are_kept() {
     assert_eq!(crate::format("y = a ?\n  b :\n  c\n").unwrap(), "y = a ? b : c\n");
     assert_eq!(crate::format("if a then b else c end\n").unwrap(), "if a then b else c end\n");
 }
+
+#[test]
+fn a_parenthesized_if_stays_an_if() {
+    let src = "out = out + (if i == 0 then \"\" else \",\" end) + x\n";
+    assert_eq!(crate::format(src).unwrap(), src);
+}

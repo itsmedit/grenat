@@ -114,7 +114,9 @@ impl Printer<'_> {
         match &e.kind {
             // `cond ? a : b`, as written
             ExprKind::If { cond, then, else_: Some(otherwise) }
-                if then.len() == 1 && otherwise.len() == 1 && !starts_with_word(self.source(e.span), &["if", "unless"]) =>
+                if then.len() == 1
+                    && otherwise.len() == 1
+                    && !starts_with_word(self.source(e.span).trim_start_matches(['(', ' ', '\n']), &["if", "unless"]) =>
             {
                 self.expr(cond);
                 self.write(" ? ");
