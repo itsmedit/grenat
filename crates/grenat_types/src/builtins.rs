@@ -164,13 +164,18 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Shell", "run") => (User(SHELL_RESULT.into()), Some("shell")),
         ("Pdf" | "Image", "read") => (User(ATTACHMENT.into()), Some("fs.read")),
         ("Pdf" | "Image", "url") => (User(ATTACHMENT.into()), None),
+        ("Mail", "connect") => (User(MAILER.into()), None),
+        ("Mail", "deliveries") => (Ty::array(Ty::Hash(Box::new(Str), Box::new(Unknown))), None),
         ("Mcp", "call") => (Str, Some("mcp")),
         ("Mcp", "tools") => (Ty::array(Str), Some("mcp")),
         _ => return None,
     })
 }
 
-pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image"];
+pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail"];
+
+/// What `Mail.connect` returns.
+pub const MAILER: &str = "Mailer";
 
 /// What a webhook handler receives.
 pub const WEBHOOK_REQUEST: &str = "WebhookRequest";
@@ -197,6 +202,7 @@ pub fn record_method(record: &str, name: &str) -> Option<(Ty, &'static str)> {
         (DATABASE, "execute") => (Ty::Int, "db.write"),
         (DATABASE, "migrate") => (Ty::Nil, "db.write"),
         (DATABASE, "transaction") => (Ty::Unknown, "db.write"),
+        (MAILER, "send") => (Ty::Nil, "net"),
         _ => return None,
     })
 }

@@ -14,6 +14,7 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         ("Db", "connect") => connect(interp, &args),
         ("Shell", _) => call_shell(interp, name, args),
         ("Pdf" | "Image", _) => call_attachment(interp, ty, name, &args),
+        ("Mail", _) => call_mail(interp, name, &args),
         ("Mcp", "call") => interp.mcp_call_value(&args),
         ("Mcp", "tools") => (|| {
             let Some(Value::Symbol(server)) = args.pos.first().map(Value::untainted) else {

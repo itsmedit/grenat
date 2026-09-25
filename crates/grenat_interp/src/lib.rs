@@ -15,6 +15,7 @@ mod deadlines;
 mod eval;
 mod evals;
 mod http;
+mod mail;
 mod io;
 mod llm;
 mod outcome;
@@ -161,6 +162,7 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
             interp.http_stubs.borrow_mut().clear();
             interp.shell_stubs.borrow_mut().clear();
             interp.mcp_stubs.borrow_mut().clear();
+            interp.deliveries.borrow_mut().clear();
             outcomes.push(TestOutcome { name, error });
         }
         Ok(outcomes)

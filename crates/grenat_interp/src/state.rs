@@ -54,6 +54,10 @@ pub(crate) struct Shared<'p> {
     pub mocks: Mutex<Vec<(Option<ModelConfig>, Arc<grenat_llm::Mock>)>>,
     /// Stubbed programs (`mock_shell`).
     pub shell_stubs: Mutex<Vec<crate::eval::ShellStub>>,
+    /// SMTP servers (`Mail.connect`): (URL, host), by number.
+    pub mailers: Mutex<Vec<(String, String)>>,
+    /// Emails a test sent (never sent for real): `Mail.deliveries`.
+    pub deliveries: Mutex<Vec<crate::mail::Email>>,
     /// Triggers declared by the script (`every`, `on_webhook`).
     pub schedules: Mutex<Vec<crate::builtins::Schedule<'p>>>,
     pub webhooks: Mutex<Vec<crate::builtins::Webhook<'p>>>,
@@ -150,6 +154,8 @@ impl<'p> Interp<'p> {
             http_stubs: Mutex::new(Vec::new()),
             databases: Mutex::new(Vec::new()),
             shell_stubs: Mutex::new(Vec::new()),
+            mailers: Mutex::new(Vec::new()),
+            deliveries: Mutex::new(Vec::new()),
             schedules: Mutex::new(Vec::new()),
             webhooks: Mutex::new(Vec::new()),
             mcp_servers: Mutex::new(HashMap::new()),

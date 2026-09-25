@@ -57,16 +57,13 @@ fn support_desk_example_runs_end_to_end() {
         let category = if spam { "Spam" } else { "Question" };
         Response::json_reply(json!({"category": category, "priority": "Normal", "language": "en", "reason": "reason"}))
     });
-    let r = run_provider(&src, provider, &["y"], &["../../examples/tickets.jsonl"]);
+    // offline, as in tests: the reply is kept, not emailed
+    let mode = Mode { offline: true, ..Mode::default() };
+    let r = run_mode(&src, provider, &["y"], &["../../examples/tickets.jsonl"], mode);
     if let Err(e) = &r.result {
         panic!("{e:?}\n{}", r.output);
     }
     assert!(r.output.contains("Send to ana@example.com?"), "{}", r.output);
-    assert!(
-        r.output.contains("[smtp] to ana@example.com — Re: your request\nMenu Invoices > Export.\n"),
-        "{}",
-        r.output
-    );
     assert!(r.output.ends_with("✓ 1 sent, 1 skipped — cost $0.0014\n"), "{}", r.output);
     assert_eq!(r.requests.len(), 3);
     assert_eq!(r.requests.iter().filter(|q| q["model"] == "claude-opus-5").count(), 1);

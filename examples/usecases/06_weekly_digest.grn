@@ -19,21 +19,13 @@ def releases(repo: String) -> ~Array(Item) uses net("api.github.com")
   res.json.map { |r| Item(url: r["html_url"], title: "#{repo} #{r["name"]}") }
 end
 
-# ═══ STUBS ═══
-module Mail
-  def self.send(to: String, subject: String, body: String) -> Unit uses net("smtp.acme.com")
-    puts "#{subject}\n#{body}"
-  end
-end
-# ═══ END STUBS ═══
-
 ## Summarizes the week's new items.
 prompt digest(titles: Array(String)) -> ~Digest using :fast
   system "You write a weekly technology watch for engineers."
   user titles.join("\n")
 end
 
-workflow weekly(week: String, repos: Array(String)) -> Int uses llm, net, fs.read, fs.write
+workflow weekly(week: String, repos: Array(String)) -> Int uses llm, net, env, fs.read, fs.write
   seen = step(:memory) do
     if File.exist?("seen.json") then Json.parse(File.read("seen.json")) else [] end
   end
@@ -43,9 +35,15 @@ workflow weekly(week: String, repos: Array(String)) -> Int uses llm, net, fs.rea
     items.check { |xs| xs.all? { |i| i.url.start_with?("https://github.com/") } }?
   end
   summary = step(:summarize) { digest(fresh.map { |i| i.title }).check { |d| d.bullets.size <= 7 }? }
-  step(:send) {
-    Mail.send("team@acme.com", "Watch #{week}: #{summary.headline}", summary.bullets.join("\n"))
-  }
+  step(:send) do
+    mailer = Mail.connect(Env.fetch("SMTP_URL"))
+    mailer.send(
+      from: "watch@acme.com",
+      to: "team@acme.com",
+      subject: "Watch #{week}: #{summary.headline}",
+      body: summary.bullets.join("\n"),
+    )
+  end
   step(:remember) { File.write("seen.json", Json.dump(seen + fresh.map { |i| i.url })) }
   fresh.size
 end
@@ -55,6 +53,6 @@ every cron: "0 8 * * MON" do
   weekly(Time.today, ["rust-lang/rust", "anthropics/anthropic-sdk-python"])
 end
 
-def main(args: Array(String)) uses llm, net, fs.read, fs.write
+def main(args: Array(String)) uses llm, net, env, fs.read, fs.write
   puts "#{weekly(args.first, args.drop(1))} new items"
 end

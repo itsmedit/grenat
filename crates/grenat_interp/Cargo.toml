@@ -18,6 +18,7 @@ ureq.workspace = true
 grenat_db.workspace = true
 grenat_mcp.workspace = true
 grenat_serve.workspace = true
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname", "rustls-tls"] }
 
 [dev-dependencies]
 grenat_mcp = { workspace = true, features = ["fake"] }

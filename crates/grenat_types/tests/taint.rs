@@ -128,3 +128,10 @@ fn what_a_webhook_carries_is_untrusted() {
     single("on_webhook \"/x\" do |req|\n  Shell.run([\"echo\", req.body])\nend\n", "E0412", "[\"echo\", req.body]");
     clean("on_webhook \"/x\" do |req|\n  p req.path\n  Shell.run([\"echo\", req.path])\nend\nevery cron: \"0 8 * * MON\" do\n  p 1\nend\n");
 }
+
+#[test]
+fn an_email_is_never_untrusted() {
+    let head = format!("{PRELUDE}def main uses llm, net\n  s = summarize(\"x\")\n  m = Mail.connect(\"smtp://smtp.acme.com\")\n");
+    single(&format!("{head}  m.send(from: \"a@b.c\", to: \"c@d.e\", subject: \"x\", body: s.title)\nend\n"), "E0412", "s.title");
+    clean(&format!("{head}  m.send(from: \"a@b.c\", to: \"c@d.e\", subject: \"x\", body: s.trust!.title)\nend\n"));
+}

@@ -1,7 +1,10 @@
 require "./06_weekly_digest"
 
+# run with SMTP_URL set (any value: tests never send email)
+
 test "the week's new releases are summarized and sent" do
   mock_http "GET https://api.github.com/repos/rust-lang/rust/releases*", json: [{html_url: "https://github.com/rust-lang/rust/releases/tag/1.95.0", name: "1.95.0"}]
   mock :fast, replies: [{headline: "Rust 1.95", bullets: ["Rust 1.95.0 is out"]}]
-  main(["2026-W39", "rust-lang/rust"])
+  main(["2026-09-28", "rust-lang/rust"])
+  assert_equal "Watch 2026-09-28: Rust 1.95", Mail.deliveries.first["subject"]
 end

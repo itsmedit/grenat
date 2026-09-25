@@ -39,11 +39,13 @@ pub struct Mode {
     pub log: bool,
     /// Where workflows journal; by default a new directory for each run.
     pub journal: Option<std::path::PathBuf>,
+    /// As in tests: no network, no programs, no email sent.
+    pub offline: bool,
 }
 
 impl Default for Mode {
     fn default() -> Self {
-        Mode { jit: true, log: false, journal: None }
+        Mode { jit: true, log: false, journal: None, offline: false }
     }
 }
 
@@ -75,6 +77,7 @@ pub fn run_mode(src: &str, provider: Scripted, input: &[&str], args: &[&str], mo
         jit: mode.jit,
         linked: None,
         journal: Some(mode.journal.clone().unwrap_or_else(|| temp_dir("journal"))),
+        offline: mode.offline,
         ..Options::default()
     };
     let started = Instant::now();

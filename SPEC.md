@@ -502,7 +502,7 @@ Ten realistic programs, one per kind of agent, are in `examples/usecases` (the f
 3. ✅ **Sandboxed `shell`** (a process with a timeout, no network unless declared) and per-tool timeouts — cases 2 and 7.
 4. ✅ **MCP client** (`tools mcp(:server)`, capabilities granted per server, results tainted) — case 10.
 5. **Multimodal prompts** (PDF, images) and the **Batch API** — case 5.
-6. **Email** and ✅ **triggers** (`every`, cron schedules, webhooks) — cases 1, 2, 6.
+6. ✅ **Email** and **triggers** (`every`, cron schedules, webhooks) — cases 1, 2, 6.
 7. **Facets**: libraries shared like Ruby's gems. A *facet* (a garnet's face) is a package; a program lists the facets it uses in its `Facetfile`, pinned in `Facetfile.lock`; the `setter` tool (who sets stones in a jewel) creates, adds, installs, updates and publishes them, with versions (`facet "http", "~> 0.3"`) resolved from git tags through an index repository. It replaces the `[dependencies]` of `grenat.toml`.
 8. Smaller gaps met while writing them: the ternary `c ? a : b`; constants in a module (`API = "…"`); HTML to text for case 3; conversations as a type (history compacted automatically) for case 8. ✅ Done: the hash shorthand `{query:}` (Ruby 3.1); a `def self.x` calling the other `def self.` of its type without a receiver.
 
@@ -624,6 +624,17 @@ end
 - **Tests.** `deliver_webhook "/github", json: {…}` sends a request, signed as its sender would sign it, through the same checks, and returns `{"status" => …, "body" => …}`.
 
 The layer below (`grenat_serve`: cron, calendar, signatures, the HTTP server) knows nothing of the language; it is the start of phase 8's `Web` and `Jobs`.
+
+### Phase 7 status: email (`Mail`)
+
+```ruby
+def notify(summary: String) uses net("smtp.mail.com"), env
+  mailer = Mail.connect(Env.fetch("SMTP_URL"))    # smtps://user:password@smtp.mail.com:465, or smtp:// (STARTTLS)
+  mailer.send(from: "bot@acme.com", to: ["team@acme.com"], subject: "Weekly watch", body: summary)
+end
+```
+
+Sending is a `net` effect on the SMTP server's host, checked when sending. A message reaches people: nothing untrusted goes in it (E0412, `TaintError`). Tests never send: in `grenat test`, messages are kept in `Mail.deliveries` (hashes: `from`, `to`, `subject`, `body`), empty at the start of each test.
 
 ### Phase 0.5 status: `grenat fmt`
 

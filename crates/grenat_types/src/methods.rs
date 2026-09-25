@@ -108,7 +108,7 @@ impl<'p> Checker<'p> {
         if kind.is_none()
             && let Some((ty, effect)) = builtins::record_method(t, n)
         {
-            return self.record_method(cx, span, (ty, effect), n, &argv, block);
+            return self.record_method(cx, span, (ty, effect), (t, n), &argv, block);
         }
         if argv.is_empty() && block.is_none() {
             if let Some(ty) = self.field_of(&recv.ty, n) {
@@ -234,12 +234,21 @@ impl<'p> Checker<'p> {
         cx: &mut Ctx<'p>,
         span: Span,
         (ty, effect): (Ty, &'static str),
-        name: &str,
+        (record, name): (&str, &str),
         argv: &[ArgV],
         block: Option<&'p Block>,
     ) -> V {
         let block_v = self.walk_block(cx, block, &[]);
         cx.add_effect(Eff { path: effect.into(), arg: None, origin: span });
+        // an email: nothing untrusted reaches people
+        if record == builtins::MAILER {
+            for arg in argv {
+                if let Some(origin) = arg.v.taint {
+                    self.taint_violation(arg.span, origin, name, effect);
+                }
+            }
+            return V::new(ty);
+        }
         let positional: Vec<&ArgV> = argv.iter().filter(|a| a.name.is_none()).collect();
         if let Some(sql) = positional.first()
             && let Some(origin) = sql.v.taint
