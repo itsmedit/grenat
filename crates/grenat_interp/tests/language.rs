@@ -162,3 +162,21 @@ p twice(r)
 ";
     assert_eq!(run(src), "\"big\"\n\"odd, above 1\"\n1\n\"three\"\n1\n[-1, 0, 1]\n8\n");
 }
+
+#[test]
+fn constants_of_a_type() {
+    let src = "\
+module GitHub
+  API = \"https://api.github.com\"
+  PER_PAGE = 50
+  def self.url(path: String) -> String = \"#{API}/#{path}?per_page=#{PER_PAGE}\"
+end
+class Client
+  RETRIES = 3
+  def retries -> Int = RETRIES * 2
+end
+puts GitHub.url(\"repos\")
+p GitHub::PER_PAGE + 1, Client.new.retries, GitHub.API
+";
+    assert_eq!(run(src), "https://api.github.com/repos?per_page=50\n51\n6\n\"https://api.github.com\"\n");
+}

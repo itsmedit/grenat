@@ -24,6 +24,13 @@ impl Printer<'_> {
     }
 
     fn fn_def(&mut self, def: &FnDef) {
+        // `API = "…"`: a constant, written so
+        if def.on_self && def.short && def.params.is_empty() && !self.source(def.span).starts_with("def") {
+            self.write(&def.name.name);
+            self.write(" = ");
+            self.expr(&def.body.stmts[0]);
+            return;
+        }
         if def.is_abstract {
             self.write("abstract ");
         }

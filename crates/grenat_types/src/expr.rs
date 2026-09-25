@@ -122,7 +122,7 @@ impl<'p> Checker<'p> {
             }
             ExprKind::Var(name) => self.var(cx, name, e.span),
             ExprKind::It => cx.lookup("it").unwrap_or_else(V::unknown),
-            ExprKind::Const(path) => self.constant(path, e.span),
+            ExprKind::Const(path) => self.constant(cx, path, e.span),
             ExprKind::IVar(name) => self.ivar(cx, name, e.span),
             ExprKind::Call { recv, name, args, block, safe, .. } => {
                 self.call(cx, e.span, recv.as_deref(), name, args, block.as_deref(), *safe)
@@ -285,8 +285,21 @@ impl<'p> Checker<'p> {
         V::unknown()
     }
 
-    pub(crate) fn constant(&mut self, path: &'p [Ident], span: Span) -> V {
+    pub(crate) fn constant(&mut self, cx: &mut Ctx<'p>, path: &'p [Ident], span: Span) -> V {
         let name = path.last().expect("path").name.as_str();
+        // `GitHub::API`, or `API` in the type's own methods: a constant (a class method)
+        let owner = match path.len() {
+            1 => match &cx.self_ty {
+                Some(Ty::User(t) | Ty::Type(t)) => Some(t.clone()),
+                _ => None,
+            },
+            n => Some(path[n - 2].name.clone()),
+        };
+        if let Some(owner) = owner
+            && let Some(def) = self.types.get(owner.as_str()).and_then(|d| d.statics.get(name).copied())
+        {
+            return self.fn_call(cx, span, def, Some(V::new(Ty::Type(owner))), Vec::new(), None);
+        }
         if path.len() >= 2 {
             let owner = path[path.len() - 2].name.as_str();
             if self.variants.get(name) == Some(&owner) {

@@ -23,32 +23,28 @@ end
 
 ## GitHub's REST API.
 module GitHub
+  API = "https://api.github.com"
+
   def self.headers(accept: String) -> Hash(String, String) uses env
     {"Authorization" => "Bearer #{Env.fetch("GITHUB_TOKEN")}", "Accept" => accept}
   end
 
   def self.diff(repo: String, pr: Int) -> ~String uses net("api.github.com"), env
     Http
-      .get(
-        "https://api.github.com/repos/#{repo}/pulls/#{pr}",
-        headers: headers("application/vnd.github.diff"),
-      )
+      .get("#{API}/repos/#{repo}/pulls/#{pr}", headers: headers("application/vnd.github.diff"))
       .body
   end
 
   def self.file(repo: String, path: String) -> ~String uses net("api.github.com"), env
     Http
-      .get(
-        "https://api.github.com/repos/#{repo}/contents/#{path}",
-        headers: headers("application/vnd.github.raw"),
-      )
+      .get("#{API}/repos/#{repo}/contents/#{path}", headers: headers("application/vnd.github.raw"))
       .body
   end
 
   def self.comment(repo: String, pr: Int, body: String) -> Int uses net("api.github.com"), env
     Http
       .post(
-        "https://api.github.com/repos/#{repo}/issues/#{pr}/comments",
+        "#{API}/repos/#{repo}/issues/#{pr}/comments",
         json: {body:},
         headers: headers("application/json"),
       )

@@ -168,3 +168,9 @@ fn a_parenthesized_if_stays_an_if() {
     let src = "out = out + (if i == 0 then \"\" else \",\" end) + x\n";
     assert_eq!(crate::format(src).unwrap(), src);
 }
+
+#[test]
+fn constants_are_kept() {
+    let src = "module GitHub\n  API = \"https://api.github.com\"\n\n  def self.url = API\nend\n";
+    assert_eq!(crate::format(src).unwrap(), src);
+}

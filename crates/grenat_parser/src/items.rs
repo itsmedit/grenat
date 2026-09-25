@@ -136,6 +136,30 @@ impl<'d> Parser<'d> {
         Ok(params)
     }
 
+    /// `NAME = expr` in a type: the class method `NAME`, without arguments.
+    pub(crate) fn constant(&mut self, doc: Option<String>) -> PResult<FnDef> {
+        let start = self.span();
+        let name = self.const_name("a constant")?;
+        self.expect(T::Eq, "`=`")?;
+        self.skip_newlines();
+        let value = self.expr()?;
+        let span = value.span;
+        Ok(FnDef {
+            kind: FnKind::Def,
+            doc,
+            is_abstract: false,
+            on_self: true,
+            name,
+            params: Vec::new(),
+            ret: None,
+            effects: Vec::new(),
+            model: None,
+            body: Body::new(vec![value], span),
+            short: true,
+            span: start.to(self.prev_span()),
+        })
+    }
+
     /// `name: Type = default` or `name = default`.
     pub(crate) fn param(&mut self) -> PResult<Param> {
         let start = self.span();
@@ -294,6 +318,8 @@ impl<'d> Parser<'d> {
                 self.ty().map(Member::Include)
             }
             T::Ident(name) if name == "on" && kind == TypeKind::Agent => self.handler(doc).map(Member::Handler),
+            // `API = "…"`: a constant, i.e. a `def self.API` without arguments
+            T::Const(_) if *self.nth(1) == T::Eq => self.constant(doc).map(Member::Method),
             T::Const(_) if kind == TypeKind::Enum => self.variant(doc).map(Member::Variant),
             // a directive, or a macro invocation (see `grenat_macros`)
             T::Ident(_) => {

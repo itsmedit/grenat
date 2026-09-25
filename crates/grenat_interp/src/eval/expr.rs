@@ -311,6 +311,13 @@ impl<'p> Interp<'p> {
             if self.variants.get(name) == Some(&owner) {
                 return self.variant_value(name);
             }
+            // `GitHub::API`: a constant of a type
+            if let Some(def) = self.types.get(owner).and_then(|info| info.statics.get(name).copied()) {
+                return self.call_fn(def, Args::default(), Some(Value::Type(owner.into())));
+            }
+        } else if let Some((def, ty)) = self.own_constant(name) {
+            // `API` in the type's own methods
+            return self.call_fn(def, Args::default(), Some(Value::Type(ty)));
         }
         if self.types.contains_key(name)
             || BUILTIN_TYPES.contains(&name)
@@ -323,6 +330,18 @@ impl<'p> Interp<'p> {
             return self.variant_value(name);
         }
         raise("NameError", format!("unknown constant `{name}`"))
+    }
+
+    /// A constant of the type whose method is running (class or instance method).
+    fn own_constant(&self, name: &str) -> Option<(&'p FnDef, Arc<str>)> {
+        let ty: Arc<str> = match self.self_val()? {
+            Value::Type(t) => t,
+            Value::Object(o) => o.ty.clone(),
+            Value::Record(r) => r.ty.clone(),
+            _ => return None,
+        };
+        let def = self.types.get(&*ty).and_then(|info| info.statics.get(name).copied())?;
+        Some((def, ty))
     }
 
     /// Field-less variant (`Positive`); a variant with fields is built with `Name(…)`.

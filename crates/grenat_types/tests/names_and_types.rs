@@ -69,3 +69,10 @@ fn indexing_errors_do_not_cascade() {
 fn batch_map_is_typed_like_map() {
     single("x = [1, 2].batch_map { |n| n * 2 }\nx.first.upcase\n", "E0200", "upcase");
 }
+
+#[test]
+fn constants_are_typed_by_their_value() {
+    clean("module M\n  LIMIT = 5\n  def self.twice -> Int = LIMIT * 2\nend\np M::LIMIT + 1\n");
+    single("module M\n  LIMIT = 5\nend\np M::LIMIT.upcase\n", "E0200", "upcase");
+    single("module M\n  LIMIT = 5\nend\np M::LIMT\n", "E0100", "M::LIMT");
+}
