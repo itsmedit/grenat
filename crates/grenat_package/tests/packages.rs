@@ -171,6 +171,11 @@ fn git_dependencies_are_fetched_and_locked() {
     assert_eq!(lock.entries["greet"].commit, v1);
     assert_eq!(lock.entries["greet"].reference, "default");
 
+    // a program of the package that does not need `greet` keeps its pin
+    write(&dir.join("app/tests/other.grn"), "def unrelated = 1\n");
+    load(&dir.join("app/tests/other.grn"), false).unwrap();
+    assert_eq!(Lock::load(&dir.join("app")).unwrap().entries["greet"].commit, v1);
+
     // a new commit upstream: the lock keeps the old one…
     write(&repo.join("src/lib.grn"), "def greet = \"v2\"\n");
     git(&repo, &["commit", "--quiet", "-am", "v2"]);

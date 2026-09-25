@@ -130,10 +130,10 @@ impl Resolver {
         Ok(dir)
     }
 
-    /// Saves the lock file (git dependencies no longer used are forgotten).
+    /// Saves the lock file. Entries this program did not need are kept: the
+    /// package's other programs (its tests…) may need them.
     pub(crate) fn save_lock(&mut self) -> Result<(), String> {
         let Some(root) = &self.root else { return Ok(()) };
-        self.lock.entries.retain(|name, _| self.fetched.contains_key(name));
         if self.lock.entries.is_empty() && !root.join(crate::LOCK).exists() {
             return Ok(());
         }
