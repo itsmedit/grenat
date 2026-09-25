@@ -114,11 +114,15 @@ impl Loader<'_> {
         })?;
         let owner = if name == package.manifest.name {
             package
-        } else {
-            let dep = package.manifest.dependency(name).cloned().ok_or_else(|| {
-                format!("unknown package `{name}`: add it to `[dependencies]` in {}", display(&package.root.join(crate::MANIFEST)))
-            })?;
+        } else if let Some(dep) = package.manifest.dependency(name).cloned() {
             self.resolver.dependency(&package, &dep)?
+        } else if let Some(facet) = self.resolver.facet(name)? {
+            facet
+        } else {
+            return Err(format!(
+                "unknown package `{name}`: add `facet \"{name}\"` to the Facetfile (or it to `[dependencies]` in {})",
+                display(&package.root.join(crate::MANIFEST))
+            ));
         };
         Ok(match rest {
             Some(rest) => with_extension(owner.root.join("src").join(rest)),

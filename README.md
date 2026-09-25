@@ -62,7 +62,8 @@ export ANTHROPIC_API_KEY=sk-ant-…
 target/debug/grenat run --log examples/explorer.grn crates/grenat_parser        # a real agent
 target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl        # multi-agent + approval
 
-target/debug/grenat new hello && cd hello    # a package: grenat.toml, src/, tests/
+target/debug/grenat new hello && cd hello    # a package: grenat.toml, Facetfile, src/, tests/
+setter add http_tools                        # a facet (library) from an index, like a gem
 grenat run && grenat test                    # in a package, no file to name
 
 target/debug/grenat check examples/*.grn     # names, types, effects, taint
@@ -102,7 +103,8 @@ end })
 | `grenat_db` | databases: SQLite (embedded) and PostgreSQL behind one interface |
 | `grenat_mcp` | a Model Context Protocol client (stdio and HTTP) |
 | `grenat_serve` | triggers: cron schedules, webhook signatures, the HTTP server of `grenat serve` |
-| `grenat_package` | `grenat.toml`, `require`, path and git dependencies, `grenat.lock` |
+| `grenat_setter` | `setter`: creates, adds, installs and publishes facets (libraries) |
+| `grenat_package` | `grenat.toml`, `require`, facets (`Facetfile`, versions, indexes), path and git dependencies |
 | `grenat_fmt` | the formatter |
 | `grenat_lsp` | the language server |
 | `grenat_macros` | macro expansion: templates of declarations |

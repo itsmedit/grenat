@@ -50,3 +50,35 @@ fn git(args: &[&str], dir: Option<&Path>) -> Result<String, String> {
         Err(format!("`git {}` failed: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim()))
     }
 }
+
+/// The tags of the repository at `url`: (tag, commit), a tag object
+/// resolved to the commit it names.
+pub(crate) fn tags(url: &str) -> Result<Vec<(String, String)>, String> {
+    let listing = git(&["ls-remote", "--tags", url], None)?;
+    let mut tags: Vec<(String, String)> = Vec::new();
+    for line in listing.lines() {
+        let Some((commit, reference)) = line.split_once('\t') else { continue };
+        let Some(tag) = reference.strip_prefix("refs/tags/") else { continue };
+        match tag.strip_suffix("^{}") {
+            // an annotated tag: the commit it points to
+            Some(tag) => match tags.iter_mut().find(|(t, _)| t == tag) {
+                Some(entry) => entry.1 = commit.to_string(),
+                None => tags.push((tag.to_string(), commit.to_string())),
+            },
+            None if !tags.iter().any(|(t, _)| t == tag) => tags.push((tag.to_string(), commit.to_string())),
+            None => {}
+        }
+    }
+    Ok(tags)
+}
+
+/// A copy of the repository at `url` in `dir`, brought up to date.
+pub(crate) fn sync(url: &str, dir: &Path) -> Result<(), String> {
+    if dir.join(".git").is_dir() {
+        return git(&["pull", "--quiet", "--ff-only"], Some(dir)).map(drop);
+    }
+    if let Some(parent) = dir.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+    }
+    git(&["clone", "--quiet", "--depth", "1", url, &dir.to_string_lossy()], None).map(drop)
+}

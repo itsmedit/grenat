@@ -797,6 +797,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "grenat_setter"
+version = "0.1.0"
+dependencies = [
+ "grenat_package",
+]
+
+[[package]]
 name = "grenat_standalone"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,15 @@
+[package]
+name = "grenat_setter"
+description = "setter: creates, adds, installs and publishes Grenat facets (libraries)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "setter"
+path = "src/main.rs"
+
+[dependencies]
+grenat_package.workspace = true

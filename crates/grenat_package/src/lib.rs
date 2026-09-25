@@ -13,19 +13,22 @@
 //! the root package's `.grenat/deps/` and pinned in its `grenat.lock`.
 
 mod bundle;
+pub mod facetfile;
+pub mod facets;
 mod git;
 mod lock;
 mod manifest;
 mod requires;
 mod resolve;
 mod scaffold;
+pub mod version;
 
 pub use bundle::{Bundle, LoadError, load, load_with};
 pub use lock::Lock;
 pub use manifest::{Dependency, Manifest, Reference, Source};
 pub use requires::{is_require, strip_requires};
 pub use resolve::{Package, find_package};
-pub use scaffold::create;
+pub use scaffold::{create, create_facet};
 
 /// The manifest's file name.
 pub const MANIFEST: &str = "grenat.toml";

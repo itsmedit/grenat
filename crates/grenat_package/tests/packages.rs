@@ -126,7 +126,7 @@ fn path_dependencies_and_package_files() {
 
     write(&dir.join("app/src/main.grn"), "require \"nope\"\n");
     let e = error(load(&dir.join("app/src/main.grn"), false));
-    assert!(e.contains("unknown package `nope`: add it to `[dependencies]` in "), "{e}");
+    assert!(e.contains("unknown package `nope`: add `facet \"nope\"` to the Facetfile"), "{e}");
 }
 
 fn git(dir: &Path, args: &[&str]) -> String {

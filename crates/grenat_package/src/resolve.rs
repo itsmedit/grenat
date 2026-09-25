@@ -53,6 +53,8 @@ pub(crate) struct Resolver {
     fetched: HashMap<String, (String, PathBuf)>,
     /// Packages by root directory.
     packages: HashMap<PathBuf, Package>,
+    /// The facets installed for the root package (`Facetfile.lock`), read once.
+    facets: Option<HashMap<String, PathBuf>>,
 }
 
 impl Resolver {
@@ -67,6 +69,7 @@ impl Resolver {
             update,
             fetched: HashMap::new(),
             packages: HashMap::new(),
+            facets: None,
         })
     }
 
@@ -128,6 +131,39 @@ impl Resolver {
         self.lock.entries.insert(dep.name.clone(), entry);
         self.fetched.insert(dep.name.clone(), (url.to_string(), dir.clone()));
         Ok(dir)
+    }
+
+    /// The facet `name`, installed for the root package (one namespace for
+    /// every package of the program, as the `Facetfile` resolved them).
+    pub(crate) fn facet(&mut self, name: &str) -> Result<Option<Package>, String> {
+        let Some(root) = self.root.clone() else { return Ok(None) };
+        if self.facets.is_none() {
+            let installed = crate::facets::installed(&root)?;
+            self.facets = Some(
+                installed
+                    .into_iter()
+                    .map(|f| {
+                        let dir = if f.dir.is_absolute() { f.dir } else { root.join(f.dir) };
+                        (f.name, dir)
+                    })
+                    .collect(),
+            );
+        }
+        let Some(dir) = self.facets.as_ref().and_then(|f| f.get(name)).cloned() else {
+            if root.join(crate::facetfile::FACETFILE).is_file()
+                && crate::facetfile::Facetfile::load(&root)?.is_some_and(|f| f.facets.iter().any(|d| d.name == name))
+            {
+                return Err(format!("facet `{name}` is not installed: run `setter install`"));
+            }
+            return Ok(None);
+        };
+        let dir = dir.canonicalize().map_err(|_| format!("facet `{name}` is not installed: run `setter install`"))?;
+        let package = match self.packages.get(&dir) {
+            Some(p) => p.clone(),
+            None => Package::load(&dir)?,
+        };
+        self.packages.insert(dir, package.clone());
+        Ok(Some(package))
     }
 
     /// Saves the lock file. Entries this program did not need are kept: the

@@ -503,7 +503,7 @@ Ten realistic programs, one per kind of agent, are in `examples/usecases` (the f
 4. ✅ **MCP client** (`tools mcp(:server)`, capabilities granted per server, results tainted) — case 10.
 5. ✅ **Multimodal prompts** (PDF, images) and the **Batch API** — case 5.
 6. ✅ **Email** and **triggers** (`every`, cron schedules, webhooks) — cases 1, 2, 6.
-7. **Facets**: libraries shared like Ruby's gems. A *facet* (a garnet's face) is a package; a program lists the facets it uses in its `Facetfile`, pinned in `Facetfile.lock`; the `setter` tool (who sets stones in a jewel) creates, adds, installs, updates and publishes them, with versions (`facet "http", "~> 0.3"`) resolved from git tags through an index repository. It replaces the `[dependencies]` of `grenat.toml`.
+7. ✅ **Facets**: libraries shared like Ruby's gems. A *facet* (a garnet's face) is a package; a program lists the facets it uses in its `Facetfile`, pinned in `Facetfile.lock`; the `setter` tool (who sets stones in a jewel) creates, adds, installs, updates and publishes them, with versions (`facet "http", "~> 0.3"`) resolved from git tags through an index repository. It replaces the `[dependencies]` of `grenat.toml`.
 8. Smaller gaps met while writing them: the ternary `c ? a : b`; constants in a module (`API = "…"`); HTML to text for case 3; conversations as a type (history compacted automatically) for case 8. ✅ Done: the hash shorthand `{query:}` (Ruby 3.1); a `def self.x` calling the other `def self.` of its type without a receiver.
 
 ### Phase 7 status: the `Http` client
@@ -643,6 +643,27 @@ invoices = paths.batch_map { |path| extract(Pdf.read(path)) }   # one batch: hal
 ```
 
 `xs.batch_map { … }` runs the block for each element, and sends the model calls it makes through the provider's batch API (Anthropic's Message Batches: half the price, answered within 24 hours, usually minutes). Each element runs on a green task of its own: a task that calls a model queues its request and sleeps; once every task sleeps or is done, the queued requests go out as one batch, and each answer wakes its task where it stopped — a second call is a second round. Budgets count batched calls at half their cost. Mocks, cassettes and the test provider answer batches one request at a time, so tests need nothing new. Tasks a batched task starts (`parallel_map`…) call models directly.
+
+### Phase 7 status: facets, the `Facetfile` and `setter`
+
+```ruby
+# Facetfile
+source "https://github.com/grenat-lang/facets"      # an index: a git repository
+facet "http_tools", "~> 0.3"                        # from the index, by version
+facet "utils", path: "../utils"
+facet "greet", git: "https://github.com/x/greet", tag: "v1.0.0"
+```
+
+A **facet** is a library: a package (`grenat.toml`, `src/lib.grn`) whose versions are its repository's tags (`v1.2.3`). An **index** is a git repository listing facets (`facets/<name>.toml`: `git = "<repository>"`). A package lists the facets it uses in its **`Facetfile`** — Grenat code, read by Grenat's parser — with Ruby's requirements (`~> 0.3` is at least 0.3 and below 1.0; `>= 1.0, < 2`; `= 1.0.0`). **`setter`** installs them: the highest version every requirement allows, found in the indexes, fetched into `.grenat/facets/<name>-<version>`, and recorded — version, commit, directory — in **`Facetfile.lock`**, which later installs keep until `setter update`. A facet's own `Facetfile` adds its facets; all of a program's facets share one namespace, so requirements on a facet must agree on one version (else the conflict is reported). `require "http_tools"` loads an installed facet; one that is listed but not installed is an error that says to run `setter install`.
+
+```sh
+setter new greet          # a facet: grenat.toml, Facetfile, src/lib.grn, tests/, README
+setter publish            # tags its version (v0.1.0) for the indexes
+setter add greet          # in an application: `facet "greet", "~> 0.1"` (the latest), installed
+setter install | update | list
+```
+
+`setter` is a binary of its own (`grenat_setter`); the resolution is `grenat_package`'s, shared with `grenat`. The `[dependencies]` of `grenat.toml` (path and git) still work, for programs that need no index.
 
 ### Phase 0.5 status: `grenat fmt`
 
