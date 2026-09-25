@@ -1,8 +1,18 @@
 require "./07_sre"
-test "sre" do
+
+test "an alert is diagnosed, approved, fixed" do
+  mock_http "GET http://loki.internal:3100/loki/api/v1/query_range*", json: {
+    data: {result: [{values: [["1", "OOMKilled: api-7f9"]]}]},
+  }
+  mock_http "GET http://prometheus.internal:9090/api/v1/query*", json: {data: {result: []}}
   mock :smart, replies: [
     call(:logs, service: "api"),
-    {cause: "OOM", evidence: "killed", action: {kind: "Restart", service: "api"}},
+    call(:metrics, service: "api"),
+    {
+      cause: "out of memory",
+      evidence: "OOMKilled: api-7f9",
+      action: {kind: "Restart", service: "api"},
+    },
   ]
   with_human(approve_all) do
     main(["api", "5xx", "rate", "high"])

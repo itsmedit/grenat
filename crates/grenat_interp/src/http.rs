@@ -40,6 +40,28 @@ pub(crate) fn send(request: &HttpRequest) -> Result<HttpReply, String> {
     Ok(HttpReply { status, headers, body })
 }
 
+/// `url` with `params` as its query string, percent-encoded.
+pub(crate) fn with_query(url: &str, params: &[(String, String)]) -> String {
+    if params.is_empty() {
+        return url.to_string();
+    }
+    let query: Vec<String> = params.iter().map(|(k, v)| format!("{}={}", encode(k), encode(v))).collect();
+    let separator = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{separator}{}", query.join("&"))
+}
+
+fn encode(text: &str) -> String {
+    let mut out = String::new();
+    for b in text.bytes() {
+        if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
 /// The host of `url` (`https://api.github.com:443/x` → `api.github.com`).
 pub(crate) fn host(url: &str) -> Option<&str> {
     let rest = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://"))?;
@@ -50,7 +72,14 @@ pub(crate) fn host(url: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::host;
+    use super::{host, with_query};
+
+    #[test]
+    fn queries_are_encoded() {
+        let params = [("q".to_string(), "rust & grenat é".to_string()), ("n".to_string(), "5".to_string())];
+        assert_eq!(with_query("https://x.io/s", &params), "https://x.io/s?q=rust%20%26%20grenat%20%C3%A9&n=5");
+        assert_eq!(with_query("https://x.io/s?a=1", &params[1..]), "https://x.io/s?a=1&n=5");
+    }
 
     #[test]
     fn hosts() {

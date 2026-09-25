@@ -7,20 +7,21 @@ mocked, but the I/O Grenat's standard library lacks is faked, between
 `═══ STUBS ═══` and `═══ END STUBS ═══`. **Phase 7 is done when every stub
 block is gone** and each program runs against real services.
 
-| # | Program | Logic | Stubs | Real today? | Needed |
+| # | Program | Lines | of which stubs | Real today? | Still needed |
 |---|---|---:|---:|---|---|
-| 1 | [`support_desk.grn`](../support_desk.grn) (customer support) | 113 | 19 | no | doc search, email |
-| 2 | [`02_code_review.grn`](02_code_review.grn) | 40 | 7 | no | `Http` (GitHub), webhooks, sandboxed shell |
-| 3 | [`03_research.grn`](03_research.grn) | 41 | 4 | no | web search and fetch |
-| 4 | [`04_data.grn`](04_data.grn) (question → SQL) | 24 | 4 | no | `Db` (Postgres, SQLite) |
-| 5 | [`05_documents.grn`](05_documents.grn) (invoices) | 33 | 3 | text only | PDF and image input, Batch API |
-| 6 | [`06_weekly_digest.grn`](06_weekly_digest.grn) | 30 | 8 | partly | `Http` (feeds), email, `every` |
-| 7 | [`07_sre.grn`](07_sre.grn) (alert → fix) | 47 | 10 | no | `Http`, sandboxed shell, tool timeouts |
+| 1 | [`support_desk.grn`](../support_desk.grn) (customer support) | 132 | 19 | no | doc search, email |
+| 2 | [`02_code_review.grn`](02_code_review.grn) (GitHub API) | 70 | 0 | **yes** | webhooks, sandboxed shell (to run the tests) |
+| 3 | [`03_research.grn`](03_research.grn) (Brave Search API) | 56 | 0 | **yes** | HTML to text |
+| 4 | [`04_data.grn`](04_data.grn) (question → SQL) | 28 | 4 | no | `Db` (Postgres, SQLite) |
+| 5 | [`05_documents.grn`](05_documents.grn) (invoices) | 36 | 3 | text only | PDF and image input, Batch API |
+| 6 | [`06_weekly_digest.grn`](06_weekly_digest.grn) (GitHub releases) | 40 | 5 | all but the email | email, `every` |
+| 7 | [`07_sre.grn`](07_sre.grn) (Loki, Prometheus) | 66 | 6 | all but the fix | sandboxed shell, tool timeouts |
 | 8 | [`08_chat.grn`](08_chat.grn) (memory) | 39 | 0 | yes (terminal) | a chat connector |
 | 9 | [`09_team.grn`](09_team.grn) (planner, writers, critic) | 40 | 0 | yes | — |
-| 10 | [`10_mcp_tools.grn`](10_mcp_tools.grn) (Linear, Notion) | 25 | 25 | no | an MCP client |
+| 10 | [`10_mcp_tools.grn`](10_mcp_tools.grn) (Linear, Notion) | 50 | 25 | no | an MCP client |
 
-Lines of code, without blank lines and comments. The stubs are shorter
-than the real code they stand for (authentication, pagination), which
-Grenat cannot express today: there is no network, database or process
-primitive yet.
+Lines of code, without blank lines and comments. A stub is shorter than
+the real code it stands for: with `Http`, cases 2 and 3 grew from 47 to 70
+and from 45 to 56 lines (authentication, JSON, query strings). The tests
+stub the services with `mock_http` and need `GITHUB_TOKEN` and
+`BRAVE_API_KEY` set, to any value.

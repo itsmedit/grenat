@@ -18,20 +18,31 @@ struct Hit
   snippet: String
 end
 
-# ═══ STUBS ═══
+## Web search (Brave Search API) and page fetching.
 module Web
-  def self.search(query: String) -> Array(Hit) uses net = []
-  def self.fetch(url: String) -> String uses net = ""
+  def self.search(query: String) -> ~Array(Hit) uses net("api.search.brave.com"), env
+    res = Http.get(
+      "https://api.search.brave.com/res/v1/web/search",
+      query: {q: query, count: 8},
+      headers: {"X-Subscription-Token" => Env.fetch("BRAVE_API_KEY")},
+    )
+    res.json["web"]["results"].map { |r|
+      Hit(url: r["url"], title: r["title"], snippet: r["description"])
+    }
+  end
+
+  def self.fetch(url: String) -> ~String uses net
+    Http.get(url, timeout: 15).body
+  end
 end
-# ═══ END STUBS ═══
 
 ## Searches the web.
-tool search(query: String) -> Array(Hit) uses net
+tool search(query: String) -> ~Array(Hit) uses net("api.search.brave.com"), env
   Web.search(query)
 end
 
 ## Reads a web page, as text.
-tool read_page(url: String) -> String uses net
+tool read_page(url: String) -> ~String uses net
   Web.fetch(url)
 end
 
@@ -47,7 +58,7 @@ agent Researcher
   end
 end
 
-def main(args: Array(String)) uses llm, net
+def main(args: Array(String)) uses llm, net, env
   report = spawn(Researcher).ask(Research(question: args.join(" ")))
   sourced = report.check { |r| r.claims.all? { |c| c.sources.any? } }?
   puts sourced.answer

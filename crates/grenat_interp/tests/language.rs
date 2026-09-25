@@ -125,3 +125,14 @@ fn integer_arithmetic_follows_ruby_and_never_panics() {
     }
     assert_eq!(run_err("p(1 % 0)\n", vec![]).ty, "ZeroDivisionError");
 }
+
+#[test]
+fn a_class_method_calls_its_siblings_without_a_receiver() {
+    let src = "module Api\n  def self.base = \"https://x.io\"\n  def self.url(path: String) -> String = \"#{base}/#{path}\"\nend\nputs Api.url(\"a\")\n";
+    assert_eq!(run(src), "https://x.io/a\n");
+}
+
+#[test]
+fn hash_shorthand_takes_the_variable_of_the_same_name() {
+    assert_eq!(run("query = \"rust\"\nn = 2\np({query:, n:, other: 3})\n"), "{query: \"rust\", n: 2, other: 3}\n");
+}

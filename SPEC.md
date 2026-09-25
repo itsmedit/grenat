@@ -492,7 +492,7 @@ Ten realistic programs, one per kind of agent, are in `examples/usecases` (the f
 5. **Multimodal prompts** (PDF, images) and the **Batch API** — case 5.
 6. **Email** and **triggers** (`every 1.week`, webhooks through an `Http` server) — cases 1, 2, 6.
 7. **Facets**: libraries shared like Ruby's gems. A *facet* (a garnet's face) is a package; a program lists the facets it uses in its `Facetfile`, pinned in `Facetfile.lock`; the `setter` tool (who sets stones in a jewel) creates, adds, installs, updates and publishes them, with versions (`facet "http", "~> 0.3"`) resolved from git tags through an index repository. It replaces the `[dependencies]` of `grenat.toml`.
-8. Smaller gaps met while writing them: the ternary `c ? a : b`; conversations as a type (history compacted automatically) for case 8; web search as a model server tool for case 3.
+8. Smaller gaps met while writing them: the ternary `c ? a : b`; constants in a module (`API = "…"`); HTML to text for case 3; conversations as a type (history compacted automatically) for case 8. ✅ Done: the hash shorthand `{query:}` (Ruby 3.1); a `def self.x` calling the other `def self.` of its type without a receiver.
 
 ### Phase 7 status: the `Http` client
 
@@ -505,7 +505,7 @@ def stars(repo: String) -> Int uses net("api.github.com"), env
 end
 ```
 
-`Http.get`, `post`, `put`, `patch`, `delete` and `head` take a URL and `headers:`, `json:` (sent as JSON) or `body:`, and `timeout:` (30 s by default). They return an `HttpResponse`: `status`, `ok?` (2xx), `headers`, `body`, `json`. A status is an answer, not an error; `HttpError` is for no answer at all (connection, timeout).
+`Http.get`, `post`, `put`, `patch`, `delete` and `head` take a URL and `query:` (parameters, percent-encoded), `headers:`, `json:` (sent as JSON) or `body:`, and `timeout:` (30 s by default). They return an `HttpResponse`: `status`, `ok?` (2xx), `headers`, `body`, `json`. A status is an answer, not an error; `HttpError` is for no answer at all (connection, timeout).
 
 - **Capabilities.** A request is a `net` effect restricted by host: `uses net("api.github.com")` allows that host only. The checker takes the host of a literal URL (E0300 otherwise); a URL built at run time is checked when the request is made (`CapabilityError`).
 - **Taint, both ways.** Nothing untrusted goes out: a model's answer or a response, unchecked, in the URL, headers or body is E0412 (and a `TaintError` at run time). What comes back is untrusted, as a model's answer is: `body`, `headers` and `json` are tainted — a web page can carry a prompt injection as well as a model can. `status` and `ok?` are not. Parsing untrusted text (`Json.parse`) gives untrusted data.

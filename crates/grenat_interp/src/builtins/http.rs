@@ -6,6 +6,7 @@
 //! res.ok?      # status in 200..299
 //! res.json     # the body, parsed
 //! Http.post(url, json: {title: "Bug"}, timeout: 5)
+//! Http.get("https://api.x.io/search", query: {q: "rust & grenat"})  # encoded
 //! ```
 //!
 //! A request is a `net` effect: its host must be allowed by every function
@@ -65,6 +66,11 @@ fn request<'p>(method: &'static str, url: String, args: &Args<'p>) -> Result<Htt
                 request.headers.push(("Content-Type".into(), "application/json".into()));
             }
             ("body", Value::Str(text)) => request.body = Some(text.to_string()),
+            ("query", Value::Hash(entries)) => {
+                let params: Vec<(String, String)> =
+                    entries.borrow().iter().map(|(k, v)| (k.to_display(), v.to_display())).collect();
+                request.url = crate::http::with_query(&request.url, &params);
+            }
             ("timeout", Value::Int(n)) if *n > 0 => request.timeout = Duration::from_secs(*n as u64),
             ("timeout", Value::Float(s) | Value::Duration(s)) if *s > 0.0 => {
                 request.timeout = Duration::from_secs_f64(*s);

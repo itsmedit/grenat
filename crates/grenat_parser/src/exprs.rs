@@ -302,9 +302,14 @@ impl<'d> Parser<'d> {
                     break;
                 }
                 if let T::Label(name) = p.kind().clone() {
-                    let key = Expr::new(ExprKind::Symbol(name), p.bump().span);
-                    p.skip_newlines();
-                    entries.push((key, p.expr()?));
+                    let key = Expr::new(ExprKind::Symbol(name.clone()), p.bump().span);
+                    if p.at(&T::Comma) || p.at(&T::RBrace) {
+                        // `{query:}`: the variable of the same name (same span as its key)
+                        entries.push((key.clone(), Expr::new(ExprKind::Var(name), key.span)));
+                    } else {
+                        p.skip_newlines();
+                        entries.push((key, p.expr()?));
+                    }
                 } else {
                     let key = p.expr()?;
                     p.expect(T::FatArrow, "`=>`")?;

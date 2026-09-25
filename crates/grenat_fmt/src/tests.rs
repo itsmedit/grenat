@@ -148,3 +148,9 @@ fn a_hash_argument_is_parenthesized_only_without_call_parentheses() {
     assert_eq!(fmt("show ({a: 1})\n"), "show ({a: 1})\n");
     assert_eq!(fmt("show \"merge\", {a: 1}.merge({b: 2})\n"), "show \"merge\", {a: 1}.merge({b: 2})\n");
 }
+
+#[test]
+fn hash_shorthand_is_kept() {
+    let src = "query = \"x\"\np({query:, n: 1})\nx = {query:}\n";
+    assert_eq!(crate::format(src).unwrap(), src);
+}

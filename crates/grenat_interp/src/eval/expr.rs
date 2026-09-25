@@ -276,6 +276,9 @@ impl<'p> Interp<'p> {
                 return self.call_method(receiver, name, Args::default());
             }
         }
+        if let Some((def, ty)) = self.sibling_static(name) {
+            return self.call_fn(def, Args::default(), Some(Value::Type(ty)));
+        }
         if let Some(def) = self.fns.get(name).copied() {
             return self.call_fn(def, Args::default(), None);
         }

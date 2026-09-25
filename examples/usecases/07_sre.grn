@@ -15,12 +15,23 @@ struct Diagnosis
   action: Action
 end
 
-# ═══ STUBS ═══
+## Logs (Loki) and metrics (Prometheus) of the cluster.
 module Observability
-  def self.logs(service: String, minutes: Int) -> String uses net("loki.internal") = ""
-  def self.metrics(service: String) -> String uses net("prometheus.internal") = ""
+  def self.logs(service: String, minutes: Int) -> ~String uses net("loki.internal")
+    res = Http.get(
+      "http://loki.internal:3100/loki/api/v1/query_range",
+      query: {query: "{app=\"#{service}\"}", since: "#{minutes}m", limit: 200},
+    )
+    res.json["data"]["result"].flat_map { |s| s["values"].map { |v| v[1] } }.join("\n")
+  end
+
+  def self.metrics(service: String) -> ~String uses net("prometheus.internal")
+    query = "sum(rate(http_requests_total{app=\"#{service}\",code=~\"5..\"}[5m]))"
+    Http.get("http://prometheus.internal:9090/api/v1/query", query: {query:}).body
+  end
 end
 
+# ═══ STUBS ═══
 module Kube
   def self.apply(command: String) -> String uses shell
     puts "$ #{command}"
@@ -30,12 +41,12 @@ end
 # ═══ END STUBS ═══
 
 ## Recent logs of a service.
-tool logs(service: String, minutes: Int = 15) -> String uses net("loki.internal")
+tool logs(service: String, minutes: Int = 15) -> ~String uses net("loki.internal")
   Observability.logs(service, minutes)
 end
 
 ## Current metrics of a service (latency, errors, saturation).
-tool metrics(service: String) -> String uses net("prometheus.internal")
+tool metrics(service: String) -> ~String uses net("prometheus.internal")
   Observability.metrics(service)
 end
 

@@ -1,11 +1,16 @@
 require "./02_code_review"
-test "review" do
+
+# run with GITHUB_TOKEN set (any value: GitHub is stubbed)
+test "a pull request is reviewed and commented" do
+  mock_http "GET https://api.github.com/repos/acme/app/pulls/12", body: "+ user.name.upcase"
+  mock_http "GET https://api.github.com/repos/acme/app/contents/*", body: "class User\nend\n"
+  mock_http "POST https://api.github.com/repos/acme/app/issues/12/comments", status: 201
   mock :smart, replies: [
-    call(:read_file, path: "app.rb"),
+    call(:read_file, path: "app/user.rb"),
     {
       summary: "One bug.",
-      findings: [{path: "app.rb", line: 3, severity: "Major", message: "nil check"}],
+      findings: [{path: "app/user.rb", line: 3, severity: "Major", message: "`name` may be nil"}],
     },
   ]
-  main(["acme/app", "12"])
+  assert_equal 201, main(["acme/app", "12"])
 end

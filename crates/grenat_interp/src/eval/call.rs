@@ -119,8 +119,8 @@ impl<'p> Interp<'p> {
         }
     }
 
-    /// `race do … end`: each statement in its own task; the first to succeed
-    /// wins, the others are cancelled at their next checkpoint.
+    /// A call without a receiver: a constructor, `run` in an agent, a method
+    /// of `self`, a function, a built-in.
     pub(crate) fn call_function(&mut self, name: &str, args: Args<'p>) -> R<'p> {
         if name.starts_with(|c: char| c.is_uppercase()) {
             return self.construct(name, args);
@@ -133,6 +133,9 @@ impl<'p> Interp<'p> {
         {
             return self.call_method(receiver, name, args);
         }
+        if let Some((def, ty)) = self.sibling_static(name) {
+            return self.call_fn(def, args, Some(Value::Type(ty)));
+        }
         if let Some(def) = self.fns.get(name).copied() {
             return self.call_fn(def, args, None);
         }
@@ -140,6 +143,14 @@ impl<'p> Interp<'p> {
             return result;
         }
         raise("NameError", format!("unknown function `{name}`"))
+    }
+
+    /// In a `def self.x`, another `def self.` of the same type, called
+    /// without a receiver as in Ruby (`self` is the type); and that type.
+    pub(crate) fn sibling_static(&self, name: &str) -> Option<(&'p FnDef, Arc<str>)> {
+        let Some(Value::Type(ty)) = self.self_val() else { return None };
+        let def = self.types.get(&*ty).and_then(|info| info.statics.get(name).copied())?;
+        Some((def, ty))
     }
 
     pub(crate) fn in_current_agent(&self) -> bool {

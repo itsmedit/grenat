@@ -1,9 +1,19 @@
 require "./03_research"
-test "research" do
+
+# run with BRAVE_API_KEY set (any value: the web is stubbed)
+test "a sourced report" do
+  mock_http "GET https://api.search.brave.com/res/v1/web/search*", json: {
+    web: {results: [{url: "https://a.io/rust", title: "Rust", description: "Why Rust"}]},
+  }
+  mock_http "GET https://a.io/rust", body: "<p>Rust is memory safe.</p>"
   mock :smart, replies: [
-    call(:search, query: "x"),
-    call(:read_page, url: "https://a.io"),
-    {question: "q", answer: "A.", claims: [{text: "c", sources: ["https://a.io"]}]},
+    call(:search, query: "why rust"),
+    call(:read_page, url: "https://a.io/rust"),
+    {
+      question: "why rust",
+      answer: "It is memory safe.",
+      claims: [{text: "memory safe", sources: ["https://a.io/rust"]}],
+    },
   ]
   main(["why", "rust"])
 end

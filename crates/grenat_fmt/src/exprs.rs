@@ -415,6 +415,10 @@ impl Printer<'_> {
             if label {
                 let text = p.source(key.span);
                 p.write(text);
+                // `{query:}`: the value is the key itself
+                if value.span == key.span {
+                    return;
+                }
             } else {
                 p.expr(key);
                 p.write(" =>");

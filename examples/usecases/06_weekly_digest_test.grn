@@ -1,5 +1,7 @@
 require "./06_weekly_digest"
-test "digest" do
-  mock :fast, replies: [{headline: "Quiet week", bullets: ["nothing"]}]
-  main(["2026-W39", "https://blog.rust-lang.org/feed.xml"])
+
+test "the week's new releases are summarized and sent" do
+  mock_http "GET https://api.github.com/repos/rust-lang/rust/releases*", json: [{html_url: "https://github.com/rust-lang/rust/releases/tag/1.95.0", name: "1.95.0"}]
+  mock :fast, replies: [{headline: "Rust 1.95", bullets: ["Rust 1.95.0 is out"]}]
+  main(["2026-W39", "rust-lang/rust"])
 end

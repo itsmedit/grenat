@@ -1,5 +1,6 @@
-# Scheduled agent: every Monday, what changed in the watched sources since
-# last week, summarized and emailed. Memory: a JSON file between runs.
+# Scheduled agent: every Monday, the new releases of the watched GitHub
+# repositories since last week, summarized and emailed. Memory: a JSON file
+# between runs.
 model :fast, provider: :anthropic, name: "claude-haiku-4-5"
 
 struct Item
@@ -12,11 +13,13 @@ struct Digest
   bullets: Array(String)  ## at most 7, the most important first
 end
 
-# ═══ STUBS ═══
-module Feeds
-  def self.items(feed: String) -> Array(Item) uses net = []
+## The latest releases of a GitHub repository (`owner/name`).
+def releases(repo: String) -> ~Array(Item) uses net("api.github.com")
+  res = Http.get("https://api.github.com/repos/#{repo}/releases", query: {per_page: 5})
+  res.json.map { |r| Item(url: r["html_url"], title: "#{repo} #{r["name"]}") }
 end
 
+# ═══ STUBS ═══
 module Mail
   def self.send(to: String, subject: String, body: String) -> Unit uses net("smtp.acme.com")
     puts "#{subject}\n#{body}"
@@ -30,18 +33,20 @@ prompt digest(titles: Array(String)) -> ~Digest using :fast
   user titles.join("\n")
 end
 
-workflow weekly(week: String, feeds: Array(String)) -> Int uses llm, net, fs.read, fs.write
+workflow weekly(week: String, repos: Array(String)) -> Int uses llm, net, fs.read, fs.write
   seen = step(:memory) do
     if File.exist?("seen.json") then Json.parse(File.read("seen.json")) else [] end
   end
-  fresh = step(:collect) {
-    feeds.flat_map { |f| Feeds.items(f) }.reject { |i| seen.include?(i.url) }.map { |i| i.title }
-  }
-  summary = step(:summarize) { digest(fresh).check { |d| d.bullets.size <= 7 }? }
+  fresh = step(:collect) do
+    items = repos.flat_map { |r| releases(r) }.reject { |i| seen.include?(i.url) }
+    # only release pages of GitHub are remembered
+    items.check { |xs| xs.all? { |i| i.url.start_with?("https://github.com/") } }?
+  end
+  summary = step(:summarize) { digest(fresh.map { |i| i.title }).check { |d| d.bullets.size <= 7 }? }
   step(:send) {
     Mail.send("team@acme.com", "Watch #{week}: #{summary.headline}", summary.bullets.join("\n"))
   }
-  step(:remember) { File.write("seen.json", Json.dump(seen + fresh)) }
+  step(:remember) { File.write("seen.json", Json.dump(seen + fresh.map { |i| i.url })) }
   fresh.size
 end
 
