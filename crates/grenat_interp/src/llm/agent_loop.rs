@@ -16,6 +16,8 @@ pub(crate) struct AgentConfig<'p> {
     instructions: Option<String>,
     /// How long one tool call may take (`tool_timeout 30`).
     tool_timeout: Option<std::time::Duration>,
+    /// MCP servers whose tools are given (`tools mcp(:linear, only: [...])`).
+    mcp: Vec<(String, Option<Vec<String>>)>,
 }
 
 impl<'p> Interp<'p> {
@@ -30,6 +32,7 @@ impl<'p> Interp<'p> {
             max_turns: DEFAULT_MAX_TURNS,
             instructions: None,
             tool_timeout: None,
+            mcp: Vec::new(),
         };
         for directive in directives {
             let first = directive.args.iter().find_map(|a| match a {
@@ -42,8 +45,13 @@ impl<'p> Interp<'p> {
                     for arg in &directive.args {
                         match arg {
                             grenat_ast::Arg::Pos(Expr { kind: ExprKind::Var(name), .. }) => config.tools.push(name),
+                            grenat_ast::Arg::Pos(Expr { kind: ExprKind::Call { recv: None, name, args, .. }, .. })
+                                if name.name == "mcp" =>
+                            {
+                                config.mcp.push(self.mcp_directive(args)?);
+                            }
                             _ => {
-                                return raise("TypeError", "`tools` expects tool names: `tools read, search`");
+                                return raise("TypeError", "`tools` expects tool names: `tools read, search, mcp(:linear)`");
                             }
                         }
                     }
@@ -79,6 +87,7 @@ impl<'p> Interp<'p> {
             name: def.name.name.clone(),
             description: def.doc.clone().unwrap_or_else(|| format!("Outil `{}`.", def.name.name)),
             input_schema: self.object_schema(fields, 0)?,
+            strict: true,
         })
     }
 
@@ -107,10 +116,19 @@ impl<'p> Interp<'p> {
             }
             tools.push(self.tool_spec(def).or_else(type_error)?);
         }
+        // the tools of MCP servers, and which server each one is on
+        let mut routes = std::collections::HashMap::new();
+        for (server, only) in &config.mcp {
+            for (spec, route) in self.mcp_tool_specs(server, only.as_deref())? {
+                routes.insert(spec.name.clone(), route);
+                tools.push(spec);
+            }
+        }
         tools.push(ToolSpec {
             name: FINAL_TOOL.into(),
             description: "Give your final answer. Call this tool once, when you are done.".into(),
             input_schema: final_schema,
+            strict: true,
         });
         let system = format!(
             "{}\n\nWhen you are done, call the `{FINAL_TOOL}` tool with your final answer.",
@@ -147,8 +165,12 @@ impl<'p> Interp<'p> {
                         }
                     }
                 }
-                let (content, is_error) = match self.call_tool_within(tool_use, config.tool_timeout) {
-                    Ok(v) => (tool_output(&v), false),
+                let called = match routes.get(&tool_use.name) {
+                    Some((server, tool)) => self.call_mcp(server, tool, &tool_use.input),
+                    None => self.call_tool_within(tool_use, config.tool_timeout).map(|v| (tool_output(&v), false)),
+                };
+                let (content, is_error) = match called {
+                    Ok(answer) => answer,
                     Err(Ctrl::Raise(e)) if !matches!(&*e.ty, "BudgetExceeded" | "TaintError" | "StackOverflow") => {
                         (format!("{}: {}", e.ty, e.message), true)
                     }
@@ -159,6 +181,27 @@ impl<'p> Interp<'p> {
             messages.push(json!({"role": "user", "content": results}));
         }
         raise("MaxTurnsExceeded", format!("agent `{agent_ty}` did not finish within {} turns", config.max_turns))
+    }
+
+    /// `mcp(:server, only: ["tool", …])` in a `tools` directive.
+    fn mcp_directive(&mut self, args: &'p [grenat_ast::Arg]) -> Result<(String, Option<Vec<String>>), Ctrl<'p>> {
+        let mut server = None;
+        let mut only = None;
+        for arg in args {
+            match arg {
+                grenat_ast::Arg::Pos(e) => match self.eval(e)? {
+                    Value::Symbol(s) => server = Some(s.to_string()),
+                    other => return raise("TypeError", format!("`mcp` expects a server (`:linear`), got {}", other.inspect())),
+                },
+                grenat_ast::Arg::Named { name, value: Some(e) } if name.name == "only" => match self.eval(e)? {
+                    Value::Array(items) => only = Some(items.borrow().iter().map(Value::to_display).collect()),
+                    other => return raise("TypeError", format!("`only:` expects tool names, got {}", other.inspect())),
+                },
+                _ => return raise("ArgumentError", "`mcp` takes a server and `only: [...]`"),
+            }
+        }
+        let server = server.ok_or_else(|| Ctrl::Raise(Arc::new(ErrorVal::new("ArgumentError", "`mcp` expects a server"))))?;
+        Ok((server, only))
     }
 
     /// A tool call, cancelled at its next checkpoint once `timeout` has

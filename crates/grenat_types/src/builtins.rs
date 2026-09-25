@@ -161,11 +161,18 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Http", "get" | "post" | "put" | "patch" | "delete" | "head") => (User(HTTP_RESPONSE.into()), Some("net")),
         ("Db", "connect") => (User(DATABASE.into()), None),
         ("Shell", "run") => (User(SHELL_RESULT.into()), Some("shell")),
+        ("Mcp", "call") => (Str, Some("mcp")),
+        ("Mcp", "tools") => (Ty::array(Str), Some("mcp")),
         _ => return None,
     })
 }
 
-pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell"];
+pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp"];
+
+/// Built-in functions whose result comes from outside, hence untrusted.
+pub fn untrusted_result(module: &str, name: &str) -> bool {
+    matches!((module, name), ("Mcp", "call"))
+}
 
 /// What `Shell.run` returns.
 pub const SHELL_RESULT: &str = "ShellResult";
@@ -229,6 +236,8 @@ pub const GLOBALS: &[&str] = &[
     "mock",
     "mock_http",
     "mock_shell",
+    "mcp",
+    "mock_mcp",
     "cassette",
     "fixture",
     "call",

@@ -199,7 +199,7 @@ impl<'p> Checker<'p> {
                 }
                 cx.add_effect(Eff { path: path.into(), arg, origin: span });
             }
-            if let Some(sink @ ("fs.write" | "net" | "shell")) = effect {
+            if let Some(sink @ ("fs.write" | "net" | "shell" | "mcp")) = effect {
                 for arg in &argv {
                     if let Some(origin) = arg.v.taint {
                         self.taint_violation(arg.span, origin, &format!("{t}.{n}"), sink);
@@ -208,7 +208,13 @@ impl<'p> Checker<'p> {
             }
             let _ = block_v;
             // what a pure function makes of untrusted data is untrusted
-            let taint = if effect.is_none() { argv.iter().find_map(|a| a.v.taint) } else { None };
+            let taint = if builtins::untrusted_result(t, n) {
+                Some(span)
+            } else if effect.is_none() {
+                argv.iter().find_map(|a| a.v.taint)
+            } else {
+                None
+            };
             return V { ty, taint };
         }
         self.walk_block(cx, block, &[]);

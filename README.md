@@ -100,6 +100,7 @@ end })
 | `grenat_standalone` | static library linked into `grenat build --native` executables |
 | `grenat_report` | diagnostic rendering, in the file each error points into |
 | `grenat_db` | databases: SQLite (embedded) and PostgreSQL behind one interface |
+| `grenat_mcp` | a Model Context Protocol client (stdio and HTTP) |
 | `grenat_package` | `grenat.toml`, `require`, path and git dependencies, `grenat.lock` |
 | `grenat_fmt` | the formatter |
 | `grenat_lsp` | the language server |

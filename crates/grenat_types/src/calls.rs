@@ -15,6 +15,8 @@ impl<'p> Checker<'p> {
                     // an argument vector's program restricts `shell` effects
                     let lit = literal_string(e).or_else(|| match &e.kind {
                         grenat_ast::ExprKind::Array(items) => items.first().and_then(literal_string),
+                        // an MCP server restricts `mcp` effects
+                        grenat_ast::ExprKind::Symbol(name) => Some(name.clone()),
                         _ => None,
                     });
                     out.push(ArgV { name: None, v, span: e.span, lit });
@@ -298,7 +300,7 @@ impl<'p> Checker<'p> {
             }
             "deny_all" | "approve_all" => V::new(Ty::Sym),
             // test doubles and evals
-            "mock" | "mock_http" | "mock_shell" => V::new(Ty::Nil),
+            "mock" | "mock_http" | "mock_shell" | "mcp" | "mock_mcp" => V::new(Ty::Nil),
             "cassette" => self.walk_block(cx, block, &[]).unwrap_or_else(V::unknown),
             "fixture" => {
                 cx.add_effect(Eff { path: "fs.read".into(), arg: None, origin: span });

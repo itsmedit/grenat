@@ -13,6 +13,15 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         ("Http", _) => call_http(interp, name, args),
         ("Db", "connect") => connect(interp, &args),
         ("Shell", _) => call_shell(interp, name, args),
+        ("Mcp", "call") => interp.mcp_call_value(&args),
+        ("Mcp", "tools") => (|| {
+            let Some(Value::Symbol(server)) = args.pos.first().map(Value::untainted) else {
+                return raise("ArgumentError", "`Mcp.tools` expects a server: `Mcp.tools(:linear)`");
+            };
+            let server = server.to_string();
+            let tools = interp.mcp_tools(&server)?;
+            Ok(Value::array(tools.into_iter().map(|t| Value::str(t.name)).collect()))
+        })(),
         ("File", "read") => {
             let path = str_arg(&args, 0, name)?;
             interp.check_fs("fs.read", &path)?;

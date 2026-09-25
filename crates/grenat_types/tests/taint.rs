@@ -115,3 +115,10 @@ fn what_a_program_prints_is_untrusted() {
     single(&format!("{head}  Shell.run([\"echo\", out])\nend\n"), "E0412", "[\"echo\", out]");
     clean(&format!("{head}  Shell.run([\"echo\", out.check {{ |o| o.size < 9 }}?])\nend\n"));
 }
+
+#[test]
+fn what_an_mcp_server_answers_is_untrusted() {
+    let head = "def main uses mcp, net\n  issues = Mcp.call(:linear, \"list_issues\")\n";
+    single(&format!("{head}  Http.post(\"https://x.io\", body: issues)\nend\n"), "E0412", "issues");
+    clean(&format!("{head}  Http.post(\"https://x.io\", body: issues.check {{ |i| i.size < 99 }}?)\nend\n"));
+}

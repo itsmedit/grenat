@@ -75,6 +75,25 @@ impl<'p> Checker<'p> {
             })
             .filter(|f| f.kind == FnKind::Tool)
             .collect();
+        // an MCP server's tools: `mcp("<server>")`
+        let servers: Vec<String> = self.types[agent]
+            .directives
+            .iter()
+            .filter(|d| d.name.name == "tools")
+            .flat_map(|d| d.args.iter())
+            .filter_map(|a| match a {
+                Arg::Pos(Expr { kind: ExprKind::Call { recv: None, name, args, .. }, .. }) if name.name == "mcp" => {
+                    args.iter().find_map(|a| match a {
+                        Arg::Pos(Expr { kind: ExprKind::Symbol(s), .. }) => Some(s.clone()),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+        for server in servers {
+            cx.add_effect(Eff { path: "mcp".into(), arg: Some(server), origin: span });
+        }
         for tool in tools {
             // arguments given by the LLM are validated against the schema: not tainted
             let (_, effects) = self.check_fn(tool, None, declared_taints(&tool.params), None);

@@ -42,6 +42,7 @@ mod tests {
                 name: "t".into(),
                 description: "d".into(),
                 input_schema: json!({"type": "object"}),
+                strict: true,
             }],
             output_schema: Some(json!({"type": "object"})),
         };
@@ -119,7 +120,7 @@ mod tests {
             output_schema,
         };
         let wrapped = json!({"type": "object", "properties": {"value": {"type": "integer"}}});
-        let final_tool = ToolSpec { name: "final_answer".into(), description: String::new(), input_schema: wrapped.clone() };
+        let final_tool = ToolSpec { name: "final_answer".into(), description: String::new(), input_schema: wrapped.clone(), strict: true };
         let mock = Mock::new("`:fast`", [
             MockReply::Answer(json!("plain")),
             MockReply::Answer(json!(42)),

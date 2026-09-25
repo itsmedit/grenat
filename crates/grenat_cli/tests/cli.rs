@@ -423,6 +423,8 @@ fn the_use_cases_pass_their_tests() {
             // the services are stubbed: any key will do
             .env("GITHUB_TOKEN", "test")
             .env("BRAVE_API_KEY", "test")
+            .env("LINEAR_TOKEN", "test")
+            .env("NOTION_TOKEN", "test")
             .env("NO_COLOR", "1")
             .env_remove("ANTHROPIC_API_KEY")
             .stdin(std::process::Stdio::null())

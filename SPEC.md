@@ -488,7 +488,7 @@ Ten realistic programs, one per kind of agent, are in `examples/usecases` (the f
 1. ✅ **`Http` client** with effects (`net("host")` enforced at run time, JSON, headers, timeouts) — unblocks cases 2, 3, 6, 7, 10.
 2. ✅ **`Db`** (SQLite and Postgres, parameterized queries, `db.read` / `db.write` effects) — case 4.
 3. ✅ **Sandboxed `shell`** (a process with a timeout, no network unless declared) and per-tool timeouts — cases 2 and 7.
-4. **MCP client** (`tools from mcp("…")`, capabilities granted per server, results tainted) — case 10.
+4. ✅ **MCP client** (`tools mcp(:server)`, capabilities granted per server, results tainted) — case 10.
 5. **Multimodal prompts** (PDF, images) and the **Batch API** — case 5.
 6. **Email** and **triggers** (`every 1.week`, webhooks through an `Http` server) — cases 1, 2, 6.
 7. **Facets**: libraries shared like Ruby's gems. A *facet* (a garnet's face) is a package; a program lists the facets it uses in its `Facetfile`, pinned in `Facetfile.lock`; the `setter` tool (who sets stones in a jewel) creates, adds, installs, updates and publishes them, with versions (`facet "http", "~> 0.3"`) resolved from git tags through an index repository. It replaces the `[dependencies]` of `grenat.toml`.
@@ -555,6 +555,28 @@ end
 - **Taint.** No untrusted argument or environment value goes in (E0412, `TaintError`); what a program prints is untrusted.
 - **Tests.** `grenat test` never starts a program: `mock_shell "kubectl rollout restart*", stdout: "…"` (or `status:`, `stderr:`) stands for it.
 - **Tool timeouts.** `tool_timeout 20` in an agent: a tool call still running after that is cancelled at its next checkpoint and reported to the model as a `TimeoutError`, like any tool error. A blocking call (a request, a program) is bounded by its own `timeout:`.
+
+### Phase 7 status: MCP servers
+
+```ruby
+mcp :linear, url: "https://mcp.linear.app/mcp", headers: {"Authorization" => "Bearer #{Env.fetch("LINEAR_TOKEN")}"}
+mcp :files, command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "./docs"], approve: false
+
+agent Pm
+  model :smart
+  tools mcp(:linear), mcp(:files, only: ["read_file"])
+  on Plan(spec: String) -> ~String
+    run "Create the issues of #{spec}"
+  end
+end
+```
+
+`mcp :name` declares a Model Context Protocol server, reached at a `url:` (streamable HTTP, `headers:`) or run as a `command:` (stdio, `env:`); it is connected when first used. `tools mcp(:linear)` hands its tools to an agent — their names, descriptions and schemas come from the server (`linear__create_issue`, sent non-strict: the schemas are the server's) — or only some (`only: [...]`). `Mcp.tools(:name)` lists them, `Mcp.call(:name, "tool", {…})` calls one directly. The client (`grenat_mcp`) speaks JSON-RPC 2.0 and knows nothing of the language.
+
+- **Capabilities.** Using a server is an `mcp` effect restricted by server: `uses mcp("linear")`; an agent with a server's tools needs it wherever it is asked.
+- **Approval.** A tool its server does not declare read-only may change things: the human approves each call first (`approve: false` on a server you trust); a denial is reported to the model as a tool error.
+- **Taint.** Nothing untrusted goes to `Mcp.call`, and what it returns is untrusted.
+- **Tests.** `mock_mcp :linear, tools: {"create_issue" => "created L-1"}` stands for a server; `call(:linear__create_issue, …)` in a model's mocked replies calls one of its tools.
 
 ### Phase 0.5 status: `grenat fmt`
 

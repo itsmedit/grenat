@@ -13,6 +13,7 @@ pub(crate) use doubles::{HttpStub, ShellStub};
 mod errors;
 mod expr;
 mod human;
+pub(crate) mod mcp;
 mod native;
 mod ops;
 mod pattern;

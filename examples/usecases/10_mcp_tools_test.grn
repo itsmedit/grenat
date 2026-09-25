@@ -1,11 +1,20 @@
 require "./10_mcp_tools"
-test "mcp" do
+
+# run with LINEAR_TOKEN and NOTION_TOKEN set (any value: the servers are mocked)
+test "a spec becomes issues" do
+  mock_mcp :notion, tools: {
+    "search" => "SSO spec: https://notion.so/sso",
+    "fetch" => "Users sign in with SSO.",
+  }
+  mock_mcp :linear, tools: {"list_issues" => "[]", "create_issue" => "{\"id\": \"L-1\"}"}
   mock :smart, replies: [
-    call(:linear_search, query: "sso"),
-    call(:linear_create, title: "SSO", body: "b"),
-    [{id: "L-1", title: "SSO", status: "todo"}],
+    call(:notion__search, query: "SSO"),
+    call(:notion__fetch, id: "sso"),
+    call(:linear__list_issues, query: "SSO"),
+    call(:linear__create_issue, title: "SSO sign-in"),
+    [{id: "L-1", title: "SSO sign-in"}],
   ]
   with_human(approve_all) do
-    main(["SSO", "spec"])
+    main(["SSO"])
   end
 end

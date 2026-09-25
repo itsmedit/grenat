@@ -112,4 +112,20 @@ impl<'p> Interp<'p> {
         }
         Ok(())
     }
+
+    /// Checks that using the MCP server `name` is covered by every function
+    /// on the stack that declares its effects: `mcp`, or `mcp("<name>")`.
+    pub(crate) fn check_mcp(&self, name: &str) -> Result<(), Ctrl<'p>> {
+        for (owner, caps) in &self.capabilities {
+            if !caps.iter().any(|(declared, arg)| declared == "mcp" && arg.as_deref().is_none_or(|s| s == name)) {
+                let declared: Vec<String> =
+                    caps.iter().map(|(p, a)| a.as_ref().map_or(p.clone(), |a| format!("{p}(\"{a}\")"))).collect();
+                return raise(
+                    "CapabilityError",
+                    format!("the MCP server `{name}` is not allowed by `{owner}` (uses {})", declared.join(", ")),
+                );
+            }
+        }
+        Ok(())
+    }
 }

@@ -186,6 +186,11 @@ impl<'p> Checker<'p> {
                 "model" => self.check_model_ref(first, d.span),
                 "tools" => {
                     for arg in &d.args {
+                        if let Arg::Pos(Expr { kind: ExprKind::Call { recv: None, name, .. }, .. }) = arg
+                            && name.name == "mcp"
+                        {
+                            continue;
+                        }
                         let Arg::Pos(Expr { kind: ExprKind::Var(tool), span }) = arg else {
                             self.error(E_DECL, d.span, "`tools` expects tool names: `tools read, search`");
                             continue;

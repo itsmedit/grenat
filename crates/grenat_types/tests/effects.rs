@@ -120,3 +120,13 @@ fn tool_timeouts_are_durations() {
     clean(&format!("{head}  tool_timeout 30\nend\n"));
     single(&format!("{head}  tool_timeout \"soon\"\nend\n"), "E0200", "\"soon\"");
 }
+
+#[test]
+fn mcp_servers_are_capabilities() {
+    let head = "model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"\nmcp :linear, url: \"https://mcp.linear.app/mcp\"\nagent Pm\n  model :fast\n  tools mcp(:linear, only: [\"create_issue\"])\n  on Plan -> ~String\n    run \"plan\"\n  end\nend\n";
+    let d = single(&format!("{head}def main uses llm\n  spawn(Pm).ask(Plan())\nend\n"), "E0300", "spawn(Pm).ask(Plan())");
+    assert!(d.message.contains("mcp(\"linear\")"), "{}", d.message);
+    clean(&format!("{head}def main uses llm, mcp(\"linear\")\n  spawn(Pm).ask(Plan())\nend\n"));
+    single("def main uses mcp(\"notion\")\n  Mcp.tools(:linear)\nend\n", "E0300", "Mcp.tools(:linear)");
+    clean("test \"t\" do\n  mock_mcp :linear, tools: {\"a\" => \"b\"}\nend\n");
+}

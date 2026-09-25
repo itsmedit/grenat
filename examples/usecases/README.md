@@ -18,10 +18,11 @@ block is gone** and each program runs against real services.
 | 7 | [`07_sre.grn`](07_sre.grn) (Loki, Prometheus, kubectl) | 61 | 0 | **yes** | — |
 | 8 | [`08_chat.grn`](08_chat.grn) (memory) | 39 | 0 | yes (terminal) | a chat connector |
 | 9 | [`09_team.grn`](09_team.grn) (planner, writers, critic) | 40 | 0 | yes | — |
-| 10 | [`10_mcp_tools.grn`](10_mcp_tools.grn) (Linear, Notion) | 50 | 25 | no | an MCP client |
+| 10 | [`10_mcp_tools.grn`](10_mcp_tools.grn) (Linear, Notion through MCP) | 27 | 0 | **yes** | — |
 
 Lines of code, without blank lines and comments. A stub is shorter than
 the real code it stands for: with `Http`, cases 2 and 3 grew from 47 to 70
 and from 45 to 56 lines (authentication, JSON, query strings). The tests
-stub the services with `mock_http` and need `GITHUB_TOKEN` and
-`BRAVE_API_KEY` set, to any value.
+stub the services (`mock_http`, `mock_shell`, `mock_mcp`) and need
+`GITHUB_TOKEN`, `BRAVE_API_KEY`, `LINEAR_TOKEN` and `NOTION_TOKEN` set, to
+any value.

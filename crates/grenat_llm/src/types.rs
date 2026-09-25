@@ -29,6 +29,9 @@ pub struct ToolSpec {
     pub name: String,
     pub description: String,
     pub input_schema: Json,
+    /// The model must follow the schema exactly (the schemas Grenat
+    /// generates are written for it; an MCP server's may not be).
+    pub strict: bool,
 }
 
 #[derive(Debug, Clone)]

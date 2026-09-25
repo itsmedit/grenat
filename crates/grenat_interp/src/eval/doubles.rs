@@ -196,7 +196,12 @@ impl<'p> Interp<'p> {
     /// `call(:tool, arg: value…)`: a reply of a mocked model calling one of
     /// the agent's tools (its arguments then go through the tool's schema).
     pub(crate) fn tool_call_reply(&self, tool: &str, args: &Args<'p>) -> R<'p> {
+        // an MCP server's tool, as the model sees it: `linear__create_issue`
+        let on_server = tool.split_once("__").is_some_and(|(server, _)| {
+            self.mcp_servers.borrow().contains_key(server) || self.mcp_stubs.borrow().contains_key(server)
+        });
         match self.fns.get(tool) {
+            _ if on_server => {}
             Some(def) if def.kind == FnKind::Tool => {}
             Some(_) => return raise("TypeError", format!("`{tool}` is not a `tool`")),
             None => return raise("NameError", format!("unknown tool `{tool}`")),

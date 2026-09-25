@@ -19,7 +19,7 @@ pub fn request_body(request: &Request) -> Json {
         body["tools"] = request
             .tools
             .iter()
-            .map(|t| json!({"name": t.name, "description": t.description, "input_schema": t.input_schema, "strict": true}))
+            .map(|t| json!({"name": t.name, "description": t.description, "input_schema": t.input_schema, "strict": t.strict}))
             .collect();
     }
     if model.fallbacks {

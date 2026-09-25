@@ -1,59 +1,25 @@
-# An agent using third-party services (Linear, Notion): today every tool
-# is written by hand; an MCP client would bring them all.
+# An agent using third-party services (Linear, Notion) through their MCP
+# servers: their tools come from the servers, none is written by hand.
 model :smart, provider: :anthropic, name: "claude-opus-5"
+
+mcp :linear, url: "https://mcp.linear.app/mcp", headers: {
+  "Authorization" => "Bearer #{Env.fetch("LINEAR_TOKEN")}",
+}
+mcp :notion, url: "https://mcp.notion.com/mcp", headers: {
+  "Authorization" => "Bearer #{Env.fetch("NOTION_TOKEN")}",
+}
 
 struct Issue
   id: String
   title: String
-  status: String
 end
-
-struct Page
-  title: String
-  url: String
-end
-
-# ═══ STUBS ═══
-module Linear
-  def self.search(query: String) -> Array(Issue) uses net("api.linear.app") = []
-  def self.create(title: String, body: String) -> Issue uses net("api.linear.app") = Issue(
-    id: "L-1",
-    title:,
-    status: "todo",
-  )
-end
-
-module Notion
-  def self.search(query: String) -> Array(Page) uses net("api.notion.com") = []
-  def self.read(url: String) -> String uses net("api.notion.com") = ""
-end
-
-## Searches Linear issues.
-tool linear_search(query: String) -> Array(Issue) uses net("api.linear.app")
-  Linear.search(query)
-end
-
-## Creates a Linear issue (needs approval).
-tool linear_create(title: String, body: String) -> Issue uses net("api.linear.app"), human
-  approve! "Create issue \"#{title}\"?"
-  Linear.create(title, body)
-end
-
-## Searches Notion pages.
-tool notion_search(query: String) -> Array(Page) uses net("api.notion.com")
-  Notion.search(query)
-end
-
-## Reads a Notion page.
-tool notion_read(url: String) -> String uses net("api.notion.com")
-  Notion.read(url)
-end
-# ═══ END STUBS ═══
 
 agent Pm
   model :smart
-  tools linear_search, linear_create, notion_search, notion_read
+  # tools that change things (creating an issue) are approved by a human
+  tools mcp(:linear), mcp(:notion)
   max_turns 20
+  tool_timeout 30
   budget usd: 1.00
   instructions "You turn product specs into Linear issues, without duplicates."
 
@@ -62,7 +28,7 @@ agent Pm
   end
 end
 
-def main(args: Array(String)) uses llm, net, human
+def main(args: Array(String)) uses llm, mcp, human
   Runtime.on_approval { |req| Cli.confirm(req.message) }
   issues = spawn(Pm).ask(Plan(spec: args.join(" "))).trust!
   issues.each { |i| puts "#{i.id} #{i.title}" }
