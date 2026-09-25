@@ -276,3 +276,11 @@ end)
     assert_eq!(r.ok(), "10\n");
     assert!(started.elapsed() < std::time::Duration::from_secs(5), "{:?}", started.elapsed());
 }
+
+#[test]
+fn ternaries_compile_to_native_code() {
+    let src = "def sign(n: Int) -> Int = n < 0 ? -1 : n == 0 ? 0 : 1\np [sign(-5), sign(0), sign(9)]\n";
+    let log = run_mode(src, grenat_interp::Scripted::new([]), &[], &[], Mode { log: true, ..Mode::default() });
+    assert!(log.output.contains("[jit] native: sign"), "{}", log.output);
+    assert!(log.output.ends_with("[-1, 0, 1]\n"), "{}", log.output);
+}

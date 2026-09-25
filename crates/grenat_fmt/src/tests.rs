@@ -154,3 +154,11 @@ fn hash_shorthand_is_kept() {
     let src = "query = \"x\"\np({query:, n: 1})\nx = {query:}\n";
     assert_eq!(crate::format(src).unwrap(), src);
 }
+
+#[test]
+fn ternaries_are_kept() {
+    let src = "p x > 2 ? \"big\" : \"small\"\ny = a ? b : c ? d : e\nz = (c ? 1 : 2) + 3\n";
+    assert_eq!(crate::format(src).unwrap(), src);
+    assert_eq!(crate::format("y = a ?\n  b :\n  c\n").unwrap(), "y = a ? b : c\n");
+    assert_eq!(crate::format("if a then b else c end\n").unwrap(), "if a then b else c end\n");
+}

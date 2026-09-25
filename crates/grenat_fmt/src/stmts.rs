@@ -112,6 +112,16 @@ impl Printer<'_> {
 
     pub(crate) fn control(&mut self, e: &Expr) {
         match &e.kind {
+            // `cond ? a : b`, as written
+            ExprKind::If { cond, then, else_: Some(otherwise) }
+                if then.len() == 1 && otherwise.len() == 1 && !starts_with_word(self.source(e.span), &["if", "unless"]) =>
+            {
+                self.expr(cond);
+                self.write(" ? ");
+                self.expr(&then[0]);
+                self.write(" : ");
+                self.expr(&otherwise[0]);
+            }
             ExprKind::If { cond, then, else_ } => self.if_expr(e, cond, then, else_.as_deref()),
             ExprKind::While { cond, body } => {
                 let text = self.source(e.span);

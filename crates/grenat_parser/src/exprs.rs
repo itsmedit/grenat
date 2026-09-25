@@ -26,7 +26,7 @@ pub(crate) fn is_assignable(e: &Expr) -> bool {
 impl<'d> Parser<'d> {
     /// Assignment (right-associative), then binary operators.
     pub(crate) fn expr(&mut self) -> PResult<Expr> {
-        let lhs = self.binary(0)?;
+        let lhs = self.ternary()?;
         let op = match self.kind() {
             T::Eq => None,
             T::PlusEq => Some(BinOp::Add),
@@ -82,6 +82,25 @@ impl<'d> Parser<'d> {
             T::StarStar => bin(Pow, 25, 24),
             _ => None,
         }
+    }
+
+    /// `cond ? a : b` (spaces around `?`: a glued one is `x?`), below every
+    /// binary operator, right-associative: an `if` with one expression each way.
+    pub(crate) fn ternary(&mut self) -> PResult<Expr> {
+        let cond = self.binary(0)?;
+        if !(self.at(&T::Question) && self.peek().space_before) {
+            return Ok(cond);
+        }
+        self.bump();
+        self.skip_newlines();
+        let then = self.ternary()?;
+        self.skip_newlines();
+        self.expect(T::Colon, "`:` (`cond ? a : b`)")?;
+        self.skip_newlines();
+        let otherwise = self.ternary()?;
+        let span = cond.span.to(otherwise.span);
+        let kind = ExprKind::If { cond: Box::new(cond), then: vec![then], else_: Some(vec![otherwise]) };
+        Ok(Expr::new(kind, span))
     }
 
     pub(crate) fn binary(&mut self, min_bp: u8) -> PResult<Expr> {

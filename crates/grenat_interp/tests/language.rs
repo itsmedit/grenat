@@ -141,3 +141,24 @@ fn hash_shorthand_takes_the_variable_of_the_same_name() {
 fn a_negation_is_a_command_argument() {
     assert_eq!(run("def yes?(x) = x\np yes? !false\nx = 3\np x != 2\n"), "true\ntrue\n");
 }
+
+#[test]
+fn the_ternary() {
+    let src = "\
+x = 3
+p x > 2 ? \"big\" : \"small\"
+p x.even? ? \"even\" : x > 1 ? \"odd, above 1\" : \"odd\"
+p (false || x == 3) ? 1 : 2
+p \"#{x == 3 ? \"three\" : \"other\"}\"
+y = x < 0 ?
+  -1 :
+  1
+p y
+def sign(n: Int) -> Int = n < 0 ? -1 : n == 0 ? 0 : 1
+p [sign(-5), sign(0), sign(9)]
+r = Ok(4)
+def twice(r) = r? * 2
+p twice(r)
+";
+    assert_eq!(run(src), "\"big\"\n\"odd, above 1\"\n1\n\"three\"\n1\n[-1, 0, 1]\n8\n");
+}
