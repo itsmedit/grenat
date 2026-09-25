@@ -32,6 +32,7 @@ Usage:
   grenat update                  fetch the latest commits of git dependencies (grenat.lock)
   grenat fmt [--check] <file.grn | dir>...
                                  rewrite in the canonical layout (--check: only report)
+  grenat lsp                     the language server, over standard input and output
   grenat parse <file.grn>        print the syntax tree
   grenat tokens <file.grn>       print the tokens
   grenat --version
@@ -59,6 +60,10 @@ fn main() -> ExitCode {
         Some("new") => package::new(&args[1..]),
         Some("update") if args.len() == 1 => package::update(),
         Some("fmt") => fmt::fmt(&args[1..]),
+        Some("lsp") if args.len() == 1 => {
+            let code = grenat_lsp::serve(std::io::stdin().lock(), std::io::stdout().lock());
+            ExitCode::from(code as u8)
+        }
         Some("-V" | "--version") => {
             println!("grenat {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS

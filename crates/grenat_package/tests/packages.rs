@@ -212,3 +212,16 @@ fn a_new_package_loads() {
     assert_eq!(create(&dir.join("hello"), "hello").unwrap_err(), format!("{} already exists", dir.join("hello").display()));
     assert!(create(&dir.join("x"), "Bad").unwrap_err().starts_with("invalid package name"));
 }
+
+#[test]
+fn an_overlay_replaces_files_on_disk() {
+    let dir = temp_dir("overlay");
+    write(&dir.join("main.grn"), "require \"./lib\"\n");
+    write(&dir.join("lib.grn"), "def on_disk = 1\n");
+    let mut overlay = std::collections::HashMap::new();
+    overlay.insert(dir.join("lib.grn"), "require \"./unsaved\"\ndef edited = 1\n".to_string());
+    overlay.insert(dir.join("unsaved.grn"), "def fresh = 1\n".to_string());
+    let bundle = grenat_package::load_with(&dir.join("main.grn"), false, &overlay).unwrap();
+    assert!(bundle.sources.text.contains("def edited") && bundle.sources.text.contains("def fresh"));
+    assert!(!bundle.sources.text.contains("on_disk"));
+}

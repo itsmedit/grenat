@@ -12,6 +12,7 @@ name = "grenat"
 path = "src/main.rs"
 
 [dependencies]
+grenat_lsp.workspace = true
 grenat_package.workspace = true
 grenat_lexer.workspace = true
 grenat_ast.workspace = true
@@ -21,3 +22,6 @@ grenat_types.workspace = true
 grenat_driver.workspace = true
 grenat_codegen.workspace = true
 grenat_fmt.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

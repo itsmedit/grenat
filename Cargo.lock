@@ -422,9 +422,11 @@ dependencies = [
  "grenat_fmt",
  "grenat_interp",
  "grenat_lexer",
+ "grenat_lsp",
  "grenat_package",
  "grenat_parser",
  "grenat_types",
+ "serde_json",
 ]
 
 [[package]]
@@ -502,6 +504,20 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "ureq",
+]
+
+[[package]]
+name = "grenat_lsp"
+version = "0.1.0"
+dependencies = [
+ "grenat_ast",
+ "grenat_fmt",
+ "grenat_lexer",
+ "grenat_package",
+ "grenat_parser",
+ "grenat_report",
+ "grenat_types",
+ "serde_json",
 ]
 
 [[package]]

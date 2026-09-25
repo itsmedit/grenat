@@ -617,6 +617,10 @@ Next slices (native `main`, I/O, the agent runtime in native code); M:N green th
 
 Programs of several files and packages (§2, *Files and packages*) are in `grenat_package`: the manifest, the lock file, git dependencies (with the `git` command), `require` resolution and loading. Loading gives the program's `Sources`, every file's text one after the other: each file is parsed alone first (its syntax errors reported in it), then the whole program is parsed once, so that spans stay offsets in one text and nothing downstream — the checker, the interpreter, the code generators — knows about files. Diagnostics and runtime errors are rendered in the file they point into (`grenat_report`), and built executables embed the file table next to the source, so their errors do too.
 
+### Phase 6 status: the language server
+
+`grenat lsp` (`grenat_lsp`) speaks the Language Server Protocol over standard input and output. Each change of a document checks its whole program — the files it requires, open buffers taking precedence over the disk, so that an unsaved change of a library shows at once in the files that use it — and publishes the diagnostics of every open document, with their codes. It formats documents as `grenat fmt` does (a document that does not parse is left alone), shows the first line and `##` documentation of the function, type, variant, field or model under the cursor, goes to its definition in whichever file it is, and lists a document's top-level symbols. Positions are counted in UTF-16 units, as the protocol requires.
+
 For the models that recommend it (`claude-opus-5`, `claude-fable-5-1`), the client enables server-side fallbacks (`fallbacks: "default"`): a request refused by a classifier is replayed on another model instead of failing. Disable it with `model :x, …, fallbacks: false`.
 
 Performance goal: for CPU-bound code, stay **between 1× and 2× Rust**, like Crystal or Swift. On the agent side, support **100,000 concurrent agents** on a single machine (an idle actor ≈ 2 KB).

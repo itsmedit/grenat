@@ -25,6 +25,7 @@ grenat_standalone = { path = "crates/grenat_standalone" }
 grenat_green = { path = "crates/grenat_green" }
 grenat_host = { path = "crates/grenat_host" }
 grenat_package = { path = "crates/grenat_package" }
+grenat_lsp = { path = "crates/grenat_lsp" }
 serde_json = "1"
 ureq = { version = "3", features = ["json"] }
 

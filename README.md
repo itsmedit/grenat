@@ -67,6 +67,18 @@ target/debug/grenat eval examples/triage.grn # `eval` blocks: the real model, sc
 cargo test                                   # ~250 tests: unit, integration, CLI, HTTP client, JIT, build
 ```
 
+## Editors
+
+`grenat lsp` is a language server (diagnostics as you type, formatting, hover, go to
+definition, symbols). In Neovim:
+
+```lua
+vim.filetype.add({ extension = { grn = "grenat" } })
+vim.api.nvim_create_autocmd("FileType", { pattern = "grenat", callback = function()
+  vim.lsp.start({ name = "grenat", cmd = { "grenat", "lsp" } })
+end })
+```
+
 ## Layout
 
 | Crate | Role |
@@ -84,6 +96,7 @@ cargo test                                   # ~250 tests: unit, integration, CL
 | `grenat_report` | diagnostic rendering, in the file each error points into |
 | `grenat_package` | `grenat.toml`, `require`, path and git dependencies, `grenat.lock` |
 | `grenat_fmt` | the formatter |
+| `grenat_lsp` | the language server |
 | `grenat_green` | M:N green threads: scheduler, green locks, channels, timers |
 | `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities, workflows, test doubles, evals |
 | `grenat_cli` | the `grenat` binary |

@@ -344,3 +344,34 @@ fn errors_are_shown_in_the_required_file() {
     assert!(err.contains("cannot find `./lib/nope`"), "{err}");
     assert!(err.contains("--> main.grn:1:1"), "{err}");
 }
+
+#[test]
+fn the_language_server_speaks_over_stdio() {
+    use std::io::Write;
+    let dir = project("lsp");
+    let file = dir.join("a.grn");
+    let messages = [
+        serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}),
+        serde_json::json!({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {
+            "uri": format!("file://{}", file.display()), "languageId": "grenat", "version": 1, "text": "puts nope\n"}}}),
+        serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "shutdown"}),
+        serde_json::json!({"jsonrpc": "2.0", "method": "exit"}),
+    ];
+    let mut input = Vec::new();
+    for m in &messages {
+        let body = m.to_string();
+        write!(input, "Content-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    }
+    let mut child = Command::new(env!("CARGO_BIN_EXE_grenat"))
+        .arg("lsp")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(&input).unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = text(&out.stdout);
+    assert!(stdout.contains("\"serverInfo\":{\"name\":\"grenat\""), "{stdout}");
+    assert!(stdout.contains("textDocument/publishDiagnostics") && stdout.contains("E0100"), "{stdout}");
+}

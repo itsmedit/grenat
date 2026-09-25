@@ -1,0 +1,18 @@
+[package]
+name = "grenat_lsp"
+description = "The Grenat language server (LSP): diagnostics, formatting, hover, go to definition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+grenat_ast.workspace = true
+grenat_lexer.workspace = true
+grenat_parser.workspace = true
+grenat_types.workspace = true
+grenat_fmt.workspace = true
+grenat_report.workspace = true
+grenat_package.workspace = true
+serde_json.workspace = true

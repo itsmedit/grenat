@@ -20,7 +20,7 @@ mod requires;
 mod resolve;
 mod scaffold;
 
-pub use bundle::{Bundle, LoadError, load};
+pub use bundle::{Bundle, LoadError, load, load_with};
 pub use lock::Lock;
 pub use manifest::{Dependency, Manifest, Reference, Source};
 pub use requires::{is_require, strip_requires};
