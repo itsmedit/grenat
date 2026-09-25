@@ -136,10 +136,21 @@ impl LlmError {
 /// Shared between the interpreter's concurrent tasks.
 pub trait Provider: Send + Sync {
     fn complete(&self, request: &Request) -> Result<Response, LlmError>;
+
+    /// Several requests at once, answered in the same order: through a
+    /// batch API where the provider has one (cheaper, slower), one by one
+    /// otherwise.
+    fn batch(&self, requests: &[Request]) -> Result<Vec<Result<Response, LlmError>>, LlmError> {
+        Ok(requests.iter().map(|r| self.complete(r)).collect())
+    }
 }
 
 impl<P: Provider + ?Sized> Provider for std::sync::Arc<P> {
     fn complete(&self, request: &Request) -> Result<Response, LlmError> {
         (**self).complete(request)
+    }
+
+    fn batch(&self, requests: &[Request]) -> Result<Vec<Result<Response, LlmError>>, LlmError> {
+        (**self).batch(requests)
     }
 }

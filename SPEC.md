@@ -501,7 +501,7 @@ Ten realistic programs, one per kind of agent, are in `examples/usecases` (the f
 2. ✅ **`Db`** (SQLite and Postgres, parameterized queries, `db.read` / `db.write` effects) — case 4.
 3. ✅ **Sandboxed `shell`** (a process with a timeout, no network unless declared) and per-tool timeouts — cases 2 and 7.
 4. ✅ **MCP client** (`tools mcp(:server)`, capabilities granted per server, results tainted) — case 10.
-5. **Multimodal prompts** (PDF, images) and the **Batch API** — case 5.
+5. ✅ **Multimodal prompts** (PDF, images) and the **Batch API** — case 5.
 6. ✅ **Email** and **triggers** (`every`, cron schedules, webhooks) — cases 1, 2, 6.
 7. **Facets**: libraries shared like Ruby's gems. A *facet* (a garnet's face) is a package; a program lists the facets it uses in its `Facetfile`, pinned in `Facetfile.lock`; the `setter` tool (who sets stones in a jewel) creates, adds, installs, updates and publishes them, with versions (`facet "http", "~> 0.3"`) resolved from git tags through an index repository. It replaces the `[dependencies]` of `grenat.toml`.
 8. Smaller gaps met while writing them: the ternary `c ? a : b`; constants in a module (`API = "…"`); HTML to text for case 3; conversations as a type (history compacted automatically) for case 8. ✅ Done: the hash shorthand `{query:}` (Ruby 3.1); a `def self.x` calling the other `def self.` of its type without a receiver.
@@ -635,6 +635,14 @@ end
 ```
 
 Sending is a `net` effect on the SMTP server's host, checked when sending. A message reaches people: nothing untrusted goes in it (E0412, `TaintError`). Tests never send: in `grenat test`, messages are kept in `Mail.deliveries` (hashes: `from`, `to`, `subject`, `body`), empty at the start of each test.
+
+### Phase 7 status: batches (`batch_map`)
+
+```ruby
+invoices = paths.batch_map { |path| extract(Pdf.read(path)) }   # one batch: half the price
+```
+
+`xs.batch_map { … }` runs the block for each element, and sends the model calls it makes through the provider's batch API (Anthropic's Message Batches: half the price, answered within 24 hours, usually minutes). Each element runs on a green task of its own: a task that calls a model queues its request and sleeps; once every task sleeps or is done, the queued requests go out as one batch, and each answer wakes its task where it stopped — a second call is a second round. Budgets count batched calls at half their cost. Mocks, cassettes and the test provider answer batches one request at a time, so tests need nothing new. Tasks a batched task starts (`parallel_map`…) call models directly.
 
 ### Phase 0.5 status: `grenat fmt`
 

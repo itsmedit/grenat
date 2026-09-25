@@ -41,6 +41,8 @@ impl<'p> Interp<'p> {
             stack: StackGuard::default(),
             workflows: self.workflows.clone(),
             providers: self.providers.clone(),
+            // tasks a batched task starts call models directly
+            batch: None,
         }
     }
 

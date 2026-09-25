@@ -123,7 +123,7 @@ fn array_method(t: &Ty, name: &str, has_args: bool, block: Option<&Ty>) -> Optio
         "index" | "find_index" => Ty::opt(Int),
         "each" | "each_with_index" | "select" | "filter" | "reject" | "sort" | "sort_by" | "reverse" | "push"
         | "append" | "unshift" | "uniq" | "compact" | "take" | "drop" | "to_a" | "dup" => same(),
-        "map" | "collect" | "parallel_map" => Ty::array(block_ty()),
+        "map" | "collect" | "parallel_map" | "batch_map" => Ty::array(block_ty()),
         "flat_map" => match block_ty() {
             Array(inner) => Array(inner),
             other => Ty::array(other),

@@ -13,6 +13,8 @@ pub struct Anthropic {
     base_url: String,
     /// Delay before the first retry, doubled afterwards (unless `retry-after` says otherwise).
     retry_delay: Duration,
+    /// Between two looks at a batch in progress.
+    pub(crate) poll_interval: Duration,
 }
 
 pub(crate) const MAX_ATTEMPTS: u32 = 4;
@@ -35,12 +37,45 @@ impl Anthropic {
             .build()
             .into();
         let base_url = base_url.into().trim_end_matches('/').to_string();
-        Anthropic { agent, api_key: api_key.into(), base_url, retry_delay: Duration::from_secs(1) }
+        Anthropic {
+            agent,
+            api_key: api_key.into(),
+            base_url,
+            retry_delay: Duration::from_secs(1),
+            poll_interval: Duration::from_secs(30),
+        }
     }
 
     pub fn with_retry_delay(mut self, delay: Duration) -> Self {
         self.retry_delay = delay;
         self
+    }
+
+    pub fn with_poll_interval(mut self, interval: Duration) -> Self {
+        self.poll_interval = interval;
+        self
+    }
+
+    /// A request to the API, authenticated: (status, body as text).
+    pub(crate) fn call(&self, method: &str, url: &str, body: Option<&Json>) -> Result<(u16, String), String> {
+        let mut builder = ureq::http::Request::builder()
+            .method(method)
+            .uri(url)
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json");
+        if body.is_some_and(|b| b.to_string().contains("\"fallbacks\"")) {
+            builder = builder.header("anthropic-beta", "server-side-fallback-2026-07-01");
+        }
+        let request = builder.body(body.map(Json::to_string).unwrap_or_default().into_bytes()).map_err(|e| e.to_string())?;
+        let mut response = self.agent.run(request).map_err(|e| format!("connection failed: {e}"))?;
+        let status = response.status().as_u16();
+        let text = response.body_mut().read_to_string().map_err(|e| format!("unreadable response: {e}"))?;
+        Ok((status, text))
+    }
+
+    pub(crate) fn base_url(&self) -> &str {
+        &self.base_url
     }
 
     fn send(&self, body: &Json) -> Result<(u16, Option<u64>, Json), String> {
@@ -88,5 +123,9 @@ impl Provider for Anthropic {
             }
         }
         Err(LlmError::new(last_error))
+    }
+
+    fn batch(&self, requests: &[Request]) -> Result<Vec<Result<Response, LlmError>>, LlmError> {
+        crate::batch::run(self, requests)
     }
 }

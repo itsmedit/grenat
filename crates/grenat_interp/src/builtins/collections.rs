@@ -64,6 +64,7 @@ pub(crate) fn array_method<'p>(
             };
             interp.parallel_map(snapshot(), block(args, name)?, limit)
         })(),
+        "batch_map" => (|| interp.batch_map(snapshot(), block(args, name)?))(),
         "map" | "collect" => {
             let mut out = Vec::new();
             each(interp, &mut |_, r| {

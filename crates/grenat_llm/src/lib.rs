@@ -7,6 +7,7 @@
 //! them.
 
 mod anthropic;
+mod batch;
 mod cassette;
 mod mock;
 mod pricing;

@@ -2,6 +2,7 @@
 
 mod agents;
 mod assign;
+pub(crate) mod batch;
 mod budget;
 mod call;
 mod capabilities;

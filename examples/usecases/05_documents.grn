@@ -32,7 +32,8 @@ end
 
 def main(args: Array(String)) uses llm, fs.read, fs.write
   within budget(usd: 20.00) do
-    rows = Dir.list(args.first).parallel_map(limit: 32) { |name| process("#{args.first}/#{name}") }
+    # one batch: half the price, answered within the day
+    rows = Dir.list(args.first).batch_map { |name| process("#{args.first}/#{name}") }
     File.write("invoices.jsonl", rows.join("\n"))
     puts "#{rows.size} invoices — #{budget.spent}"
   end

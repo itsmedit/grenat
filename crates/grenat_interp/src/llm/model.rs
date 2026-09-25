@@ -77,10 +77,18 @@ impl<'p> Interp<'p> {
     pub(crate) fn llm_call(&mut self, request: &Request) -> Result<Response, Ctrl<'p>> {
         self.check_cancel()?;
         self.check_budgets()?;
-        let provider = self.provider(request.model)?;
         let started = Instant::now();
-        // off the worker threads: the other tasks run meanwhile
-        let response = match grenat_green::blocking(|| provider.complete(request)) {
+        let batched = self.batch.clone();
+        let answer = match &batched {
+            // queued for the batch; this task waits for its round
+            Some(batch) => batch.call(request),
+            None => {
+                let provider = self.provider(request.model)?;
+                // off the worker threads: the other tasks run meanwhile
+                grenat_green::blocking(|| provider.complete(request))
+            }
+        };
+        let response = match answer {
             Ok(r) => r,
             Err(e) => return raise("LlmError", e.message),
         };
@@ -89,6 +97,8 @@ impl<'p> Interp<'p> {
         let cost = cost_usd(&response.model, &response.usage)
             .or_else(|| cost_usd(&request.model.name, &response.usage))
             .unwrap_or(0.0);
+        // a batch costs half
+        let cost = if batched.is_some() { cost / 2.0 } else { cost };
         for budget in &self.budgets {
             budget.add(cost, response.usage.total_tokens());
         }

@@ -25,6 +25,7 @@ fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<Received>>>) {
     let url = format!("http://{}", listener.local_addr().unwrap());
     let received = Arc::new(Mutex::new(Vec::new()));
     let log = received.clone();
+    let url_for_replies = url.clone();
     std::thread::spawn(move || {
         for (status, headers, body) in replies {
             let (stream, _) = listener.accept().unwrap();
@@ -48,9 +49,15 @@ fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<Received>>>) {
             log.lock().unwrap().push(Received {
                 path: request_line.split_whitespace().nth(1).unwrap().to_string(),
                 headers: request_headers,
-                body: serde_json::from_slice(&raw).unwrap(),
+                // a GET has no body
+                body: serde_json::from_slice(&raw).unwrap_or(Json::Null),
             });
-            let payload = body.to_string();
+            // a string is sent as it is (JSON Lines); `BASE` is this server
+            let payload = match &body {
+                Json::String(text) => text.clone(),
+                other => other.to_string(),
+            }
+            .replace("BASE", &url_for_replies);
             let extra: String = headers.iter().map(|(k, v)| format!("{k}: {v}\r\n")).collect();
             let response = format!(
                 "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n{extra}\r\n{payload}",
@@ -163,4 +170,35 @@ fn connection_failures_are_reported() {
     let model = ModelConfig::new("anthropic", "claude-haiku-4-5");
     let e = client(&format!("http://127.0.0.1:{port}")).complete(&request(&model)).unwrap_err();
     assert!(e.message.starts_with("connection failed"), "{}", e.message);
+}
+
+#[test]
+fn a_batch_is_submitted_polled_and_read_in_order() {
+    let lines = [
+        json!({"custom_id": "r1", "result": {"type": "succeeded", "message": message("second")}}),
+        json!({"custom_id": "r0", "result": {"type": "succeeded", "message": message("first")}}),
+        json!({"custom_id": "r2", "result": {"type": "errored", "error": {"error": {"message": "invalid request"}}}}),
+    ];
+    let jsonl: String = lines.iter().map(|l| format!("{l}\n")).collect();
+    let (url, received) = serve(vec![
+        (200, vec![], json!({"id": "b1", "processing_status": "in_progress"})),
+        (200, vec![], json!({"id": "b1", "processing_status": "in_progress"})),
+        (200, vec![], json!({"id": "b1", "processing_status": "ended", "results_url": "BASE/results/b1"})),
+        (200, vec![], Json::String(jsonl)),
+    ]);
+    let model = ModelConfig::new("anthropic", "claude-haiku-4-5");
+    let requests = [request(&model), request(&model), request(&model)];
+    let client = client(&url).with_poll_interval(Duration::from_millis(5));
+    let results = client.batch(&requests).unwrap();
+    assert_eq!(results[0].as_ref().unwrap().text(), "first");
+    assert_eq!(results[1].as_ref().unwrap().text(), "second");
+    assert_eq!(results[2].as_ref().unwrap_err().message, "invalid request");
+    let received = received.lock().unwrap();
+    let paths: Vec<&str> = received.iter().map(|r| r.path.as_str()).collect();
+    assert_eq!(paths, ["/v1/messages/batches", "/v1/messages/batches/b1", "/v1/messages/batches/b1", "/results/b1"]);
+    let items = received[0].body["requests"].as_array().unwrap();
+    assert_eq!(items.len(), 3);
+    assert_eq!(items[2]["custom_id"], "r2");
+    assert_eq!(items[0]["params"]["model"], "claude-haiku-4-5");
+    assert_eq!(received[3].headers["x-api-key"], received[0].headers["x-api-key"]);
 }

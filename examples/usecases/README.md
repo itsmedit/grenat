@@ -13,7 +13,7 @@ block is gone** and each program runs against real services.
 | 2 | [`02_code_review.grn`](02_code_review.grn) (GitHub API and webhook) | 77 | 0 | **yes** | — |
 | 3 | [`03_research.grn`](03_research.grn) (Brave Search API) | 56 | 0 | **yes** | HTML to text |
 | 4 | [`04_data.grn`](04_data.grn) (question → SQL, Postgres or SQLite) | 27 | 0 | **yes** | — |
-| 5 | [`05_documents.grn`](05_documents.grn) (PDF invoices) | 33 | 0 | **yes** | the Batch API (half the price) |
+| 5 | [`05_documents.grn`](05_documents.grn) (PDF invoices, one batch) | 33 | 0 | **yes** | — |
 | 6 | [`06_weekly_digest.grn`](06_weekly_digest.grn) (GitHub releases, every Monday, email) | 44 | 0 | **yes** | — |
 | 7 | [`07_sre.grn`](07_sre.grn) (Loki, Prometheus, kubectl) | 61 | 0 | **yes** | — |
 | 8 | [`08_chat.grn`](08_chat.grn) (memory) | 39 | 0 | yes (terminal) | a chat connector |

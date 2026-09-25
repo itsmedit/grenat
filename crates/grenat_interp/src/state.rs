@@ -129,6 +129,8 @@ pub(crate) struct Interp<'p> {
     pub workflows: Vec<Arc<crate::eval::workflow::WorkflowRun>>,
     /// Providers of the enclosing `cassette` blocks, innermost last.
     pub providers: Vec<Arc<dyn Provider>>,
+    /// The batch this task's model calls go to (`batch_map`).
+    pub batch: Option<Arc<crate::eval::batch::BatchRun>>,
 }
 
 impl<'p> Deref for Interp<'p> {
@@ -208,6 +210,7 @@ impl<'p> Interp<'p> {
             stack: crate::stack::StackGuard::here(crate::stack::MAIN_STACK),
             workflows: Vec::new(),
             providers: Vec::new(),
+            batch: None,
         };
         loaded.and_then(|()| interp.load_models()).map_err(|ctrl| interp.runtime_error(ctrl))?;
         if let Some(error) = link_error {

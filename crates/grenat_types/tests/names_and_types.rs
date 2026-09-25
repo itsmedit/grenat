@@ -64,3 +64,8 @@ fn indexing_errors_do_not_cascade() {
     single("x = Nope[1]\n", "E0100", "Nope");
     single("x = 1\ny = x[0]\n", "E0200", "x[0]");
 }
+
+#[test]
+fn batch_map_is_typed_like_map() {
+    single("x = [1, 2].batch_map { |n| n * 2 }\nx.first.upcase\n", "E0200", "upcase");
+}
