@@ -63,6 +63,18 @@ pub fn native_from_env() -> bool {
     env::var_os("GRENAT_JIT").is_none_or(|v| v != "0")
 }
 
+/// `GRENAT_RECORD=1`: record every cassette again, with real calls.
+pub fn record_from_env() -> bool {
+    env::var_os("GRENAT_RECORD").is_some_and(|v| v != "0")
+}
+
+/// Options to run the program at `path`: its directory holds `cassettes/`,
+/// `fixtures/` and datasets.
+pub fn options_for(path: &str) -> grenat_interp::Options {
+    let dir = std::path::Path::new(path).parent().map(std::path::Path::to_path_buf);
+    grenat_interp::Options { dir, record: record_from_env(), log: log_from_env(), ..Default::default() }
+}
+
 /// Runs `program` (its top-level code, then `main`): prints the LLM usage,
 /// or the runtime error, and returns the program's exit status.
 pub fn execute(path: &str, src: &str, program: &Program, args: Vec<String>, options: grenat_interp::Options) -> u8 {

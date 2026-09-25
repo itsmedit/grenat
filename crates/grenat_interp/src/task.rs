@@ -40,6 +40,7 @@ impl<'p> Interp<'p> {
             // measured once the task's own thread starts
             stack: StackGuard::default(),
             workflows: self.workflows.clone(),
+            providers: self.providers.clone(),
         }
     }
 

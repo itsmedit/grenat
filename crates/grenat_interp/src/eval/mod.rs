@@ -7,6 +7,7 @@ mod call;
 mod capabilities;
 mod concurrency;
 mod construct;
+mod doubles;
 mod errors;
 mod expr;
 mod human;

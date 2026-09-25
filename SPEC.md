@@ -281,7 +281,7 @@ end
 
 ## 7. Durable workflows
 
-A `workflow` survives crashes, redeployments and human waits lasting several days. Every `step` is **journaled** (SQLite by default, Postgres optionally). On restart, completed steps are **replayed from the journal**: no LLM call is ever billed twice.
+A `workflow` survives crashes, redeployments and human waits lasting several days. Every `step` is **journaled** (an append-only file today; SQLite and Postgres later). On restart, completed steps are **replayed from the journal**: no LLM call is ever billed twice.
 
 ```ruby
 workflow publish_article(topic: String) -> Url
@@ -420,7 +420,7 @@ Installed layout:
 | **2** ✅ | Names, types, effects and `~T` taint checked **before execution**; capabilities enforced at run time | security errors before execution |
 | **3** ✅ | Concurrent actor agents, real `parallel_map`/`race`, cancellation, deadlock detection, supervision | multi-agent |
 | **4** ✅ | Cranelift codegen: 4a JIT for numeric functions, 4b strings/arrays/structs with Perceus RC, 4c `grenat build`, 4d M:N green threads, 4e programs without the interpreter | fast native binaries |
-| **5** | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
+| **5** ✅ | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
 | **6** | LSP, LLVM release builds, macros, package manager | ecosystem |
 | **7** | What real agents need (from ten use cases: support, code review, research, data, documents, scheduled, operations, chat, multi-agent teams, third-party tools): an I/O library with effects (`Http` client and server, `Db`, email), MCP client, multimodal prompts and the Batch API, conversations and long-term memory, a sandbox for `shell` and per-tool timeouts, triggers (`every`, webhooks) | agents in production |
 
@@ -469,7 +469,6 @@ Temporary simplifications, lifted in later phases:
 | Gradual typing, `T?` accepted where `T` is expected | full inference, `nil` checking |
 | Native functions cover numbers, strings, arrays, structs, not hashes, enums, closures or agents; values cross the interpreter boundary by copy; a built executable embeds the interpreter for the rest, unless the whole program compiles (`--native`) | more of the language in native code |
 | A cancelled task finishes its in-flight LLM call (billed) before stopping | cancellation of in-flight HTTP requests |
-| `step` runs its block without a journal | durable journal (phase 5) |
 | The `net("host")` restriction is only checked statically | HTTP client in the standard library |
 
 ### Phase 4a status: a JIT for numeric functions
@@ -566,6 +565,26 @@ To build it, the structures shared by compiled code and its hosts moved to `gren
 `examples/objects.grn` built `--native`: 0.49 MB (0.39 MB stripped), 0.04 s; the same built with the interpreter: 6.5 MB, 0.05 s; Rust: 0.012 s. The gap is in string building: each evaluation of a literal and each `to_s` allocates a string (static literals are the next step).
 
 Next slices (native `main`, I/O, the agent runtime in native code); M:N green threads.
+
+### Phase 5 status: durable workflows, tests and evals
+
+**Workflows.** A run of a `workflow` is identified by the workflow and its arguments (which must be data). Its journal is a JSON Lines file, `.grenat/journal/<name>-<hash>.jsonl`, appended and synced after each `step`: the step's value, in an exact tagged encoding (`Float`, `Money`, symbols, records, variants, errors and taint survive the round trip). Run again after a crash, the workflow replays its completed steps from the journal — their blocks do not run, no model is called — and goes on from the first missing one; a completed workflow returns its recorded result at once. Steps are numbered by name in the order they run, so a step inside a loop is journaled once per iteration. A step must return data. The checker enforces the rule of §7 (E0310): in a workflow, `llm`, `net`, `human`, `time` and `random` effects must be inside a `step`.
+
+**Tests** (`grenat test`) never reach a real model: a call that is neither mocked nor in a cassette is an `LlmError`.
+
+- `mock :fast, replies: [...]` (or `mock replies: [...]` for every model): the next calls get these replies, in order, shaped into what each call expects — plain text, the structured output of a `prompt` (wrapped when the type is not an object), or the `final_answer` of an agent. `call(:tool, arg: …)` is a reply calling one of the agent's tools, an error value (`LlmError("overloaded")`) makes the call fail. Mocks last until the end of their test.
+- `cassette "name" do … end`: the calls of the block are replayed from `cassettes/<name>.json` (matched by their exact request, so concurrent calls may come in any order), or recorded there, with the real model, when the file does not exist yet or with `GRENAT_RECORD=1`. A recording is kept only if the block succeeds. A mock wins over the enclosing cassette.
+- `fixture("name")`: a file of `fixtures/` — data for `.json` and `.jsonl`, text otherwise.
+
+`cassettes/`, `fixtures/` and datasets are found next to the program.
+
+**Evals** (`grenat eval <file> [name]`) call the real models. `eval "name", dataset: "rows.jsonl", threshold: 0.8, concurrency: 8 do |row| … end` gives each row (a JSON object, as a `Row` record) to the block, which returns a score: `true`/`false`, or a number from 0 to 1. `judge(:model, question, material…)` asks a model for that number, through structured output (brief reasoning, then the score). Rows run concurrently; a row that fails scores 0 and its error is shown. The report gives, per eval, the mean score against the threshold (1.0 by default), the rows that failed, the cost (counted per row) and the duration; the command fails if an eval is under its threshold.
+
+```text
+✓ routing · score 0.80 (threshold 0.80) · 5 row(s) · $0.0031 · 1.2s
+✗ replies are kind · score 0.62 (threshold 0.70) · 5 row(s), 1 failed · $0.0104 · 3.4s
+    row 4: LlmError: truncated response: increase the model's `max_tokens`
+```
 
 For the models that recommend it (`claude-opus-5`, `claude-fable-5-1`), the client enables server-side fallbacks (`fallbacks: "default"`): a request refused by a classifier is replayed on another model instead of failing. Disable it with `model :x, …, fallbacks: false`.
 

@@ -75,6 +75,7 @@ pub fn run_mode(src: &str, provider: Scripted, input: &[&str], args: &[&str], mo
         jit: mode.jit,
         linked: None,
         journal: Some(mode.journal.clone().unwrap_or_else(|| temp_dir("journal"))),
+        ..Options::default()
     };
     let started = Instant::now();
     // run_main runs the interpreter on its own large stack

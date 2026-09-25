@@ -2,11 +2,13 @@
 //!
 //! The runtime only depends on the [`Provider`] trait: the real implementation
 //! ([`Anthropic`]) talks HTTP to the Messages API, while [`Scripted`] replays
-//! prepared replies for tests, and [`Cassette`] records real calls once to
-//! replay them.
+//! prepared replies for tests, [`Mock`] shapes test answers into whatever
+//! each request expects, and [`Cassette`] records real calls once to replay
+//! them.
 
 mod anthropic;
 mod cassette;
+mod mock;
 mod pricing;
 mod scripted;
 mod types;
@@ -14,6 +16,7 @@ mod wire;
 
 pub use anthropic::Anthropic;
 pub use cassette::Cassette;
+pub use mock::{Mock, MockReply};
 pub use pricing::cost_usd;
 pub use scripted::Scripted;
 pub use types::*;
@@ -103,5 +106,41 @@ mod tests {
         // the real provider was only called while recording
         assert_eq!(real.requests().len(), 2);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_mock_shapes_its_answers_for_each_request() {
+        let model = ModelConfig::new("anthropic", "claude-haiku-4-5");
+        let request = |tools: Vec<ToolSpec>, output_schema: Option<serde_json::Value>| Request {
+            model: &model,
+            system: None,
+            messages: vec![json!({"role": "user", "content": "hi"})],
+            tools,
+            output_schema,
+        };
+        let wrapped = json!({"type": "object", "properties": {"value": {"type": "integer"}}});
+        let final_tool = ToolSpec { name: "final_answer".into(), description: String::new(), input_schema: wrapped.clone() };
+        let mock = Mock::new("`:fast`", [
+            MockReply::Answer(json!("plain")),
+            MockReply::Answer(json!(42)),
+            MockReply::Answer(json!({"title": "t"})),
+            MockReply::Tool { name: "search".into(), input: json!({"q": "x"}) },
+            MockReply::Answer(json!(7)),
+            MockReply::Error("overloaded".into()),
+        ]);
+        assert_eq!(mock.complete(&request(vec![], None)).unwrap().text(), "plain");
+        assert_eq!(mock.complete(&request(vec![], Some(wrapped.clone()))).unwrap().text(), r#"{"value":42}"#);
+        let object = json!({"type": "object", "properties": {"title": {"type": "string"}}});
+        assert_eq!(mock.complete(&request(vec![], Some(object))).unwrap().text(), r#"{"title":"t"}"#);
+        let tool = mock.complete(&request(vec![final_tool.clone()], None)).unwrap();
+        assert_eq!(tool.tool_uses()[0].name, "search");
+        let last = mock.complete(&request(vec![final_tool], None)).unwrap();
+        assert_eq!(last.tool_uses()[0].name, "final_answer");
+        assert_eq!(last.tool_uses()[0].input, json!({"value": 7}));
+        assert_eq!(last.usage.total_tokens(), 0);
+        assert_eq!(mock.complete(&request(vec![], None)).unwrap_err().message, "overloaded");
+        assert_eq!(mock.remaining(), 0);
+        let empty = mock.complete(&request(vec![], None)).unwrap_err();
+        assert_eq!(empty.message, "the mock of `:fast` has no reply left");
     }
 }

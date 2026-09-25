@@ -20,20 +20,45 @@ impl<'p> Interp<'p> {
             };
         };
         match self.eval(selector)? {
-            Value::Symbol(name) => {
-                match self.models.borrow().iter().find(|(n, _)| **n == *name).map(|(_, c)| c.clone()) {
-                    Some(config) => Ok(config),
-                    None => raise("NameError", format!("model `:{name}` is not declared")),
-                }
-            }
+            Value::Symbol(name) => self.model_named(&name),
             Value::Str(name) => Ok(ModelConfig::new("anthropic", &*name)),
             other => raise("TypeError", format!("expected a model (`:fast`), got {}", other.inspect())),
         }
     }
 
+    /// The model declared as `:name`.
+    pub(crate) fn model_named(&self, name: &str) -> Result<ModelConfig, Ctrl<'p>> {
+        match self.models.borrow().iter().find(|(n, _)| n == name).map(|(_, c)| c.clone()) {
+            Some(config) => Ok(config),
+            None => raise("NameError", format!("model `:{name}` is not declared")),
+        }
+    }
+
+    /// Who answers for `model`: its mock, else the enclosing cassette, else
+    /// the forced provider, else the real one (never in offline runs).
     pub(crate) fn provider(&mut self, model: &ModelConfig) -> Result<Arc<dyn grenat_llm::Provider>, Ctrl<'p>> {
+        if let Some(mock) = self.mock_for(model) {
+            return Ok(mock);
+        }
+        if let Some(provider) = self.providers.last() {
+            return Ok(provider.clone());
+        }
+        self.real_provider(model)
+    }
+
+    /// The provider outside any mock or cassette.
+    pub(crate) fn real_provider(&mut self, model: &ModelConfig) -> Result<Arc<dyn grenat_llm::Provider>, Ctrl<'p>> {
         if let Some(provider) = self.provider.borrow().clone() {
             return Ok(provider);
+        }
+        if self.offline {
+            return raise(
+                "LlmError",
+                format!(
+                    "no real model in tests: `{}` is called outside any `mock` or `cassette \"…\" do … end`",
+                    model.name
+                ),
+            );
         }
         if model.provider != "anthropic" {
             return raise("LlmError", format!("unsupported provider `:{}` (available: `:anthropic`)", model.provider));

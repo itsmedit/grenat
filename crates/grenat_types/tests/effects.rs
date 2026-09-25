@@ -55,3 +55,12 @@ fn in_a_workflow_non_deterministic_effects_are_steps() {
     // deterministic code needs no step; functions outside workflows are free
     clean(&format!("{PRELUDE}workflow twice(n: Int) -> Int\n  n * 2\nend\ndef free(t: String) -> String uses llm = summarize(t).trust!.title\n"));
 }
+
+#[test]
+fn test_doubles_and_evals_are_known() {
+    clean(&format!(
+        "{PRELUDE}test \"doubles\" do\n  mock :fast, replies: [\"x\"]\n  data = fixture(\"a.json\")\n  cassette \"c\" do\n    summarize(\"x\")\n  end\nend\neval \"quality\", dataset: \"rows.jsonl\", threshold: 0.5 do |row|\n  judge(:fast, \"Faithful?\", row.text) > 0.5\nend\n"
+    ));
+    let d = single(&format!("{PRELUDE}def grade(t: String) -> Float = judge(\"Good?\", t)\ndef main\n  grade(\"x\")\nend\n"), "E0300", "grade(\"x\")");
+    assert!(d.message.contains("llm"), "{}", d.message);
+}

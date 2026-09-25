@@ -47,12 +47,20 @@ pub(crate) struct Shared<'p> {
     pub messages: HashSet<&'p str>,
     pub models: Mutex<Vec<(String, ModelConfig)>>,
     pub provider: Mutex<Option<Arc<dyn Provider>>>,
+    /// Mocked models (`mock`): the model mocked (`None`: any), its replies.
+    pub mocks: Mutex<Vec<(Option<ModelConfig>, Arc<grenat_llm::Mock>)>>,
+    /// See [`Options::offline`] and [`Options::record`].
+    pub offline: bool,
+    pub record: bool,
+    /// Where `cassettes/` and `fixtures/` are.
+    pub dir: std::path::PathBuf,
     /// Global spending counter (first budget of every task).
     pub total: Arc<Budget>,
     /// Started supervisor children: (supervisor, agent) → instance.
     pub children: Mutex<HashMap<(String, String), Arc<AgentRef<'p>>>>,
     pub approver: Mutex<Option<Value<'p>>>,
     pub tests: Mutex<Vec<(String, Value<'p>)>>,
+    pub evals: Mutex<Vec<crate::evals::EvalDef<'p>>>,
     pub output: Output,
     pub input: Mutex<Option<VecDeque<String>>>,
     /// Only one question is asked to the human at a time.
@@ -96,6 +104,8 @@ pub(crate) struct Interp<'p> {
     pub stack: crate::stack::StackGuard,
     /// Workflows being run (their steps are journaled), innermost last.
     pub workflows: Vec<Arc<crate::eval::workflow::WorkflowRun>>,
+    /// Providers of the enclosing `cassette` blocks, innermost last.
+    pub providers: Vec<Arc<dyn Provider>>,
 }
 
 impl<'p> Deref for Interp<'p> {
@@ -117,10 +127,15 @@ impl<'p> Interp<'p> {
             messages: HashSet::new(),
             models: Mutex::new(Vec::new()),
             provider: Mutex::new(options.provider),
+            mocks: Mutex::new(Vec::new()),
+            offline: options.offline,
+            record: options.record,
+            dir: options.dir.clone().unwrap_or_default(),
             total: total.clone(),
             children: Mutex::new(HashMap::new()),
             approver: Mutex::new(None),
             tests: Mutex::new(Vec::new()),
+            evals: Mutex::new(Vec::new()),
             output: options.output,
             input: Mutex::new(options.input),
             human: Mutex::new(()),
@@ -159,6 +174,7 @@ impl<'p> Interp<'p> {
             task_id: 0,
             stack: crate::stack::StackGuard::here(crate::stack::MAIN_STACK),
             workflows: Vec::new(),
+            providers: Vec::new(),
         };
         loaded.and_then(|()| interp.load_models()).map_err(|ctrl| interp.runtime_error(ctrl))?;
         if let Some(error) = link_error {

@@ -222,3 +222,68 @@ fn fmt_leaves_an_invalid_file_alone() {
 fn the_examples_are_formatted() {
     assert_eq!(code(&grenat(&["fmt", "--check", "examples"])), 0);
 }
+
+/// A directory of its own, for a program and its data files.
+fn project(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("grenat-cli-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("fixtures")).unwrap();
+    dir
+}
+
+const MODEL: &str = "model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"\nprompt echo(t: String) -> ~String using :fast\n  user t\nend\n";
+
+#[test]
+fn tests_never_reach_a_real_model() {
+    let dir = project("offline");
+    std::fs::write(dir.join("fixtures/input.txt"), "hello").unwrap();
+    let src = format!(
+        "{MODEL}test \"mocked\" do\n  mock :fast, replies: [\"HELLO\"]\n  assert_equal \"HELLO\", echo(fixture(\"input.txt\"))\nend\ntest \"unmocked\" do\n  echo(\"x\")\nend\n"
+    );
+    std::fs::write(dir.join("t.grn"), src).unwrap();
+    let out = grenat(&["test", dir.join("t.grn").to_str().unwrap()]);
+    let err = text(&out.stderr);
+    assert_eq!(code(&out), 1, "{err}");
+    assert!(err.contains("✓ mocked"), "{err}");
+    assert!(err.contains("✗ unmocked"), "{err}");
+    assert!(err.contains("no real model in tests: `claude-haiku-4-5` is called outside any `mock`"), "{err}");
+}
+
+#[test]
+fn eval_reports_scores_and_fails_under_the_threshold() {
+    let dir = project("eval");
+    std::fs::write(dir.join("rows.jsonl"), "{\"n\": 1}\n{\"n\": 2}\n{\"n\": 3}\n{\"n\": 4}\n").unwrap();
+    let src = "\
+eval \"majority\", dataset: \"rows.jsonl\", threshold: 0.5 do |row|
+  raise \"odd one\" if row.n == 1
+  row.n > 2
+end
+eval \"all\", dataset: \"rows.jsonl\" do |row|
+  row.n > 1
+end
+";
+    std::fs::write(dir.join("e.grn"), src).unwrap();
+    let path = dir.join("e.grn");
+    let out = grenat(&["eval", path.to_str().unwrap()]);
+    let err = text(&out.stderr);
+    assert_eq!(code(&out), 1, "{err}");
+    assert!(err.contains("✓ majority · score 0.50 (threshold 0.50) · 4 row(s), 1 failed · $0.0000 · "), "{err}");
+    assert!(err.contains("    row 1: RuntimeError: odd one\n"), "{err}");
+    assert!(err.contains("✗ all · score 0.75 (threshold 1.00) · 4 row(s) · "), "{err}");
+    assert!(err.ends_with("1 passed, 1 failed\n"), "{err}");
+
+    let out = grenat(&["eval", path.to_str().unwrap(), "major"]);
+    assert_eq!(code(&out), 0, "{}", text(&out.stderr));
+    assert!(!text(&out.stderr).contains("all"));
+    let out = grenat(&["eval", path.to_str().unwrap(), "nothing"]);
+    assert_eq!(code(&out), 1);
+    assert!(text(&out.stderr).contains("no eval matches `nothing`"));
+}
+
+#[test]
+fn the_triage_example_tests_pass_offline() {
+    let out = grenat(&["test", "examples/triage.grn"]);
+    let err = text(&out.stderr);
+    assert_eq!(code(&out), 0, "{err}");
+    assert!(err.ends_with("3 passed, 0 failed\n"), "{err}");
+}

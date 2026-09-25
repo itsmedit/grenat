@@ -12,6 +12,7 @@
 mod builtins;
 mod control;
 mod eval;
+mod evals;
 mod io;
 mod llm;
 mod outcome;
@@ -29,6 +30,7 @@ use grenat_ast::{Program, Span};
 pub use grenat_llm::{ModelConfig, Provider, Response, Scripted};
 use value::Locked;
 pub use value::Value;
+pub use evals::{EvalReport, RowOutcome, run_evals};
 
 pub(crate) use control::*;
 pub(crate) use program::*;
@@ -81,6 +83,14 @@ pub struct Options {
     pub linked: Option<&'static grenat_codegen::aot::Image>,
     /// Where workflows keep their journals (default `.grenat/journal`).
     pub journal: Option<std::path::PathBuf>,
+    /// The program's directory: `cassettes/` and `fixtures/` are found there
+    /// (default: the current directory).
+    pub dir: Option<std::path::PathBuf>,
+    /// Records every cassette again, with real calls (`GRENAT_RECORD=1`).
+    pub record: bool,
+    /// No real model: a call neither mocked nor in a cassette is an error
+    /// (set by [`run_tests`] when no provider is given).
+    pub offline: bool,
 }
 
 impl Default for Options {
@@ -93,6 +103,9 @@ impl Default for Options {
             jit: true,
             linked: None,
             journal: None,
+            dir: None,
+            record: false,
+            offline: false,
         }
     }
 }
@@ -124,6 +137,7 @@ pub fn run_main(program: &Program, args: Vec<String>, options: Options) -> Resul
 
 /// Runs the script (which registers the `test "…" do … end` blocks), then each test.
 pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>, RuntimeError> {
+    let options = Options { offline: true, ..options };
     on_interpreter_thread(|green| {
         let mut interp = Interp::new(program, options, spawner(green))?;
         if let Err(ctrl) = interp.run_script() {
@@ -137,6 +151,8 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
                 Err(ctrl) => Some(interp.runtime_error(ctrl)),
             };
             interp.wait_for_tasks();
+            // each test declares its own mocks
+            interp.mocks.borrow_mut().clear();
             outcomes.push(TestOutcome { name, error });
         }
         Ok(outcomes)

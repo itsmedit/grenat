@@ -118,11 +118,85 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             result
         })(),
         "deny_all" | "approve_all" => Ok(Value::Symbol(name.into())),
+        // test doubles (see `eval::doubles`)
+        "mock" => (|| {
+            let model = match args.pos.first().map(Value::untainted) {
+                None => None,
+                Some(Value::Symbol(s)) => Some(s.to_string()),
+                Some(other) => {
+                    return raise("TypeError", format!("`mock` expects a model (`:fast`), got {}", other.inspect()));
+                }
+            };
+            let Some((_, replies)) = args.named.iter().find(|(n, _)| n == "replies") else {
+                return raise("ArgumentError", "`mock` expects `replies: [...]`");
+            };
+            interp.mock(model.as_deref(), replies)
+        })(),
+        "cassette" => (|| {
+            let name = arg(&args, 0, name)?.to_display();
+            interp.cassette(&name, &block(&args, "cassette")?)
+        })(),
+        "fixture" => (|| {
+            let path = arg(&args, 0, name)?.to_display();
+            interp.fixture(&path)
+        })(),
+        "call" => match args.pos.first().map(Value::untainted) {
+            Some(Value::Symbol(tool)) => {
+                let tool = tool.to_string();
+                interp.tool_call_reply(&tool, &args)
+            }
+            _ => raise("ArgumentError", "`call` expects a tool: `call(:search, query: \"…\")`"),
+        },
         "test" => (|| {
             let title = arg(&args, 0, "test")?.to_display();
             let body = block(&args, "test")?;
             interp.tests.borrow_mut().push((title, body));
             Ok(Value::Nil)
+        })(),
+        // quality measured on a dataset (see `evals`)
+        "eval" => (|| {
+            let title = arg(&args, 0, name)?.to_display();
+            let body = block(&args, name)?;
+            let mut eval = crate::evals::EvalDef {
+                name: title,
+                dataset: String::new(),
+                threshold: 1.0,
+                concurrency: crate::evals::DEFAULT_CONCURRENCY,
+                block: body,
+            };
+            for (option, value) in &args.named {
+                match (option.as_str(), value.untainted()) {
+                    ("dataset", Value::Str(path)) => eval.dataset = path.to_string(),
+                    ("threshold", v) if number(v).is_some_and(|t| (0.0..=1.0).contains(&t)) => {
+                        eval.threshold = number(v).expect("checked");
+                    }
+                    ("concurrency", Value::Int(n)) if *n > 0 => eval.concurrency = *n as usize,
+                    (option, v) => {
+                        return raise("ArgumentError", format!("invalid eval option `{option}: {}`", v.inspect()));
+                    }
+                }
+            }
+            if eval.dataset.is_empty() {
+                return raise("ArgumentError", "`eval` expects a dataset: `eval \"name\", dataset: \"rows.jsonl\" do |row| … end`");
+            }
+            interp.evals.borrow_mut().push(eval);
+            Ok(Value::Nil)
+        })(),
+        "judge" => (|| {
+            let mut pos = args.pos.iter().map(Value::untainted).peekable();
+            let model = match pos.peek() {
+                Some(Value::Symbol(s)) => {
+                    let s = s.to_string();
+                    pos.next();
+                    Some(s)
+                }
+                _ => None,
+            };
+            let Some(question) = pos.next().map(Value::to_display) else {
+                return raise("ArgumentError", "`judge` expects a question: `judge(:smart, \"Is it faithful?\", text)`");
+            };
+            let context: Vec<Value> = pos.cloned().collect();
+            interp.judge(model.as_deref(), &question, &context)
         })(),
         "assert" => (|| {
             if arg(&args, 0, "assert")?.truthy() {

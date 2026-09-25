@@ -23,9 +23,15 @@ end
 ```
 
 - Specification: [`SPEC.md`](SPEC.md)
-- Examples: [`basics.grn`](examples/basics.grn), [`reviews.grn`](examples/reviews.grn) (native statistics + validated LLM analysis), [`explorer.grn`](examples/explorer.grn) (a real agent), [`support_desk.grn`](examples/support_desk.grn) (multi-agent, human approval)
+- Examples: [`basics.grn`](examples/basics.grn), [`reviews.grn`](examples/reviews.grn) (native statistics + validated LLM analysis), [`explorer.grn`](examples/explorer.grn) (a real agent), [`support_desk.grn`](examples/support_desk.grn) (multi-agent, human approval), [`triage.grn`](examples/triage.grn) (tests with mocks, evals with an LLM judge)
 
 ## Status
+
+**Phase 5 — production-ready**: workflows are durable — each `step` is journaled, and an
+interrupted run resumes where it stopped, without paying twice for a model call. Tests
+never reach a real model: `mock` gives the model's replies as plain values, `cassette`
+records real calls once and replays them. `eval` measures quality on a dataset, with
+`judge` (an LLM as a judge), and fails under a threshold.
 
 **Phase 4 — native code**: functions over numbers, strings, arrays and structs are
 compiled to machine code by a Cranelift JIT when the program loads — `fib(35)` runs in
@@ -53,8 +59,9 @@ target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl        
 
 target/debug/grenat check examples/*.grn     # names, types, effects, taint
 target/debug/grenat fmt examples             # canonical layout (--check: only report)
-target/debug/grenat test my_file.grn         # `test "…" do … end` blocks
-cargo test                                   # ~190 tests: unit, integration, CLI, HTTP client, JIT, build
+target/debug/grenat test examples/triage.grn # `test` blocks: mocks and cassettes, never a real model
+target/debug/grenat eval examples/triage.grn # `eval` blocks: the real model, scored on a dataset
+cargo test                                   # ~250 tests: unit, integration, CLI, HTTP client, JIT, build
 ```
 
 ## Layout
@@ -64,7 +71,7 @@ cargo test                                   # ~190 tests: unit, integration, CL
 | `grenat_lexer` | tokens, interpolation, heredocs, `##` doc comments |
 | `grenat_ast` | syntax tree |
 | `grenat_parser` | recursive descent + Pratt, diagnostics with error recovery |
-| `grenat_llm` | Claude API client (structured output, tools, fallbacks), scripted provider for tests |
+| `grenat_llm` | Claude API client (structured output, tools, fallbacks); mocks, cassettes and a scripted provider for tests |
 | `grenat_types` | checker: names, types, effects, `~T` taint (E0100–E0500) |
 | `grenat_codegen` | Cranelift: typing, liveness (Perceus), translation, boundary; JIT and object files |
 | `grenat_runtime` | reference-counted strings, arrays and records called by native code |
@@ -74,7 +81,7 @@ cargo test                                   # ~190 tests: unit, integration, CL
 | `grenat_report` | diagnostic rendering |
 | `grenat_fmt` | the formatter |
 | `grenat_green` | M:N green threads: scheduler, green locks, channels, timers |
-| `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities |
+| `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities, workflows, test doubles, evals |
 | `grenat_cli` | the `grenat` binary |
 
 External dependencies: `ureq` (HTTP + rustls), `serde_json`, and Cranelift for native code.

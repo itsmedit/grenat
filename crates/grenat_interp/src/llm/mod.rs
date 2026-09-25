@@ -2,6 +2,7 @@
 
 mod agent_loop;
 mod json;
+mod judge;
 mod model;
 mod prompt;
 mod schema;

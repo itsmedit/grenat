@@ -292,6 +292,22 @@ impl<'p> Checker<'p> {
                 V::new(Ty::Nil)
             }
             "deny_all" | "approve_all" => V::new(Ty::Sym),
+            // test doubles and evals
+            "mock" => V::new(Ty::Nil),
+            "cassette" => self.walk_block(cx, block, &[]).unwrap_or_else(V::unknown),
+            "fixture" => {
+                cx.add_effect(Eff { path: "fs.read".into(), arg: None, origin: span });
+                V::unknown()
+            }
+            "call" => V::unknown(),
+            "eval" => {
+                self.walk_block(cx, block, &[V::unknown()]);
+                V::new(Ty::Nil)
+            }
+            "judge" => {
+                cx.add_effect(Eff { path: "llm".into(), arg: None, origin: span });
+                V::new(Ty::Float)
+            }
             _ => return None,
         };
         Some(v)
