@@ -504,7 +504,7 @@ Ten realistic programs, one per kind of agent, are in `examples/usecases` (the f
 5. ✅ **Multimodal prompts** (PDF, images) and the **Batch API** — case 5.
 6. ✅ **Email** and **triggers** (`every`, cron schedules, webhooks) — cases 1, 2, 6.
 7. ✅ **Facets**: libraries shared like Ruby's gems. A *facet* (a garnet's face) is a package; a program lists the facets it uses in its `Facetfile`, pinned in `Facetfile.lock`; the `setter` tool (who sets stones in a jewel) creates, adds, installs, updates and publishes them, with versions (`facet "http", "~> 0.3"`) resolved from git tags through an index repository. It replaces the `[dependencies]` of `grenat.toml`.
-8. Smaller gaps met while writing them: conversations as a type (history compacted automatically) for case 8. ✅ Done: `Html.text(html)` (the text a page shows: no tags, scripts, styles or comments, entities decoded, a line per block; untrusted if the page is); constants in a type (`API = "…"`: a class method without arguments, read as `GitHub::API`, or `API` in the type's own methods; `grenat fmt` keeps them as written); the ternary `c ? a : b` (an `if` with one expression each way: interpreted, checked and compiled as one; `grenat fmt` keeps it as written); the hash shorthand `{query:}` (Ruby 3.1); a `def self.x` calling the other `def self.` of its type without a receiver; `assert !done` (a glued negation as a command argument).
+8. ✅ Smaller gaps met while writing them: conversations as a type (`Conversation`: history, compaction into a summary, `save`/`load`) for case 8; top-level constants (`LIMIT = 10`); `Html.text(html)` (the text a page shows: no tags, scripts, styles or comments, entities decoded, a line per block; untrusted if the page is); constants in a type (`API = "…"`: a class method without arguments, read as `GitHub::API`, or `API` in the type's own methods; `grenat fmt` keeps them as written); the ternary `c ? a : b` (an `if` with one expression each way: interpreted, checked and compiled as one; `grenat fmt` keeps it as written); the hash shorthand `{query:}` (Ruby 3.1); a `def self.x` calling the other `def self.` of its type without a receiver; `assert !done` (a glued negation as a command argument).
 
 ### Phase 7 status: the `Http` client
 
@@ -664,6 +664,16 @@ setter install | update | list
 ```
 
 `setter` is a binary of its own (`grenat_setter`); the resolution is `grenat_package`'s, shared with `grenat`. The `[dependencies]` of `grenat.toml` (path and git) still work, for programs that need no index.
+
+### Phase 7 status: conversations
+
+```ruby
+chat = Conversation.load("memory.json", model: :fast, system: "You are a helpful assistant.", keep: 10)
+puts chat.say("I am Ada")        # the answer, untrusted
+chat.save("memory.json")
+```
+
+A `Conversation` keeps the turns of an exchange with a model and sends them with each `say` (an `llm` effect; the answer is untrusted). Beyond `keep` exchanges (20 by default), the older half is summarized by the model and dropped: the summary (`chat.summary`, untrusted too) goes with the system prompt, so the context stays bounded without losing what matters. `history` gives the turns kept; `save` and `load` (`fs.write`, `fs.read`) keep a conversation between sessions — `load` of a file not written yet starts a new one.
 
 ### Phase 0.5 status: `grenat fmt`
 

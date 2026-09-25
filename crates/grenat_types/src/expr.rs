@@ -305,6 +305,9 @@ impl<'p> Checker<'p> {
             if self.variants.get(name) == Some(&owner) {
                 return self.variant_value(name);
             }
+        } else if let Some(def) = self.fns.get(name).copied() {
+            // a top-level constant
+            return self.fn_call(cx, span, def, None, Vec::new(), None);
         }
         if self.types.contains_key(name)
             || builtins::MODULES.contains(&name)

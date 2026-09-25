@@ -250,26 +250,30 @@ impl<'p> Checker<'p> {
             return V::new(ty);
         }
         let positional: Vec<&ArgV> = argv.iter().filter(|a| a.name.is_none()).collect();
-        if let Some(sql) = positional.first()
+        if record == builtins::DATABASE
+            && let Some(sql) = positional.first()
             && let Some(origin) = sql.v.taint
         {
             self.taint_violation(sql.span, origin, name, effect);
         }
-        if effect == "db.write"
+        if record == builtins::DATABASE
+            && effect == "db.write"
             && let Some(values) = positional.get(1)
             && let Some(origin) = values.v.taint
         {
             self.taint_violation(values.span, origin, name, effect);
         }
-        let record = argv.iter().find(|a| a.name.as_deref() == Some("as")).and_then(|a| match &a.v.ty {
+        let record_type = argv.iter().find(|a| a.name.as_deref() == Some("as")).and_then(|a| match &a.v.ty {
             Ty::Type(t) => Some(Ty::User(t.clone())),
             _ => None,
         });
-        V::new(match (name, record) {
+        let taint = builtins::untrusted_method(record, name).then_some(span);
+        let ty = match (name, record_type) {
             ("query", Some(t)) => Ty::array(t),
             ("first", Some(t)) => Ty::opt(t),
             ("transaction", _) => block_v.map_or(ty, |v| v.ty),
             _ => ty,
-        })
+        };
+        V { ty, taint }
     }
 }

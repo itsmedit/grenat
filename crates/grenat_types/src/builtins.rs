@@ -166,6 +166,8 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Pdf" | "Image", "url") => (User(ATTACHMENT.into()), None),
         ("Mail", "connect") => (User(MAILER.into()), None),
         ("Html", "text") => (Str, None),
+        ("Conversation", "new") => (User(CONVERSATION.into()), None),
+        ("Conversation", "load") => (User(CONVERSATION.into()), Some("fs.read")),
         ("Mail", "deliveries") => (Ty::array(Ty::Hash(Box::new(Str), Box::new(Unknown))), None),
         ("Mcp", "call") => (Str, Some("mcp")),
         ("Mcp", "tools") => (Ty::array(Str), Some("mcp")),
@@ -173,7 +175,15 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
     })
 }
 
-pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html"];
+pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Conversation"];
+
+/// What `Conversation.new` returns.
+pub const CONVERSATION: &str = "Conversation";
+
+/// Methods of built-in records whose result comes from a model or outside.
+pub fn untrusted_method(record: &str, name: &str) -> bool {
+    matches!((record, name), (CONVERSATION, "say"))
+}
 
 /// What `Mail.connect` returns.
 pub const MAILER: &str = "Mailer";
@@ -204,6 +214,8 @@ pub fn record_method(record: &str, name: &str) -> Option<(Ty, &'static str)> {
         (DATABASE, "migrate") => (Ty::Nil, "db.write"),
         (DATABASE, "transaction") => (Ty::Unknown, "db.write"),
         (MAILER, "send") => (Ty::Nil, "net"),
+        (CONVERSATION, "say") => (Ty::Str, "llm"),
+        (CONVERSATION, "save") => (Ty::Nil, "fs.write"),
         _ => return None,
     })
 }
@@ -224,6 +236,8 @@ pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
         (WEBHOOK_REQUEST, "body") => (Ty::Str, true),
         (WEBHOOK_REQUEST, "headers") => (Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Str)), true),
         (WEBHOOK_REQUEST, "json") => (Ty::Unknown, true),
+        (CONVERSATION, "history") => (Ty::array(Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Str))), false),
+        (CONVERSATION, "summary") => (Ty::Str, true),
         (SHELL_RESULT, "status") => (Ty::Int, false),
         (SHELL_RESULT, "ok?") => (Ty::Bool, false),
         (SHELL_RESULT, "stdout" | "stderr") => (Ty::Str, true),

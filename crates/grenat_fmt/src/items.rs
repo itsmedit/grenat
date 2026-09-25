@@ -25,7 +25,8 @@ impl Printer<'_> {
 
     fn fn_def(&mut self, def: &FnDef) {
         // `API = "…"`: a constant, written so
-        if def.on_self && def.short && def.params.is_empty() && !self.source(def.span).starts_with("def") {
+        let constant = def.name.name.starts_with(|c: char| c.is_ascii_uppercase());
+        if constant && def.short && def.params.is_empty() && !self.source(def.span).starts_with("def") {
             self.write(&def.name.name);
             self.write(" = ");
             self.expr(&def.body.stmts[0]);

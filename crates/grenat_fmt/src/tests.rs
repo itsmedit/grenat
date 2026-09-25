@@ -174,3 +174,9 @@ fn constants_are_kept() {
     let src = "module GitHub\n  API = \"https://api.github.com\"\n\n  def self.url = API\nend\n";
     assert_eq!(crate::format(src).unwrap(), src);
 }
+
+#[test]
+fn top_level_constants_are_kept() {
+    let src = "MEMORY = \"memory.json\"\n\ndef path = MEMORY\n";
+    assert_eq!(crate::format(src).unwrap(), src);
+}

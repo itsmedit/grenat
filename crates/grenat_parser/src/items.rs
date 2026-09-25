@@ -46,6 +46,11 @@ impl<'d> Parser<'d> {
             T::Ident(name) if name == "model" && matches!(self.nth(1), T::Symbol(_)) => {
                 self.model_decl().map(Item::Model)
             }
+            // `LIMIT = 10`: a constant, i.e. a function without arguments
+            T::Const(_) if *self.nth(1) == T::Eq => self.constant(doc).map(|mut def| {
+                def.on_self = false;
+                Item::Fn(Box::new(def))
+            }),
             T::Ident(name) if name == "macro" && matches!(self.nth(1), T::Ident(_)) => {
                 self.macro_def(doc).map(Item::Macro)
             }

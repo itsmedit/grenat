@@ -16,7 +16,7 @@ block is gone** and each program runs against real services.
 | 5 | [`05_documents.grn`](05_documents.grn) (PDF invoices, one batch) | 33 | 0 | **yes** | — |
 | 6 | [`06_weekly_digest.grn`](06_weekly_digest.grn) (GitHub releases, every Monday, email) | 44 | 0 | **yes** | — |
 | 7 | [`07_sre.grn`](07_sre.grn) (Loki, Prometheus, kubectl) | 61 | 0 | **yes** | — |
-| 8 | [`08_chat.grn`](08_chat.grn) (memory) | 39 | 0 | yes (terminal) | a chat connector |
+| 8 | [`08_chat.grn`](08_chat.grn) (a Conversation, saved between sessions) | 11 | 0 | yes (terminal) | a chat connector |
 | 9 | [`09_team.grn`](09_team.grn) (planner, writers, critic) | 40 | 0 | yes | — |
 | 10 | [`10_mcp_tools.grn`](10_mcp_tools.grn) (Linear, Notion through MCP) | 27 | 0 | **yes** | — |
 

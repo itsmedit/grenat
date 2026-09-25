@@ -138,3 +138,15 @@ fn reading_an_attachment_is_reading_a_file() {
     assert!(d.message.contains("fs.read"), "{}", d.message);
     clean(&format!("{prompt}def main uses llm, fs.read\n  read(Pdf.read(\"./a.pdf\"))\n  read(Image.url(\"https://x.io/a.png\"))\nend\n"));
 }
+
+#[test]
+fn a_conversation_is_a_model_and_its_answers_are_untrusted() {
+    let head = "model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"\n";
+    let d = single(&format!("{head}def main\n  Conversation.new(model: :fast).say(\"hi\")\nend\n"), "E0300", "Conversation.new(model: :fast).say(\"hi\")");
+    assert!(d.message.contains("llm"), "{}", d.message);
+    single(
+        &format!("{head}def main uses llm, net\n  a = Conversation.new(model: :fast).say(\"hi\")\n  Http.post(\"https://x.io\", body: a)\nend\n"),
+        "E0412",
+        "a",
+    );
+}

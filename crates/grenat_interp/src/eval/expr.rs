@@ -4,7 +4,7 @@ use crate::prelude::*;
 
 /// Built-in modules and types usable as values.
 const BUILTIN_TYPES: &[&str] = &[
-    "File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Int", "Float", "String", "Bool", "Array", "Hash",
+    "File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Conversation", "Int", "Float", "String", "Bool", "Array", "Hash",
     "Symbol", "Nil", "Range", "Money", "Duration",
 ];
 
@@ -318,6 +318,9 @@ impl<'p> Interp<'p> {
         } else if let Some((def, ty)) = self.own_constant(name) {
             // `API` in the type's own methods
             return self.call_fn(def, Args::default(), Some(Value::Type(ty)));
+        } else if let Some(def) = self.fns.get(name).copied() {
+            // a top-level constant
+            return self.call_fn(def, Args::default(), None);
         }
         if self.types.contains_key(name)
             || BUILTIN_TYPES.contains(&name)

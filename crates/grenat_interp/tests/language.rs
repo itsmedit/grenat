@@ -180,3 +180,8 @@ p GitHub::PER_PAGE + 1, Client.new.retries, GitHub.API
 ";
     assert_eq!(run(src), "https://api.github.com/repos?per_page=50\n51\n6\n\"https://api.github.com\"\n");
 }
+
+#[test]
+fn top_level_constants() {
+    assert_eq!(run("LIMIT = 3\ndef twice = LIMIT * 2\np LIMIT, twice\n"), "3\n6\n");
+}

@@ -8,6 +8,7 @@ mod call;
 mod capabilities;
 mod concurrency;
 mod construct;
+pub(crate) mod conversation;
 mod doubles;
 
 pub(crate) use doubles::{HttpStub, ShellStub};

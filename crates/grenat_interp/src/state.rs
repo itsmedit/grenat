@@ -65,6 +65,8 @@ pub(crate) struct Shared<'p> {
     pub mcp_servers: Mutex<HashMap<String, Arc<crate::eval::mcp::McpServer>>>,
     /// Mocked MCP servers (`mock_mcp`), by name.
     pub mcp_stubs: Mutex<HashMap<String, crate::eval::mcp::McpStub>>,
+    /// Conversations (`Conversation.new`), by number.
+    pub conversations: Mutex<Vec<Arc<Mutex<crate::eval::conversation::ConversationState>>>>,
     /// Open databases (`Db.connect`), by number.
     pub databases: Mutex<Vec<SharedConnection>>,
     /// Stubbed HTTP requests (`mock_http`): (method, URL), the reply.
@@ -155,6 +157,7 @@ impl<'p> Interp<'p> {
             mocks: Mutex::new(Vec::new()),
             http_stubs: Mutex::new(Vec::new()),
             databases: Mutex::new(Vec::new()),
+            conversations: Mutex::new(Vec::new()),
             shell_stubs: Mutex::new(Vec::new()),
             mailers: Mutex::new(Vec::new()),
             deliveries: Mutex::new(Vec::new()),

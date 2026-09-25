@@ -1,7 +1,9 @@
 require "./08_chat"
-test "chat" do
-  mock :fast, replies: [{text: "Hi Ada!", facts: ["name is Ada"]}]
-  bot = spawn Assistant
-  assert_equal "Hi Ada!", bot.ask(Say(message: "I am Ada"))
-  assert_equal ["name is Ada"], bot.ask(Facts())
+
+test "the assistant remembers the conversation" do
+  mock :fast, replies: ["Hi Ada!", "You are Ada."]
+  chat = Conversation.new(model: :fast)
+  chat.say("I am Ada")
+  assert_equal "You are Ada.", chat.say("Who am I?").trust!
+  assert_equal 4, chat.history.size
 end
