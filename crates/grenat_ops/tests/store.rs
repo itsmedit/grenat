@@ -102,6 +102,8 @@ fn model_calls_are_summed_by_agent_workflow_model_and_day() {
         assert_eq!(all.len(), 3);
         assert_eq!(all[0], call(10.0, "claude-haiku-4-5", Some("Triage"), 0.25));
         assert_eq!(calls::since(db, 100.0).unwrap().len(), 2);
+        assert_eq!(calls::of_job(db, 3).unwrap().len(), 3);
+        assert!(calls::of_job(db, 4).unwrap().is_empty());
         let agents = calls::totals(&all, By::Agent);
         assert_eq!(agents[0].key.as_deref(), Some("Writer"), "costliest first");
         assert!(agents.iter().any(|t| t.key.is_none()), "calls outside any agent");

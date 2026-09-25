@@ -654,6 +654,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "grenat_console"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.2.17",
+ "grenat_db",
+ "grenat_mcp",
+ "grenat_ops",
+ "serde_json",
+]
+
+[[package]]
 name = "grenat_db"
 version = "0.1.0"
 dependencies = [

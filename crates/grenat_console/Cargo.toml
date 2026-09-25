@@ -1,0 +1,15 @@
+[package]
+name = "grenat_console"
+description = "grenat console: the operations console of a Grenat application — approvals, jobs, journals, costs, evals, refusals, MCP servers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+grenat_db.workspace = true
+grenat_mcp.workspace = true
+grenat_ops.workspace = true
+serde_json.workspace = true
+getrandom = "0.2"

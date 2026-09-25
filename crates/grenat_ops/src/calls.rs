@@ -73,27 +73,33 @@ pub fn record(db: &mut dyn Connection, call: &Call) -> Result<()> {
     db.execute(&sql, &params).map(drop)
 }
 
+const COLUMNS: &str = "at, model, agent, workflow, job_id, input_tokens, output_tokens, cost_usd";
+
 /// The calls made since `since`, oldest first.
 pub fn since(db: &mut dyn Connection, since: f64) -> Result<Vec<Call>> {
     ensure(db)?;
-    let sql = format!(
-        "SELECT at, model, agent, workflow, job_id, input_tokens, output_tokens, cost_usd FROM {TABLE} \
-         WHERE at >= ? ORDER BY at, id"
-    );
-    let rows = db.query(&sql, &[Cell::Float(since)])?;
-    Ok(rows
-        .iter()
-        .map(|r| Call {
-            at: float(r, 0),
-            model: text(r, 1),
-            agent: opt_text(r, 2),
-            workflow: opt_text(r, 3),
-            job_id: opt_int(r, 4),
-            input_tokens: int(r, 5),
-            output_tokens: int(r, 6),
-            cost_usd: float(r, 7),
-        })
-        .collect())
+    let rows = db.query(&format!("SELECT {COLUMNS} FROM {TABLE} WHERE at >= ? ORDER BY at, id"), &[Cell::Float(since)])?;
+    Ok(rows.iter().map(call).collect())
+}
+
+/// The calls job `job` made, oldest first.
+pub fn of_job(db: &mut dyn Connection, job: i64) -> Result<Vec<Call>> {
+    ensure(db)?;
+    let rows = db.query(&format!("SELECT {COLUMNS} FROM {TABLE} WHERE job_id = ? ORDER BY at, id"), &[Cell::Int(job)])?;
+    Ok(rows.iter().map(call).collect())
+}
+
+fn call(r: &grenat_db::Row) -> Call {
+    Call {
+        at: float(r, 0),
+        model: text(r, 1),
+        agent: opt_text(r, 2),
+        workflow: opt_text(r, 3),
+        job_id: opt_int(r, 4),
+        input_tokens: int(r, 5),
+        output_tokens: int(r, 6),
+        cost_usd: float(r, 7),
+    }
 }
 
 /// `calls` summed `by` agent (workflow, model, day), costliest first — by
