@@ -24,16 +24,21 @@ impl<'p> Interp<'p> {
         }
     }
 
-    pub(crate) fn read_line(&self) -> Option<String> {
+    /// A line typed by the human; in tests (offline), only scripted lines:
+    /// a test never waits for the keyboard.
+    pub(crate) fn read_line(&self) -> Result<Option<String>, Ctrl<'p>> {
         if let Some(input) = &mut *self.input.borrow_mut() {
-            return input.pop_front();
+            return Ok(input.pop_front());
         }
-        grenat_green::blocking(|| {
+        if self.offline {
+            return raise("HumanError", "no human in tests: wrap the code in `with_human(approve_all) do … end`");
+        }
+        Ok(grenat_green::blocking(|| {
             let mut line = String::new();
             match std::io::stdin().read_line(&mut line) {
                 Ok(0) | Err(_) => None,
                 Ok(_) => Some(line.trim_end_matches(['\n', '\r']).to_string()),
             }
-        })
+        }))
     }
 }

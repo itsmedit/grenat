@@ -82,13 +82,13 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         ("Cli", "confirm") => {
             let message = arg(&args, 0, name)?.to_display();
             interp.write_err(&format!("{message} (y/N) "));
-            let answer = interp.read_line().unwrap_or_default();
+            let answer = interp.read_line()?.unwrap_or_default();
             Ok(Value::Bool(matches!(answer.trim().to_lowercase().as_str(), "y" | "yes")))
         }
         ("Cli", "ask") => {
             let message = arg(&args, 0, name)?.to_display();
             interp.write_err(&format!("{message} "));
-            Ok(interp.read_line().map_or(Value::Nil, Value::str))
+            Ok(interp.read_line()?.map_or(Value::Nil, Value::str))
         }
         ("Time", "now") => {
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();

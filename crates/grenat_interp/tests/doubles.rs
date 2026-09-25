@@ -230,3 +230,35 @@ end
     passed(&outcomes);
     assert_eq!(output, "");
 }
+
+#[test]
+fn a_test_s_human_wins_over_the_program_s_and_never_reads_the_keyboard() {
+    let src = "\
+def deploy uses human
+  Runtime.on_approval { |req| Cli.confirm(req.message) }
+  approve! \"deploy?\"
+  \"deployed\"
+end
+test \"doubled\" do
+  with_human(approve_all) do
+    assert_equal \"deployed\", deploy
+  end
+  with_human(deny_all) do
+    assert_raises(ApprovalDenied) { deploy }
+  end
+end
+test \"no double\" do
+  deploy
+end
+test \"no keyboard\" do
+  Cli.ask(\"name?\")
+end
+";
+    let (outcomes, _) = tests_in(src, &temp_dir("human"), None, false);
+    let results = results(&outcomes);
+    assert_eq!(results[0].1, None);
+    for (name, error) in &results[1..] {
+        let error = error.as_deref().unwrap_or_default();
+        assert!(error.starts_with("HumanError: no human in tests"), "{name}: {error}");
+    }
+}

@@ -112,9 +112,9 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
         "with_human" => (|| {
             let policy = arg(&args, 0, "with_human")?;
             let body = block(&args, "with_human")?;
-            let saved = interp.approver.borrow_mut().replace(policy);
+            let saved = interp.human_double.borrow_mut().replace(policy);
             let result = interp.call_block(&body, Vec::new());
-            *interp.approver.borrow_mut() = saved;
+            *interp.human_double.borrow_mut() = saved;
             result
         })(),
         "deny_all" | "approve_all" => Ok(Value::Symbol(name.into())),

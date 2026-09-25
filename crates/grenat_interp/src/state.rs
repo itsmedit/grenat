@@ -58,7 +58,10 @@ pub(crate) struct Shared<'p> {
     pub total: Arc<Budget>,
     /// Started supervisor children: (supervisor, agent) → instance.
     pub children: Mutex<HashMap<(String, String), Arc<AgentRef<'p>>>>,
+    /// The program's approval handler (`Runtime.on_approval`).
     pub approver: Mutex<Option<Value<'p>>>,
+    /// The human's double in a test (`with_human`): wins over `approver`.
+    pub human_double: Mutex<Option<Value<'p>>>,
     pub tests: Mutex<Vec<(String, Value<'p>)>>,
     pub evals: Mutex<Vec<crate::evals::EvalDef<'p>>>,
     pub output: Output,
@@ -134,6 +137,7 @@ impl<'p> Interp<'p> {
             total: total.clone(),
             children: Mutex::new(HashMap::new()),
             approver: Mutex::new(None),
+            human_double: Mutex::new(None),
             tests: Mutex::new(Vec::new()),
             evals: Mutex::new(Vec::new()),
             output: options.output,
