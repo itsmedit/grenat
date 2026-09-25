@@ -109,8 +109,8 @@ pub(crate) struct Shared<'p> {
     /// Secondary tasks in flight (green primitives: waiting parks the task).
     pub active: grenat_green::Mutex<usize>,
     pub idle: grenat_green::Condvar,
-    /// Where workflows keep their journals.
-    pub journal_dir: std::path::PathBuf,
+    /// Where workflows keep their journals (a test's own in tests).
+    pub journal_dir: Mutex<std::path::PathBuf>,
     /// Native code for the eligible functions: compiled by the JIT, or
     /// linked into the executable (`grenat build`).
     pub jit: Option<grenat_codegen::Native>,
@@ -202,7 +202,7 @@ impl<'p> Interp<'p> {
             active: grenat_green::Mutex::new(0),
             idle: grenat_green::Condvar::new(),
             jit: None,
-            journal_dir: options.journal.clone().unwrap_or_else(|| ".grenat/journal".into()),
+            journal_dir: Mutex::new(options.journal.clone().unwrap_or_else(|| ".grenat/journal".into())),
         };
         let loaded = shared.load();
         let mut link_error = None;

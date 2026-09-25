@@ -159,11 +159,15 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
                 outcomes.push(TestOutcome { name, error: Some(interp.runtime_error(ctrl)) });
                 continue;
             }
+            // and journals of its own: no test resumes another's workflows
+            let journal = test_journal_dir();
+            interp.journal_dir.borrow_mut().clone_from(&journal);
             let error = match interp.call_block(&block, Vec::new()) {
                 Ok(_) => None,
                 Err(ctrl) => Some(interp.runtime_error(ctrl)),
             };
             interp.wait_for_tasks();
+            let _ = std::fs::remove_dir_all(&journal);
             // each test declares its own mocks
             interp.mocks.borrow_mut().clear();
             interp.http_stubs.borrow_mut().clear();
@@ -174,6 +178,13 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
         }
         Ok(outcomes)
     })
+}
+
+/// A new directory for one test's journals (removed after the test).
+fn test_journal_dir() -> std::path::PathBuf {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    std::env::temp_dir().join(format!("grenat-test-journal-{}-{n}", std::process::id()))
 }
 
 /// Runs `work` as the first green task (with the interpreter's stack), on a

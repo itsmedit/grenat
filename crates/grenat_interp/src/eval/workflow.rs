@@ -85,7 +85,7 @@ impl<'p> Interp<'p> {
         }
         let names: Vec<&str> = args.named.iter().map(|(n, _)| n.as_str()).collect();
         let id = fingerprint(&json!([key, names]).to_string());
-        let path = self.journal_dir.join(format!("{}-{id:016x}.jsonl", def.name.name));
+        let path = self.journal_dir.borrow().join(format!("{}-{id:016x}.jsonl", def.name.name));
         match WorkflowRun::open(&def.name.name, path) {
             Ok(run) => Ok(Arc::new(run)),
             Err(e) => raise("JournalError", e),

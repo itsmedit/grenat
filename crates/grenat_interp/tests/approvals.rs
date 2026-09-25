@@ -121,3 +121,29 @@ end
         assert!(error.is_none(), "`{name}`: {}", error.unwrap());
     }
 }
+
+#[test]
+fn no_test_resumes_the_workflow_of_another() {
+    let src = "\
+model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"
+prompt draft(id: Int) -> ~String using :fast
+  user \"Draft #{id}\"
+end
+workflow onboard(id: Int) -> ~String uses llm, human
+  text = step(:draft) { draft(id) }
+  step(:review) { approve! \"Go on?\" }
+  text
+end
+test \"approved\" do
+  mock :fast, replies: [\"A draft\"]
+  with_human(approve_all) { assert_equal \"A draft\", onboard(1).trust! }
+end
+test \"denied, with the same arguments\" do
+  mock :fast, replies: [\"A draft\"]
+  with_human(deny_all) { assert_raises(ApprovalDenied) { onboard(1) } }
+end
+";
+    for (name, error) in results(src) {
+        assert!(error.is_none(), "`{name}`: {}", error.unwrap());
+    }
+}
