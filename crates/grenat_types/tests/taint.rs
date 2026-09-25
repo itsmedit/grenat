@@ -100,3 +100,11 @@ fn a_model_s_answer_cannot_be_sent_unchecked() {
     let d = single(&src, "E0412", "{t: s.title}");
     assert!(d.message.starts_with("an untrusted value reaches `Http.post` (effect `net`)"), "{}", d.message);
 }
+
+#[test]
+fn sql_is_never_untrusted() {
+    let head = format!("{PRELUDE}def main uses llm, db\n  db = Db.connect(\"sqlite::memory:\")\n  s = summarize(\"x\")\n");
+    single(&format!("{head}  db.query(s.title)\nend\n"), "E0412", "s.title");
+    clean(&format!("{head}  db.query(\"SELECT * FROM t WHERE title = ?\", [s.title])\nend\n"));
+    single(&format!("{head}  db.execute(\"UPDATE t SET title = ?\", [s.title])\nend\n"), "E0412", "[s.title]");
+}

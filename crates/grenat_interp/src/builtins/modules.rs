@@ -11,6 +11,7 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
     let unknown = || raise("NoMethodError", format!("unknown method `{ty}.{name}`"));
     match (ty, name) {
         ("Http", _) => call_http(interp, name, args),
+        ("Db", "connect") => connect(interp, &args),
         ("File", "read") => {
             let path = str_arg(&args, 0, name)?;
             interp.check_fs("fs.read", &path)?;

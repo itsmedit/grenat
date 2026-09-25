@@ -159,11 +159,27 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Cli", "ask") => (Ty::opt(Str), Some("human")),
         ("Time", "now") => (Float, Some("time")),
         ("Http", "get" | "post" | "put" | "patch" | "delete" | "head") => (User(HTTP_RESPONSE.into()), Some("net")),
+        ("Db", "connect") => (User(DATABASE.into()), None),
         _ => return None,
     })
 }
 
-pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http"];
+pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db"];
+
+/// What `Db.connect` returns.
+pub const DATABASE: &str = "Database";
+
+/// A method with arguments of a built-in record: its return type and effect.
+pub fn record_method(record: &str, name: &str) -> Option<(Ty, &'static str)> {
+    Some(match (record, name) {
+        (DATABASE, "query") => (Ty::array(Ty::Unknown), "db.read"),
+        (DATABASE, "first") => (Ty::Unknown, "db.read"),
+        (DATABASE, "execute") => (Ty::Int, "db.write"),
+        (DATABASE, "migrate") => (Ty::Nil, "db.write"),
+        (DATABASE, "transaction") => (Ty::Unknown, "db.write"),
+        _ => return None,
+    })
+}
 
 /// What `Http` requests return.
 pub const HTTP_RESPONSE: &str = "HttpResponse";

@@ -12,7 +12,7 @@ block is gone** and each program runs against real services.
 | 1 | [`support_desk.grn`](../support_desk.grn) (customer support) | 132 | 19 | no | doc search, email |
 | 2 | [`02_code_review.grn`](02_code_review.grn) (GitHub API) | 70 | 0 | **yes** | webhooks, sandboxed shell (to run the tests) |
 | 3 | [`03_research.grn`](03_research.grn) (Brave Search API) | 56 | 0 | **yes** | HTML to text |
-| 4 | [`04_data.grn`](04_data.grn) (question → SQL) | 28 | 4 | no | `Db` (Postgres, SQLite) |
+| 4 | [`04_data.grn`](04_data.grn) (question → SQL, Postgres or SQLite) | 27 | 0 | **yes** | — |
 | 5 | [`05_documents.grn`](05_documents.grn) (invoices) | 36 | 3 | text only | PDF and image input, Batch API |
 | 6 | [`06_weekly_digest.grn`](06_weekly_digest.grn) (GitHub releases) | 40 | 5 | all but the email | email, `every` |
 | 7 | [`07_sre.grn`](07_sre.grn) (Loki, Prometheus) | 66 | 6 | all but the fix | sandboxed shell, tool timeouts |

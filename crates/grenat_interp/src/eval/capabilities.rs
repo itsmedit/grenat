@@ -79,4 +79,19 @@ impl<'p> Interp<'p> {
         }
         Ok(())
     }
+
+    /// Checks that `effect` (`db.read`…) is declared by every function on
+    /// the stack that declares its effects.
+    pub(crate) fn check_effect(&self, effect: &str) -> Result<(), Ctrl<'p>> {
+        for (owner, caps) in &self.capabilities {
+            if !caps.iter().any(|(declared, _)| declared == effect || effect.starts_with(&format!("{declared}."))) {
+                let declared: Vec<&str> = caps.iter().map(|(p, _)| p.as_str()).collect();
+                return raise(
+                    "CapabilityError",
+                    format!("`{effect}` is not allowed by `{owner}` (uses {})", declared.join(", ")),
+                );
+            }
+        }
+        Ok(())
+    }
 }

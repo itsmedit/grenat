@@ -2,6 +2,7 @@
 
 mod args;
 mod collections;
+mod db;
 mod globals;
 mod http;
 mod methods;
@@ -11,6 +12,7 @@ mod strings;
 
 pub(crate) use args::*;
 pub(crate) use collections::*;
+pub(crate) use db::*;
 pub(crate) use globals::*;
 pub(crate) use http::*;
 pub(crate) use methods::*;

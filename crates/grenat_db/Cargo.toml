@@ -1,0 +1,12 @@
+[package]
+name = "grenat_db"
+description = "Databases for Grenat programs: SQLite and PostgreSQL behind one interface"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rusqlite = { version = "0.40", features = ["bundled"] }
+postgres = "0.19"

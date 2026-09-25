@@ -80,3 +80,27 @@ fn http_requests_are_net_effects_on_their_host() {
     clean("def main(args: Array(String)) uses net(\"api.github.com\")\n  Http.get(\"https://#{args.first}/x\")\nend\n");
     clean("test \"t\" do\n  mock_http \"GET https://x.io/*\", status: 200, json: {a: 1}\nend\n");
 }
+
+#[test]
+fn databases_are_read_and_write_effects() {
+    let d = single(
+        "def main\n  db = Db.connect(\"sqlite::memory:\")\n  db.execute(\"DELETE FROM t\")\nend\n",
+        "E0300",
+        "db.execute(\"DELETE FROM t\")",
+    );
+    assert!(d.message.contains("db.write"), "{}", d.message);
+    clean("def main uses db\n  db = Db.connect(\"sqlite::memory:\")\n  db.execute(\"DELETE FROM t\")\n  p db.query(\"SELECT 1\")\nend\n");
+    single(
+        "def count(db: Database) -> Int uses db.read\n  db.execute(\"DELETE FROM t\")\nend\n",
+        "E0300",
+        "db.execute(\"DELETE FROM t\")",
+    );
+}
+
+#[test]
+fn rows_are_typed_by_the_record_they_are_read_as() {
+    let head = "struct Order\n  id: Int\n  total: Float\nend\ndef main uses db\n  db = Db.connect(\"sqlite::memory:\")\n";
+    clean(&format!("{head}  p db.query(\"SELECT * FROM orders\", as: Order).map {{ |o| o.total }}.sum\nend\n"));
+    let d = single(&format!("{head}  p db.query(\"SELECT * FROM orders\", as: Order).first.nope\nend\n"), "E0200", "nope");
+    assert!(d.message.contains("`nope`"), "{}", d.message);
+}

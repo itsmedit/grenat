@@ -486,7 +486,7 @@ Installed layout:
 Ten realistic programs, one per kind of agent, are in `examples/usecases` (the first is `examples/support_desk.grn`): support, code review, research, data, documents, a scheduled digest, operations, a chat with memory, a team of agents, third-party tools. Each checks and passes its tests today, the model mocked, in 24 to 47 lines of logic (113 for the full support desk). Only two run for real: the others fake, between `STUBS` markers, the I/O the standard library lacks. Phase 7 is done when every stub is gone. In order:
 
 1. ✅ **`Http` client** with effects (`net("host")` enforced at run time, JSON, headers, timeouts) — unblocks cases 2, 3, 6, 7, 10.
-2. **`Db`** (SQLite and Postgres, parameterized queries, `db.read` / `db.write` effects) — case 4.
+2. ✅ **`Db`** (SQLite and Postgres, parameterized queries, `db.read` / `db.write` effects) — case 4.
 3. **Sandboxed `shell`** (a process with a timeout, no network unless declared) and per-tool timeouts — cases 2 and 7.
 4. **MCP client** (`tools from mcp("…")`, capabilities granted per server, results tainted) — case 10.
 5. **Multimodal prompts** (PDF, images) and the **Batch API** — case 5.
@@ -510,6 +510,34 @@ end
 - **Capabilities.** A request is a `net` effect restricted by host: `uses net("api.github.com")` allows that host only. The checker takes the host of a literal URL (E0300 otherwise); a URL built at run time is checked when the request is made (`CapabilityError`).
 - **Taint, both ways.** Nothing untrusted goes out: a model's answer or a response, unchecked, in the URL, headers or body is E0412 (and a `TaintError` at run time). What comes back is untrusted, as a model's answer is: `body`, `headers` and `json` are tainted — a web page can carry a prompt injection as well as a model can. `status` and `ok?` are not. Parsing untrusted text (`Json.parse`) gives untrusted data.
 - **Tests.** `grenat test` never reaches the network: `mock_http "GET https://api.github.com/repos/*", json: {…}` (or `status:`, `body:`, `headers:`) answers every matching request of the test — without a method, any method; a trailing `*` matches a prefix. An unstubbed request is an `HttpError`.
+
+### Phase 7 status: databases (`Db`)
+
+```ruby
+struct Order
+  id: Int
+  total: Float
+end
+
+def big_orders(db: Database, min: Float) -> Array(Order) uses db.read
+  db.query("SELECT id, total FROM orders WHERE total > ? ORDER BY total DESC", [min], as: Order)
+end
+
+def main uses db, env
+  db = Db.connect(Env.fetch("DATABASE_URL"))   # sqlite://app.db, sqlite::memory:, postgres://…
+  db.migrate("CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, total FLOAT)")
+  db.transaction do
+    db.execute("INSERT INTO orders (total) VALUES (?)", [42.0])
+  end
+  p big_orders(db, 10.0)
+end
+```
+
+`Db.connect` opens SQLite (embedded: nothing to install) or PostgreSQL. `query` gives rows as hashes, or as records with `as: Order` (typed `Array(Order)` for the checker); `first` the first one or `nil`; `execute` the number of rows changed; `migrate` runs a script; `transaction` commits the block, or rolls it back if it raises. Placeholders are `?` on every database (numbered for PostgreSQL); a value is never SQL text. The layer (`grenat_db`) knows nothing of the language: cells in, cells out.
+
+- **Effects.** Reads are `db.read`, writes `db.write` (`uses db` for both), checked statically and at run time.
+- **Taint.** SQL text is never untrusted — a model writing a query must have it checked first (E0412, `TaintError`). An untrusted value may filter a read (it is a parameter), never be written unchecked.
+- **Limits.** A connection is shared by the tasks that use it: statements of concurrent tasks may interleave inside a `transaction`; PostgreSQL columns of other types than booleans, integers, floats and text are cast in the query (`created_at::text`).
 
 ### Phase 0.5 status: `grenat fmt`
 

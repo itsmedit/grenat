@@ -99,6 +99,7 @@ end })
 | `grenat_host` | static library linked into the executables of `grenat build` |
 | `grenat_standalone` | static library linked into `grenat build --native` executables |
 | `grenat_report` | diagnostic rendering, in the file each error points into |
+| `grenat_db` | databases: SQLite (embedded) and PostgreSQL behind one interface |
 | `grenat_package` | `grenat.toml`, `require`, path and git dependencies, `grenat.lock` |
 | `grenat_fmt` | the formatter |
 | `grenat_lsp` | the language server |
@@ -107,7 +108,7 @@ end })
 | `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities, workflows, test doubles, evals |
 | `grenat_cli` | the `grenat` binary |
 
-External dependencies: `ureq` (HTTP + rustls), `serde_json`, `toml`, and Cranelift for native code.
+External dependencies: `ureq` (HTTP + rustls), `serde_json`, `toml`, `rusqlite` (SQLite, compiled in), `postgres`, and Cranelift for native code.
 
 ## License
 

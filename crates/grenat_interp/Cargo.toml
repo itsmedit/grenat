@@ -15,6 +15,7 @@ grenat_runtime.workspace = true
 grenat_green.workspace = true
 serde_json.workspace = true
 ureq.workspace = true
+grenat_db.workspace = true
 
 [dev-dependencies]
 grenat_parser.workspace = true

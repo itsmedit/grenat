@@ -1,10 +1,28 @@
 require "./04_data"
-test "data" do
-  mock :smart, replies: [{sql: "select count(*) from orders", explanation: "count"}]
-  mock :fast, replies: ["There are 0 orders."]
-  main(["how", "many", "orders"])
+
+def sales uses db
+  db = Db.connect("sqlite::memory:")
+  db.migrate("CREATE TABLE orders (id INTEGER PRIMARY KEY, customer TEXT, total FLOAT)")
+  db.execute(
+    "INSERT INTO orders (customer, total) VALUES (?, ?), (?, ?)",
+    ["Ada", 9.5, "Linus", 20.0],
+  )
+  db
 end
-test "a write is refused" do
-  mock :smart, replies: [{sql: "delete from orders", explanation: "oops"}]
-  assert_raises(CheckError) { main(["purge"]) }
+
+test "a question is answered from the database" do
+  mock :smart, replies: [{sql: "SELECT count(*) AS n, sum(total) AS revenue FROM orders", explanation: "totals"}]
+  mock :fast, replies: ["2 orders, 29.5 in revenue."]
+  assert_equal "2 orders, 29.5 in revenue.", answer(
+    sales,
+    "orders(id, customer, total)",
+    "how are sales?",
+  ).trust!
+end
+
+test "a write is refused before reaching the database" do
+  mock :smart, replies: [{sql: "DELETE FROM orders", explanation: "oops"}]
+  db = sales
+  assert_raises(CheckError) { answer(db, "orders(id, customer, total)", "purge") }
+  assert_equal 2, db.query("SELECT id FROM orders").size
 end

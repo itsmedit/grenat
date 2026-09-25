@@ -105,6 +105,11 @@ impl<'p> Checker<'p> {
             let v = self.ask(cx, span, t, argv);
             return if n == "tell" { V::new(Ty::Nil) } else { v };
         }
+        if kind.is_none()
+            && let Some((ty, effect)) = builtins::record_method(t, n)
+        {
+            return self.record_method(cx, span, (ty, effect), n, &argv, block);
+        }
         if argv.is_empty() && block.is_none() {
             if let Some(ty) = self.field_of(&recv.ty, n) {
                 return V { ty, taint };
@@ -214,5 +219,42 @@ impl<'p> Checker<'p> {
         }
         self.error_help(E_TYPE, name.span, format!("unknown method `{t}.{n}`"), suggest(n, candidates));
         V::unknown()
+    }
+
+    /// A method of a built-in record (a database): SQL text is never
+    /// untrusted, written values neither; `as: T` types the rows.
+    fn record_method(
+        &mut self,
+        cx: &mut Ctx<'p>,
+        span: Span,
+        (ty, effect): (Ty, &'static str),
+        name: &str,
+        argv: &[ArgV],
+        block: Option<&'p Block>,
+    ) -> V {
+        let block_v = self.walk_block(cx, block, &[]);
+        cx.add_effect(Eff { path: effect.into(), arg: None, origin: span });
+        let positional: Vec<&ArgV> = argv.iter().filter(|a| a.name.is_none()).collect();
+        if let Some(sql) = positional.first()
+            && let Some(origin) = sql.v.taint
+        {
+            self.taint_violation(sql.span, origin, name, effect);
+        }
+        if effect == "db.write"
+            && let Some(values) = positional.get(1)
+            && let Some(origin) = values.v.taint
+        {
+            self.taint_violation(values.span, origin, name, effect);
+        }
+        let record = argv.iter().find(|a| a.name.as_deref() == Some("as")).and_then(|a| match &a.v.ty {
+            Ty::Type(t) => Some(Ty::User(t.clone())),
+            _ => None,
+        });
+        V::new(match (name, record) {
+            ("query", Some(t)) => Ty::array(t),
+            ("first", Some(t)) => Ty::opt(t),
+            ("transaction", _) => block_v.map_or(ty, |v| v.ty),
+            _ => ty,
+        })
     }
 }

@@ -33,6 +33,9 @@ pub(crate) struct AgentFrame<'p> {
     pub handler: &'p Handler,
 }
 
+/// A database connection, used by one task at a time.
+pub(crate) type SharedConnection = Arc<grenat_green::Mutex<Box<dyn grenat_db::Connection>>>;
+
 /// Maximum call depth (the interpreter runs on a 512 MB stack).
 pub(crate) const MAX_DEPTH: usize = 20_000;
 
@@ -49,6 +52,8 @@ pub(crate) struct Shared<'p> {
     pub provider: Mutex<Option<Arc<dyn Provider>>>,
     /// Mocked models (`mock`): the model mocked (`None`: any), its replies.
     pub mocks: Mutex<Vec<(Option<ModelConfig>, Arc<grenat_llm::Mock>)>>,
+    /// Open databases (`Db.connect`), by number.
+    pub databases: Mutex<Vec<SharedConnection>>,
     /// Stubbed HTTP requests (`mock_http`): (method, URL), the reply.
     pub http_stubs: Mutex<Vec<crate::eval::HttpStub>>,
     /// See [`Options::offline`] and [`Options::record`].
@@ -134,6 +139,7 @@ impl<'p> Interp<'p> {
             provider: Mutex::new(options.provider),
             mocks: Mutex::new(Vec::new()),
             http_stubs: Mutex::new(Vec::new()),
+            databases: Mutex::new(Vec::new()),
             offline: options.offline,
             record: options.record,
             dir: options.dir.clone().unwrap_or_default(),
