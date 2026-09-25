@@ -11,6 +11,7 @@ mod modules;
 mod numbers;
 mod shell;
 mod strings;
+mod triggers;
 
 pub(crate) use args::*;
 pub(crate) use attachments::*;
@@ -23,3 +24,4 @@ pub(crate) use modules::*;
 pub(crate) use numbers::*;
 pub(crate) use shell::*;
 pub(crate) use strings::*;
+pub(crate) use triggers::*;

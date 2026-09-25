@@ -21,6 +21,7 @@ mod outcome;
 mod process;
 mod prelude;
 mod program;
+mod serve;
 mod stack;
 mod state;
 mod task;
@@ -34,6 +35,7 @@ pub use grenat_llm::{ModelConfig, Provider, Response, Scripted};
 use value::Locked;
 pub use value::Value;
 pub use evals::{EvalReport, RowOutcome, run_evals};
+pub use serve::serve;
 
 pub(crate) use control::*;
 pub(crate) use program::*;

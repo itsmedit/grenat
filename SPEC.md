@@ -502,7 +502,7 @@ Ten realistic programs, one per kind of agent, are in `examples/usecases` (the f
 3. ✅ **Sandboxed `shell`** (a process with a timeout, no network unless declared) and per-tool timeouts — cases 2 and 7.
 4. ✅ **MCP client** (`tools mcp(:server)`, capabilities granted per server, results tainted) — case 10.
 5. **Multimodal prompts** (PDF, images) and the **Batch API** — case 5.
-6. **Email** and **triggers** (`every 1.week`, webhooks through an `Http` server) — cases 1, 2, 6.
+6. **Email** and ✅ **triggers** (`every`, cron schedules, webhooks) — cases 1, 2, 6.
 7. **Facets**: libraries shared like Ruby's gems. A *facet* (a garnet's face) is a package; a program lists the facets it uses in its `Facetfile`, pinned in `Facetfile.lock`; the `setter` tool (who sets stones in a jewel) creates, adds, installs, updates and publishes them, with versions (`facet "http", "~> 0.3"`) resolved from git tags through an index repository. It replaces the `[dependencies]` of `grenat.toml`.
 8. Smaller gaps met while writing them: the ternary `c ? a : b`; constants in a module (`API = "…"`); HTML to text for case 3; conversations as a type (history compacted automatically) for case 8. ✅ Done: the hash shorthand `{query:}` (Ruby 3.1); a `def self.x` calling the other `def self.` of its type without a receiver.
 
@@ -601,6 +601,29 @@ extract(Pdf.read("invoices/a.pdf"))       # Image.read("scan.png"), Pdf.url("htt
 ```
 
 `Pdf.read` and `Image.read` (`.png`, `.jpg`, `.gif`, `.webp`) read a file (an `fs.read` effect) into an `Attachment`; `Pdf.url` and `Image.url` point to one the provider fetches. In a prompt, `user` takes attachments among its texts: a message becomes document and image blocks first, then its text; a message of text only is sent as before, so recorded cassettes stay valid.
+
+### Phase 7 status: triggers (`every`, webhooks) and `grenat serve`
+
+```ruby
+every cron: "0 8 * * MON" do            # or: every 1.hour
+  weekly(Time.today, ["rust-lang/rust"])
+end
+
+on_webhook "/github", secret: Env.fetch("GITHUB_WEBHOOK_SECRET"), signature: :github do |req|
+  event = req.json.check { |e| e["pull_request"] }?
+  review(event["pull_request"]["number"]) if event["action"] == "opened"
+  "ok"
+end
+```
+
+`grenat serve [--listen host:port] app.grn` runs the script, then its triggers until stopped: each schedule on a task of its own (a failed run is reported, not fatal; cron schedules are in UTC: minute, hour, day, month, weekday, with ranges, lists, steps and names), and an HTTP server for the webhooks (127.0.0.1:3000 by default), each request on a task of its own. `grenat run` only declares triggers.
+
+- **Proof.** `signature: :github` checks the body's HMAC-SHA256 (`X-Hub-Signature-256`) with the secret, in constant time; `token:` a bearer token. A request that proves nothing reaches no handler (401).
+- **Taint.** The `body`, `headers` and `json` of a `WebhookRequest` are untrusted; its `method`, `path` and `query` are not.
+- **Responses.** A handler's value is the response: a string (200), a hash or record (200, JSON), an integer (that status), `nil` (204).
+- **Tests.** `deliver_webhook "/github", json: {…}` sends a request, signed as its sender would sign it, through the same checks, and returns `{"status" => …, "body" => …}`.
+
+The layer below (`grenat_serve`: cron, calendar, signatures, the HTTP server) knows nothing of the language; it is the start of phase 8's `Web` and `Jobs`.
 
 ### Phase 0.5 status: `grenat fmt`
 

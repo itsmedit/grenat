@@ -4,6 +4,7 @@ mod build;
 mod fmt;
 mod link;
 mod package;
+mod serve;
 mod testing;
 
 use std::env;
@@ -28,6 +29,9 @@ Usage:
   grenat test [<file.grn>...]    run the `test \"…\" do … end` blocks (never a real model:
                                  `mock`, or `cassette` recorded once); without a
                                  file, those of the package's src/ and tests/
+  grenat serve [--listen host:port] [<file.grn>]
+                                 run the program's triggers: `every` schedules, and
+                                 `on_webhook` handlers (127.0.0.1:3000 by default)
   grenat eval <file.grn> [name]  run the `eval` blocks (those whose name contains `name`)
   grenat check [<file.grn>...]   check names, types, effects and taint
   grenat update                  fetch the latest commits of git dependencies (grenat.lock)
@@ -59,6 +63,7 @@ fn main() -> ExitCode {
         Some("eval") if args.len() > 1 => testing::eval(&args[1..]),
         Some("build") => build::build(&args[1..]),
         Some("new") => package::new(&args[1..]),
+        Some("serve") => serve::serve(&args[1..]),
         Some("update") if args.len() == 1 => package::update(),
         Some("fmt") => fmt::fmt(&args[1..]),
         Some("lsp") if args.len() == 1 => {

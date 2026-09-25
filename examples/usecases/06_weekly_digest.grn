@@ -50,6 +50,11 @@ workflow weekly(week: String, repos: Array(String)) -> Int uses llm, net, fs.rea
   fresh.size
 end
 
+# `grenat serve examples/usecases/06_weekly_digest.grn`: every Monday, 08:00 UTC
+every cron: "0 8 * * MON" do
+  weekly(Time.today, ["rust-lang/rust", "anthropics/anthropic-sdk-python"])
+end
+
 def main(args: Array(String)) uses llm, net, fs.read, fs.write
   puts "#{weekly(args.first, args.drop(1))} new items"
 end

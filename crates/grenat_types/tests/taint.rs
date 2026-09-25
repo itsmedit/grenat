@@ -122,3 +122,9 @@ fn what_an_mcp_server_answers_is_untrusted() {
     single(&format!("{head}  Http.post(\"https://x.io\", body: issues)\nend\n"), "E0412", "issues");
     clean(&format!("{head}  Http.post(\"https://x.io\", body: issues.check {{ |i| i.size < 99 }}?)\nend\n"));
 }
+
+#[test]
+fn what_a_webhook_carries_is_untrusted() {
+    single("on_webhook \"/x\" do |req|\n  Shell.run([\"echo\", req.body])\nend\n", "E0412", "[\"echo\", req.body]");
+    clean("on_webhook \"/x\" do |req|\n  p req.path\n  Shell.run([\"echo\", req.path])\nend\nevery cron: \"0 8 * * MON\" do\n  p 1\nend\n");
+}

@@ -107,6 +107,10 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
             interp.write_err(&format!("{message} "));
             Ok(interp.read_line()?.map_or(Value::Nil, Value::str))
         }
+        ("Time", "today") => {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+            Ok(Value::str(grenat_serve::calendar::date(now.as_secs() as i64)))
+        }
         ("Time", "now") => {
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
             Ok(Value::Float(now.as_secs_f64()))

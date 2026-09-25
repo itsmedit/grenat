@@ -158,6 +158,7 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Cli", "confirm") => (Bool, Some("human")),
         ("Cli", "ask") => (Ty::opt(Str), Some("human")),
         ("Time", "now") => (Float, Some("time")),
+        ("Time", "today") => (Str, Some("time")),
         ("Http", "get" | "post" | "put" | "patch" | "delete" | "head") => (User(HTTP_RESPONSE.into()), Some("net")),
         ("Db", "connect") => (User(DATABASE.into()), None),
         ("Shell", "run") => (User(SHELL_RESULT.into()), Some("shell")),
@@ -170,6 +171,9 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
 }
 
 pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image"];
+
+/// What a webhook handler receives.
+pub const WEBHOOK_REQUEST: &str = "WebhookRequest";
 
 /// What `Pdf.read`, `Image.read`… return: a document or image for a model.
 pub const ATTACHMENT: &str = "Attachment";
@@ -209,6 +213,10 @@ pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
         (HTTP_RESPONSE, "body") => (Ty::Str, true),
         (HTTP_RESPONSE, "headers") => (Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Str)), true),
         (HTTP_RESPONSE, "json") => (Ty::Unknown, true),
+        (WEBHOOK_REQUEST, "method" | "path" | "query") => (Ty::Str, false),
+        (WEBHOOK_REQUEST, "body") => (Ty::Str, true),
+        (WEBHOOK_REQUEST, "headers") => (Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Str)), true),
+        (WEBHOOK_REQUEST, "json") => (Ty::Unknown, true),
         (SHELL_RESULT, "status") => (Ty::Int, false),
         (SHELL_RESULT, "ok?") => (Ty::Bool, false),
         (SHELL_RESULT, "stdout" | "stderr") => (Ty::Str, true),
@@ -243,6 +251,9 @@ pub const GLOBALS: &[&str] = &[
     "mock_shell",
     "mcp",
     "mock_mcp",
+    "every",
+    "on_webhook",
+    "deliver_webhook",
     "cassette",
     "fixture",
     "call",

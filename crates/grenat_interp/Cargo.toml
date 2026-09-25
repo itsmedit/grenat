@@ -17,6 +17,7 @@ serde_json.workspace = true
 ureq.workspace = true
 grenat_db.workspace = true
 grenat_mcp.workspace = true
+grenat_serve.workspace = true
 
 [dev-dependencies]
 grenat_mcp = { workspace = true, features = ["fake"] }

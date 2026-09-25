@@ -422,6 +422,7 @@ fn the_use_cases_pass_their_tests() {
             .current_dir(&dir)
             // the services are stubbed: any key will do
             .env("GITHUB_TOKEN", "test")
+            .env("GITHUB_WEBHOOK_SECRET", "test")
             .env("BRAVE_API_KEY", "test")
             .env("LINEAR_TOKEN", "test")
             .env("NOTION_TOKEN", "test")
@@ -434,4 +435,46 @@ fn the_use_cases_pass_their_tests() {
         assert_eq!(code(&out), 0, "{test}: {err}");
         assert!(err.contains(", 0 failed"), "{test}: {err}");
     }
+}
+
+#[test]
+fn serve_runs_schedules_and_receives_webhooks() {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let path = program(
+        "served.grn",
+        "every 0.2 do\n  puts \"tick\"\nend\non_webhook \"/hook\", token: \"t0k\" do |req|\n  \"got #{req.json[\"n\"].trust!}\"\nend\n",
+    );
+    let mut child = Command::new(env!("CARGO_BIN_EXE_grenat"))
+        .args(["serve", "--listen", "127.0.0.1:0", path.to_str().unwrap()])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stderr = BufReader::new(child.stderr.take().unwrap());
+    let mut line = String::new();
+    stderr.read_line(&mut line).unwrap();
+    let address = line.trim().strip_prefix("listening on http://").unwrap_or_else(|| panic!("{line}")).to_string();
+    let post = |headers: &str| {
+        let mut stream = std::net::TcpStream::connect(&address).unwrap();
+        let body = "{\"n\": 7}";
+        write!(stream, "POST /hook HTTP/1.1\r\nHost: x\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        response
+    };
+    let ok = post("Authorization: Bearer t0k\r\n");
+    assert!(ok.starts_with("HTTP/1.1 200"), "{ok}");
+    assert!(ok.ends_with("got 7"), "{ok}");
+    assert!(post("").starts_with("HTTP/1.1 401"));
+    std::thread::sleep(std::time::Duration::from_millis(700));
+    child.kill().unwrap();
+    child.wait().unwrap();
+    let mut out = String::new();
+    child.stdout.take().unwrap().read_to_string(&mut out).unwrap();
+    assert!(out.matches("tick").count() >= 2, "{out}");
+
+    let idle = program("idle.grn", "puts 1\n");
+    let out = grenat(&["serve", idle.to_str().unwrap()]);
+    assert_eq!(code(&out), 1);
+    assert!(text(&out.stderr).contains("nothing to serve"), "{}", text(&out.stderr));
 }

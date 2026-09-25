@@ -143,6 +143,9 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             };
             interp.mock(model.as_deref(), replies)
         })(),
+        "every" => every(interp, &args),
+        "on_webhook" => on_webhook(interp, &args),
+        "deliver_webhook" => deliver_webhook(interp, &args),
         "mcp" => interp.declare_mcp(&args),
         "mock_mcp" => interp.mock_mcp(&args),
         "mock_shell" => (|| {

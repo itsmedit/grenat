@@ -1,5 +1,6 @@
-# Code review of a pull request: the agent reads the diff and the files it
-# needs, then posts one review comment.
+# Code review of pull requests: GitHub's webhook wakes the program
+# (`grenat serve`) when one is opened; the agent reads the diff and the
+# files it needs, then posts one review comment.
 model :smart, provider: :anthropic, name: "claude-opus-5"
 
 enum Severity
@@ -83,4 +84,14 @@ def main(args: Array(String)) uses llm, net("api.github.com"), env
   review = spawn(Reviewer).ask(ReviewPr(diff: GitHub.diff(repo, pr)))
   safe = review.check { |r| r.findings.all? { |f| f.line > 0 } }?
   GitHub.comment(repo, pr, markdown(safe))
+end
+
+# `grenat serve examples/usecases/02_code_review.grn`, with this URL as the
+# repository's webhook (event: pull requests)
+on_webhook "/github", secret: Env.fetch("GITHUB_WEBHOOK_SECRET"), signature: :github do |req|
+  event = req.json.check { |e| e["pull_request"] && e["repository"] }?
+  if event["action"] == "opened"
+    main([event["repository"]["full_name"], event["pull_request"]["number"].to_s])
+  end
+  "ok"
 end

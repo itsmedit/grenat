@@ -301,6 +301,15 @@ impl<'p> Checker<'p> {
             "deny_all" | "approve_all" => V::new(Ty::Sym),
             // test doubles and evals
             "mock" | "mock_http" | "mock_shell" | "mcp" | "mock_mcp" => V::new(Ty::Nil),
+            "every" => {
+                self.walk_block(cx, block, &[]);
+                V::new(Ty::Nil)
+            }
+            "on_webhook" => {
+                self.walk_block(cx, block, &[V::new(Ty::User(builtins::WEBHOOK_REQUEST.into()))]);
+                V::new(Ty::Nil)
+            }
+            "deliver_webhook" => V::new(Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Unknown))),
             "cassette" => self.walk_block(cx, block, &[]).unwrap_or_else(V::unknown),
             "fixture" => {
                 cx.add_effect(Eff { path: "fs.read".into(), arg: None, origin: span });

@@ -1,0 +1,13 @@
+[package]
+name = "grenat_serve"
+description = "What a served Grenat program is woken by: schedules (cron), webhooks (an HTTP server, signatures)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tiny_http = "0.12"
+hmac = "0.13"
+sha2 = "0.11"

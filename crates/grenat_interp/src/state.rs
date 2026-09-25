@@ -54,6 +54,9 @@ pub(crate) struct Shared<'p> {
     pub mocks: Mutex<Vec<(Option<ModelConfig>, Arc<grenat_llm::Mock>)>>,
     /// Stubbed programs (`mock_shell`).
     pub shell_stubs: Mutex<Vec<crate::eval::ShellStub>>,
+    /// Triggers declared by the script (`every`, `on_webhook`).
+    pub schedules: Mutex<Vec<crate::builtins::Schedule<'p>>>,
+    pub webhooks: Mutex<Vec<crate::builtins::Webhook<'p>>>,
     /// Declared MCP servers, by name.
     pub mcp_servers: Mutex<HashMap<String, Arc<crate::eval::mcp::McpServer>>>,
     /// Mocked MCP servers (`mock_mcp`), by name.
@@ -147,6 +150,8 @@ impl<'p> Interp<'p> {
             http_stubs: Mutex::new(Vec::new()),
             databases: Mutex::new(Vec::new()),
             shell_stubs: Mutex::new(Vec::new()),
+            schedules: Mutex::new(Vec::new()),
+            webhooks: Mutex::new(Vec::new()),
             mcp_servers: Mutex::new(HashMap::new()),
             mcp_stubs: Mutex::new(HashMap::new()),
             offline: options.offline,
