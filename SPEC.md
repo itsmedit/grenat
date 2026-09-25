@@ -559,6 +559,27 @@ end
 
 `enqueue(:function, args…)` queues a call in the application's database (`grenat_jobs`: the arguments in the exact encoding of workflow journals); `grenat serve` runs workers that claim ready jobs with a conditional update — two workers, or two servers, never run the same job — and mark them done, or retry them 1, 2, 4… minutes later, up to three runs, then mark them failed with their error. A job's arguments are written: nothing untrusted goes in them (E0412). In `grenat test`, jobs wait in the test's database: `Jobs.enqueued` lists them, `Jobs.perform` runs them (and those they queue), `Jobs.failed` gives the ones given up.
 
+### Phase 8 status: approvals that wait
+
+```ruby
+workflow publish(id: Int) uses llm, db, human
+  draft = step(:draft) { write_post(id) }
+  step(:review) { approve! "Publish “#{draft.title}”?" }    # the job waits, for days if need be
+  step(:publish) { Blog.publish(draft) }
+end
+
+get "/approvals" do |req|
+  json(Approvals.pending)
+end
+
+post "/approvals/:id" do |req|
+  Approvals.approve(req.params["id"].check { |i| i.to_i > 0 }?.to_i)
+  204
+end
+```
+
+In a job, a question to a human (`approve!`, `.approve(by: :human)`) no longer waits at a terminal: it is stored (`grenat_approvals`), and the job waits — status `waiting`, neither failed nor retried — until someone decides with `Approvals.approve(id)` or `Approvals.deny(id)` (a `human` effect), from a route today, from `grenat console` in phase 9. The decision queues the job again: it runs from the start, a workflow replays its journaled steps without running them — the model is not called again — and finds the answer where it stopped. A question is known by its job and its rank among the questions of a run, so the same question gets the same answer on every run; a denial fails the job at once (`ApprovalDenied`), without retries. `Approvals.pending` lists what waits. Outside jobs, and in tests under `with_human`, questions are answered as before.
+
 ### Phase 7 plan: the ten use cases
 
 Ten realistic programs, one per kind of agent, are in `examples/usecases` (the first is `examples/support_desk.grn`): support, code review, research, data, documents, a scheduled digest, operations, a chat with memory, a team of agents, third-party tools. Each checks and passes its tests today, the model mocked, in 24 to 47 lines of logic (113 for the full support desk). Only two run for real: the others fake, between `STUBS` markers, the I/O the standard library lacks. Phase 7 is done when every stub is gone. In order:

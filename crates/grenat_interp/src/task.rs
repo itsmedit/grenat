@@ -43,6 +43,9 @@ impl<'p> Interp<'p> {
             providers: self.providers.clone(),
             // tasks a batched task starts call models directly
             batch: None,
+            // a job's own tasks store its approvals too
+            current_job: self.current_job,
+            approval_rank: Default::default(),
         }
     }
 

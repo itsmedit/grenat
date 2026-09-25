@@ -8,6 +8,12 @@ impl<'p> Interp<'p> {
     pub(crate) fn ask_human(&mut self, message: &str) -> Result<bool, Ctrl<'p>> {
         // a test's double of the human wins over the program's own handler
         let double = self.human_double.borrow().clone();
+        // in a job, the question is stored and the job waits for a decision
+        if double.is_none()
+            && let Some(job) = self.current_job
+        {
+            return self.stored_approval(job, message);
+        }
         let approver = double.or_else(|| self.approver.borrow().clone());
         match approver {
             Some(Value::Symbol(policy)) => Ok(&*policy == "approve_all"),

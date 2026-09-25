@@ -1,6 +1,7 @@
 //! Evaluation: one module per responsibility, all extending [`Interp`](crate::Interp).
 
 mod agents;
+pub(crate) mod approvals;
 mod assign;
 pub(crate) mod batch;
 mod budget;

@@ -167,6 +167,8 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Mail", "connect") => (User(MAILER.into()), None),
         ("Html", "text" | "escape") => (Str, None),
         ("Conversation", "new") => (User(CONVERSATION.into()), None),
+        ("Approvals", "pending") => (Ty::array(Ty::Hash(Box::new(Str), Box::new(Unknown))), Some("db.read")),
+        ("Approvals", "approve" | "deny") => (Nil, Some("human")),
         ("Jobs", "enqueued") => (Ty::array(Ty::array(Unknown)), Some("db.read")),
         ("Jobs", "failed") => (Ty::array(Ty::array(Str)), Some("db.read")),
         ("Jobs", "perform") => (Int, Some("db.write")),
@@ -178,7 +180,7 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
     })
 }
 
-pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Conversation", "Jobs"];
+pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Conversation", "Jobs", "Approvals"];
 
 /// What `Conversation.new` returns.
 pub const CONVERSATION: &str = "Conversation";

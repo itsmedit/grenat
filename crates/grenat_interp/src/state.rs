@@ -137,6 +137,10 @@ pub(crate) struct Interp<'p> {
     pub workflows: Vec<Arc<crate::eval::workflow::WorkflowRun>>,
     /// Providers of the enclosing `cassette` blocks, innermost last.
     pub providers: Vec<Arc<dyn Provider>>,
+    /// The job this task runs (its approvals are stored), and the rank of
+    /// the next question it asks.
+    pub current_job: Option<i64>,
+    pub approval_rank: std::cell::Cell<usize>,
     /// The batch this task's model calls go to (`batch_map`).
     pub batch: Option<Arc<crate::eval::batch::BatchRun>>,
 }
@@ -223,6 +227,8 @@ impl<'p> Interp<'p> {
             workflows: Vec::new(),
             providers: Vec::new(),
             batch: None,
+            current_job: None,
+            approval_rank: Default::default(),
         };
         loaded.and_then(|()| interp.load_models()).map_err(|ctrl| interp.runtime_error(ctrl))?;
         if let Some(error) = link_error {

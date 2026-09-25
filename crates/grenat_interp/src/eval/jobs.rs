@@ -116,11 +116,29 @@ impl<'p> Interp<'p> {
             Value::Int(n) => n,
             _ => 0,
         });
+        let job = match &id {
+            Cell::Int(n) => Some(*n),
+            _ => None,
+        };
+        let (outer_job, outer_rank) = (self.current_job, self.approval_rank.get());
+        self.current_job = job;
+        self.approval_rank.set(0);
         let outcome = match (self.fns.get(name.as_str()).copied(), decode_args(&args)) {
             (Some(def), Ok(values)) => self.call_fn(def, Args { pos: values, ..Args::default() }, None).map(drop),
             (None, _) => raise("NameError", format!("unknown function `{name}`")),
             (_, Err(ctrl)) => Err(ctrl),
         };
+        self.current_job = outer_job;
+        self.approval_rank.set(outer_rank);
+        // waiting for a human: neither done nor failed
+        if let Err(ctrl) = &outcome
+            && ctrl.error_type() == Some(crate::eval::approvals::SUSPENDED)
+        {
+            let wait = format!("UPDATE {TABLE} SET status = 'waiting' WHERE id = ?");
+            let params = [id];
+            grenat_green::blocking(|| connection.lock().execute(&wait, &params)).or_else(db_error)?;
+            return Ok(true);
+        }
         let (sql, params) = match outcome {
             Ok(()) => (format!("UPDATE {TABLE} SET status = 'done', attempts = ? WHERE id = ?"), vec![Cell::Int(attempts + 1), id]),
             Err(ctrl) => {
@@ -130,7 +148,8 @@ impl<'p> Interp<'p> {
                     self.write_err(&format!("[job] {name} failed: {message}\n"));
                 }
                 let attempts = attempts + 1;
-                if attempts >= ATTEMPTS {
+                // a human said no: asking again would not change it
+                if attempts >= ATTEMPTS || error.ty == "ApprovalDenied" {
                     (format!("UPDATE {TABLE} SET status = 'failed', attempts = ?, error = ? WHERE id = ?"), vec![Cell::Int(attempts), Cell::Text(message), id])
                 } else {
                     let retry = now() + 60.0 * f64::from(1 << (attempts - 1).min(10) as u32);
