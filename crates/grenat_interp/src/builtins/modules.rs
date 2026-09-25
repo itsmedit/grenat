@@ -16,6 +16,11 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         ("Pdf" | "Image", _) => call_attachment(interp, ty, name, &args),
         ("Mail", _) => call_mail(interp, name, &args),
         ("Conversation", "new" | "load") => interp.conversation_static(name, &args),
+        ("Html", "escape") => {
+            // escaping is what makes a value safe on a page
+            let text = arg(&args, 0, name)?.to_display();
+            Ok(Value::str(text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")))
+        }
         ("Html", "text") => {
             let html = arg(&args, 0, name)?;
             let text = Value::str(super::html::text(&html.to_display()));

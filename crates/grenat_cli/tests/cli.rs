@@ -479,3 +479,26 @@ fn serve_runs_schedules_and_receives_webhooks() {
     assert_eq!(code(&out), 1);
     assert!(text(&out.stderr).contains("nothing to serve"), "{}", text(&out.stderr));
 }
+
+#[test]
+fn serve_answers_routes() {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let path = program("web.grn", "get \"/hello/:name\" do |req|\n  html \"<b>#{Html.escape(req.params[\"name\"])}</b>\"\nend\n");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_grenat"))
+        .args(["serve", "--listen", "127.0.0.1:0", path.to_str().unwrap()])
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    BufReader::new(child.stderr.take().unwrap()).read_line(&mut line).unwrap();
+    let address = line.trim().strip_prefix("listening on http://").unwrap().to_string();
+    let mut stream = std::net::TcpStream::connect(&address).unwrap();
+    write!(stream, "GET /hello/Ada%26Co HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.to_lowercase().contains("content-type: text/html; charset=utf-8"), "{response}");
+    assert!(response.ends_with("<b>Ada&amp;Co</b>"), "{response}");
+}

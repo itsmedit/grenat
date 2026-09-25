@@ -140,3 +140,11 @@ fn an_email_is_never_untrusted() {
 fn a_page_as_text_is_still_untrusted() {
     single("def main uses net\n  t = Html.text(Http.get(\"https://x.io\").body)\n  Http.post(\"https://y.io\", body: t)\nend\n", "E0412", "t");
 }
+
+#[test]
+fn a_page_never_carries_an_unescaped_untrusted_value() {
+    single("get \"/x\" do |req|\n  html \"<p>#{req.params[\"name\"]}</p>\"\nend\n", "E0412", "\"<p>#{req.params[\"name\"]}</p>\"");
+    clean("get \"/x\" do |req|\n  html \"<p>#{Html.escape(req.params[\"name\"])}</p>\"\nend\n");
+    single("get \"/x\" do |req|\n  redirect req.params[\"to\"]\nend\n", "E0412", "req.params[\"to\"]");
+    clean("get \"/x\" do |req|\n  json(req.params)\nend\n");
+}

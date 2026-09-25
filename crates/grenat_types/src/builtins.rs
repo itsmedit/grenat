@@ -165,7 +165,7 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Pdf" | "Image", "read") => (User(ATTACHMENT.into()), Some("fs.read")),
         ("Pdf" | "Image", "url") => (User(ATTACHMENT.into()), None),
         ("Mail", "connect") => (User(MAILER.into()), None),
-        ("Html", "text") => (Str, None),
+        ("Html", "text" | "escape") => (Str, None),
         ("Conversation", "new") => (User(CONVERSATION.into()), None),
         ("Conversation", "load") => (User(CONVERSATION.into()), Some("fs.read")),
         ("Mail", "deliveries") => (Ty::array(Ty::Hash(Box::new(Str), Box::new(Unknown))), None),
@@ -188,8 +188,16 @@ pub fn untrusted_method(record: &str, name: &str) -> bool {
 /// What `Mail.connect` returns.
 pub const MAILER: &str = "Mailer";
 
-/// What a webhook handler receives.
-pub const WEBHOOK_REQUEST: &str = "WebhookRequest";
+/// What a route or webhook handler receives.
+pub const REQUEST: &str = "Request";
+
+/// What `html`, `json`, `status` and `redirect` build.
+pub const RESPONSE: &str = "Response";
+
+/// Built-in functions that make an untrusted value safe (escaping).
+pub fn sanitizes(module: &str, name: &str) -> bool {
+    matches!((module, name), ("Html", "escape"))
+}
 
 /// What `Pdf.read`, `Image.read`… return: a document or image for a model.
 pub const ATTACHMENT: &str = "Attachment";
@@ -232,10 +240,12 @@ pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
         (HTTP_RESPONSE, "body") => (Ty::Str, true),
         (HTTP_RESPONSE, "headers") => (Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Str)), true),
         (HTTP_RESPONSE, "json") => (Ty::Unknown, true),
-        (WEBHOOK_REQUEST, "method" | "path" | "query") => (Ty::Str, false),
-        (WEBHOOK_REQUEST, "body") => (Ty::Str, true),
-        (WEBHOOK_REQUEST, "headers") => (Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Str)), true),
-        (WEBHOOK_REQUEST, "json") => (Ty::Unknown, true),
+        (REQUEST, "method" | "path") => (Ty::Str, false),
+        (REQUEST, "query") => (Ty::Str, true),
+        (REQUEST, "params") => (Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Str)), true),
+        (REQUEST, "body") => (Ty::Str, true),
+        (REQUEST, "headers") => (Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Str)), true),
+        (REQUEST, "json") => (Ty::Unknown, true),
         (CONVERSATION, "history") => (Ty::array(Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Str))), false),
         (CONVERSATION, "summary") => (Ty::Str, true),
         (SHELL_RESULT, "status") => (Ty::Int, false),
@@ -273,6 +283,16 @@ pub const GLOBALS: &[&str] = &[
     "mcp",
     "mock_mcp",
     "every",
+    "get",
+    "post",
+    "put",
+    "patch",
+    "delete",
+    "html",
+    "json",
+    "status",
+    "redirect",
+    "request",
     "on_webhook",
     "deliver_webhook",
     "cassette",

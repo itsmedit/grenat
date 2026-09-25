@@ -16,9 +16,14 @@ impl Incoming {
         self.headers.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
     }
 
-    pub fn respond(self, status: u16, content_type: &str, body: String) {
-        let header = tiny_http::Header::from_bytes("Content-Type", content_type).expect("a valid header");
-        let response = tiny_http::Response::from_string(body).with_status_code(status).with_header(header);
+    pub fn respond(self, status: u16, content_type: &str, headers: &[(String, String)], body: String) {
+        let mut response = tiny_http::Response::from_string(body).with_status_code(status);
+        let all = std::iter::once(("Content-Type", content_type)).chain(headers.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+        for (name, value) in all {
+            if let Ok(header) = tiny_http::Header::from_bytes(name, value) {
+                response = response.with_header(header);
+            }
+        }
         let _ = self.request.respond(response);
     }
 }

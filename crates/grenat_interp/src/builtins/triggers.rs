@@ -19,9 +19,6 @@ use crate::prelude::*;
 
 use super::*;
 
-/// The record a webhook handler receives.
-pub(crate) const WEBHOOK_REQUEST: &str = "WebhookRequest";
-
 /// When a schedule runs.
 pub(crate) enum Every {
     Seconds(f64),
@@ -48,15 +45,6 @@ pub(crate) struct Webhook<'p> {
     pub path: String,
     pub proof: Proof,
     pub block: Value<'p>,
-}
-
-/// A request to a webhook, before it is checked.
-pub(crate) struct RawRequest {
-    pub method: String,
-    pub path: String,
-    pub query: String,
-    pub headers: Vec<(String, String)>,
-    pub body: Vec<u8>,
 }
 
 pub(crate) fn every<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
@@ -118,19 +106,18 @@ pub(crate) fn deliver_webhook<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R
         Some(Proof::Token(token)) if !given("Authorization") => raw.headers.push(("Authorization".into(), format!("Bearer {token}"))),
         _ => {}
     }
-    let (status, body) = interp.handle_webhook(raw)?;
-    let pairs = vec![(Value::str("status"), Value::Int(i64::from(status))), (Value::str("body"), Value::str(body))];
-    Ok(Value::Hash(Arc::new(Mutex::new(pairs))))
+    let answer = interp.handle_webhook(raw)?;
+    Ok(answer_value(answer))
 }
 
 impl<'p> Interp<'p> {
-    /// Answers a webhook request: (status, body). A request that does not
-    /// prove where it comes from never reaches its handler.
-    pub(crate) fn handle_webhook(&mut self, raw: RawRequest) -> Result<(u16, String), Ctrl<'p>> {
+    /// Answers a webhook request. A request that does not prove where it
+    /// comes from never reaches its handler.
+    pub(crate) fn handle_webhook(&mut self, raw: RawRequest) -> Result<HttpAnswer, Ctrl<'p>> {
         let found = self.webhooks.borrow().iter().find(|w| w.path == raw.path).map(|w| (w.proof.clone(), w.block.clone()));
-        let Some((proof, handler)) = found else { return Ok((404, "no such webhook".into())) };
+        let Some((proof, handler)) = found else { return Ok(HttpAnswer::text(404, "no such webhook")) };
         if raw.method != "POST" {
-            return Ok((405, "webhooks are POST requests".into()));
+            return Ok(HttpAnswer::text(405, "webhooks are POST requests"));
         }
         let header = |name: &str| raw.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.clone());
         let proven = match &proof {
@@ -144,25 +131,10 @@ impl<'p> Interp<'p> {
             if self.log {
                 self.write_err(&format!("[webhook] {}: refused (bad signature or token)\n", raw.path));
             }
-            return Ok((401, "unauthorized".into()));
+            return Ok(HttpAnswer::text(401, "unauthorized"));
         }
-        let headers = raw.headers.iter().map(|(k, v)| (Value::str(k.to_lowercase()), Value::str(v).taint())).collect();
-        let request = Value::record(
-            WEBHOOK_REQUEST,
-            vec![
-                ("method".into(), Value::str(&raw.method)),
-                ("path".into(), Value::str(&raw.path)),
-                ("query".into(), Value::str(&raw.query)),
-                ("headers".into(), Value::Hash(Arc::new(Mutex::new(headers)))),
-                ("body".into(), Value::str(String::from_utf8_lossy(&raw.body)).taint()),
-            ],
-        );
+        let request = request_value(&raw, Vec::new());
         let answer = self.call_block(&handler, vec![request])?;
-        Ok(match answer.untainted() {
-            Value::Nil => (204, String::new()),
-            Value::Int(status) => (u16::try_from(*status).unwrap_or(500), String::new()),
-            Value::Str(text) => (200, text.to_string()),
-            other => (200, crate::llm::value_to_json(other).to_string()),
-        })
+        Ok(answer_of(&answer))
     }
 }

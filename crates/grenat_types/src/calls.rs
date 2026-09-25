@@ -306,10 +306,24 @@ impl<'p> Checker<'p> {
                 V::new(Ty::Nil)
             }
             "on_webhook" => {
-                self.walk_block(cx, block, &[V::new(Ty::User(builtins::WEBHOOK_REQUEST.into()))]);
+                self.walk_block(cx, block, &[V::new(Ty::User(builtins::REQUEST.into()))]);
                 V::new(Ty::Nil)
             }
-            "deliver_webhook" => V::new(Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Unknown))),
+            "deliver_webhook" | "request" => V::new(Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Unknown))),
+            "get" | "post" | "put" | "patch" | "delete" if block.is_some() => {
+                self.walk_block(cx, block, &[V::new(Ty::User(builtins::REQUEST.into()))]);
+                V::new(Ty::Nil)
+            }
+            // a page, and where a browser is sent: never untrusted
+            "html" | "redirect" => {
+                if let Some(arg) = argv.first()
+                    && let Some(origin) = arg.v.taint
+                {
+                    self.taint_violation(arg.span, origin, name, "web");
+                }
+                V::new(Ty::User(builtins::RESPONSE.into()))
+            }
+            "json" | "status" => V::new(Ty::User(builtins::RESPONSE.into())),
             "cassette" => self.walk_block(cx, block, &[]).unwrap_or_else(V::unknown),
             "fixture" => {
                 cx.add_effect(Eff { path: "fs.read".into(), arg: None, origin: span });

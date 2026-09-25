@@ -31,7 +31,7 @@ impl<'p> Checker<'p> {
                     "Hash" => Ty::Hash(Box::new(arg(self, 0)), Box::new(arg(self, 1))),
                     "Result" => Ty::Result(Box::new(arg(self, 0)), Box::new(arg(self, 1))),
                     n if self.types.contains_key(n) || is_error_name(n) => Ty::user(n),
-                    n @ (builtins::DATABASE | builtins::HTTP_RESPONSE | builtins::SHELL_RESULT | builtins::ATTACHMENT | builtins::WEBHOOK_REQUEST | builtins::MAILER | builtins::CONVERSATION) => {
+                    n @ (builtins::DATABASE | builtins::HTTP_RESPONSE | builtins::SHELL_RESULT | builtins::ATTACHMENT | builtins::REQUEST | builtins::MAILER | builtins::CONVERSATION | builtins::RESPONSE) => {
                         Ty::user(n)
                     }
                     n => {

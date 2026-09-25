@@ -208,7 +208,9 @@ impl<'p> Checker<'p> {
             }
             let _ = block_v;
             // what a pure function makes of untrusted data is untrusted
-            let taint = if builtins::untrusted_result(t, n) {
+            let taint = if builtins::sanitizes(t, n) {
+                None
+            } else if builtins::untrusted_result(t, n) {
                 Some(span)
             } else if effect.is_none() {
                 argv.iter().find_map(|a| a.v.taint)

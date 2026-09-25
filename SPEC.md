@@ -493,6 +493,28 @@ What a web framework would add on top of a language, Grenat takes in, because th
 
 A program that wants none of it pays nothing: conventions live in generators, not in the language. Interoperability comes first: an application serves its agents over HTTP and as MCP servers, so that programs in other languages use them, and it uses agents written elsewhere through `Http` and `mcp`.
 
+### Phase 8 status: routes (`Web`)
+
+```ruby
+get "/tickets/:id" do |req|
+  id = req.params["id"].check { |i| i.to_i > 0 }?.to_i
+  json(find_ticket(id))
+end
+
+post "/tickets" do |req|
+  status 201, json(create_ticket(req.json.trust!["subject"]))
+end
+
+get "/hello" do |req|
+  html "<h1>Hello #{Html.escape(req.params["name"])}</h1>"
+end
+```
+
+`get`, `post`, `put`, `patch` and `delete` declare routes (`:name` segments are parameters), served by `grenat serve` with the webhooks and schedules. A handler receives a `Request` — `method`, `path`, `params` (the path's and the query's, decoded), `query`, `headers`, `body`, `json` — and its value is the response: a string (text), a hash or record (JSON), `json(v)`, `html(page)`, `status(code, response)`, `redirect(url)`, an integer (a status), `nil` (204). An unknown path is a 404, a known one with another method a 405.
+
+- **Taint.** Everything a request carries but its method and path is untrusted. A page is a sink: `html` refuses an untrusted value that was not escaped — `Html.escape` is the check that makes it safe — so a page cannot carry a script someone slipped in; `redirect` refuses an untrusted URL (no open redirects). Statically (E0412) and at run time.
+- **Tests.** `request :get, "/tickets/42"` (or `json:`, `body:`, `headers:`) goes through the routes without a server and returns `{"status" => …, "body" => …, "content_type" => …, "headers" => …}`.
+
 ### Phase 7 plan: the ten use cases
 
 Ten realistic programs, one per kind of agent, are in `examples/usecases` (the first is `examples/support_desk.grn`): support, code review, research, data, documents, a scheduled digest, operations, a chat with memory, a team of agents, third-party tools. Each checks and passes its tests today, the model mocked, in 24 to 47 lines of logic (113 for the full support desk). Only two run for real: the others fake, between `STUBS` markers, the I/O the standard library lacks. Phase 7 is done when every stub is gone. In order:

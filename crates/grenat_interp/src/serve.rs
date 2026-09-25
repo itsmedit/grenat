@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use grenat_ast::Program;
 
-use crate::builtins::{Every, RawRequest};
+use crate::builtins::{Every, HttpAnswer, RawRequest};
 use crate::value::Locked;
 use crate::{Interp, Options, RuntimeError, on_interpreter_thread, spawner};
 
@@ -23,11 +23,11 @@ pub fn serve(
             return Err(interp.runtime_error(ctrl));
         }
         let schedules = interp.schedules.borrow().len();
-        let webhooks = !interp.webhooks.borrow().is_empty();
+        let webhooks = !interp.webhooks.borrow().is_empty() || !interp.routes.borrow().is_empty();
         if schedules == 0 && !webhooks {
             return Err(RuntimeError {
                 ty: "ArgumentError".into(),
-                message: "nothing to serve: declare `every … do … end` or `on_webhook \"/path\" do … end`".into(),
+                message: "nothing to serve: declare routes (`get \"/\" do … end`), `on_webhook` or `every`".into(),
                 span: None,
                 trace: Vec::new(),
             });
@@ -49,16 +49,18 @@ pub fn serve(
                         headers: incoming.headers.clone(),
                         body: incoming.body.clone(),
                     };
-                    let (status, body) = match task.handle_webhook(raw) {
+                    let answer = match task.handle_request(raw) {
                         Ok(answer) => answer,
                         Err(ctrl) => {
                             let error = task.runtime_error(ctrl);
-                            task.write_err(&format!("[webhook] {}: {}: {}\n", incoming.path, error.ty, error.message));
-                            (500, "error".into())
+                            task.write_err(&format!("[{} {}] {}: {}\n", incoming.method, incoming.path, error.ty, error.message));
+                            HttpAnswer::text(500, "error")
                         }
                     };
-                    let json = body.starts_with('{') || body.starts_with('[');
-                    incoming.respond(status, if json { "application/json" } else { "text/plain; charset=utf-8" }, body);
+                    if task.log {
+                        task.write_err(&format!("[web] {} {} → {}\n", incoming.method, incoming.path, answer.status));
+                    }
+                    incoming.respond(answer.status, &answer.content_type, &answer.headers, answer.body);
                 });
             }
         }
