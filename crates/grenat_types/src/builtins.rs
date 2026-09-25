@@ -161,13 +161,18 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Http", "get" | "post" | "put" | "patch" | "delete" | "head") => (User(HTTP_RESPONSE.into()), Some("net")),
         ("Db", "connect") => (User(DATABASE.into()), None),
         ("Shell", "run") => (User(SHELL_RESULT.into()), Some("shell")),
+        ("Pdf" | "Image", "read") => (User(ATTACHMENT.into()), Some("fs.read")),
+        ("Pdf" | "Image", "url") => (User(ATTACHMENT.into()), None),
         ("Mcp", "call") => (Str, Some("mcp")),
         ("Mcp", "tools") => (Ty::array(Str), Some("mcp")),
         _ => return None,
     })
 }
 
-pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp"];
+pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image"];
+
+/// What `Pdf.read`, `Image.read`… return: a document or image for a model.
+pub const ATTACHMENT: &str = "Attachment";
 
 /// Built-in functions whose result comes from outside, hence untrusted.
 pub fn untrusted_result(module: &str, name: &str) -> bool {

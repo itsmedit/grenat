@@ -15,15 +15,9 @@ struct Invoice
   lines: Array(Line)
 end
 
-# ═══ STUBS ═══
-module Pdf
-  def self.text(path: String) -> String uses fs.read = File.read(path)
-end
-# ═══ END STUBS ═══
-
 ## Extracts an invoice.
-prompt extract(text: String) -> ~Invoice using :fast
-  user text
+prompt extract(invoice: Attachment) -> ~Invoice using :fast
+  user "Extract this invoice.", invoice
 end
 
 def consistent?(i: Invoice) -> Bool
@@ -32,7 +26,7 @@ def consistent?(i: Invoice) -> Bool
 end
 
 workflow process(path: String) -> String uses llm, fs.read
-  invoice = step(:extract) { extract(Pdf.text(path)).check { |i| consistent?(i) }? }
+  invoice = step(:extract) { extract(Pdf.read(path)).check { |i| consistent?(i) }? }
   Json.dump(invoice)
 end
 
@@ -45,5 +39,5 @@ def main(args: Array(String)) uses llm, fs.read, fs.write
 end
 
 eval "extraction", dataset: "invoices_gold.jsonl", threshold: 0.95 do |row|
-  extract(row.text).trust!.total == row.total
+  extract(Pdf.read(row.path)).trust!.total == row.total
 end

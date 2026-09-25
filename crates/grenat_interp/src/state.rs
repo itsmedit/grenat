@@ -22,8 +22,8 @@ pub(crate) struct Frame<'p> {
 #[derive(Default)]
 pub(crate) struct PromptCtx {
     pub system: Vec<String>,
-    /// (role, text)
-    pub messages: Vec<(&'static str, String)>,
+    /// (role, content blocks: text, documents, images)
+    pub messages: Vec<(&'static str, Vec<serde_json::Value>)>,
 }
 
 #[derive(Clone)]

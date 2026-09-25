@@ -26,16 +26,7 @@ impl<'p> Interp<'p> {
         if !ctx.messages.iter().any(|(role, _)| *role == "user") {
             return raise("LlmError", format!("prompt `{}` sends no message: add `user \"…\"`", def.name.name));
         }
-        let mut messages: Vec<Json> = Vec::new();
-        for (role, text) in ctx.messages {
-            match messages.last_mut() {
-                Some(last) if last["role"] == role => {
-                    let merged = format!("{}\n\n{text}", last["content"].as_str().unwrap_or_default());
-                    last["content"] = json!(merged);
-                }
-                _ => messages.push(json!({"role": role, "content": text})),
-            }
-        }
+        let messages = merge_messages(ctx.messages);
         let output = match ret {
             Ty::Str => None,
             ref other => Some(self.output_schema(other).or_else(type_error)?),
@@ -70,13 +61,44 @@ impl<'p> Interp<'p> {
 
     // ── system / user inside a prompt ─────────────────────────
 
-    pub(crate) fn prompt_message(&mut self, role: &'static str, text: String) -> bool {
+    /// A `system`, `user` or `assistant` call in a prompt: its content blocks.
+    pub(crate) fn prompt_message(&mut self, role: &'static str, blocks: Vec<Json>) -> bool {
         let Some(ctx) = self.prompts.last_mut() else { return false };
         if role == "system" {
-            ctx.system.push(text);
+            let text: Vec<&str> = blocks.iter().filter_map(|b| b["text"].as_str()).collect();
+            ctx.system.push(text.join("\n"));
         } else {
-            ctx.messages.push((role, text));
+            ctx.messages.push((role, blocks));
         }
         true
     }
+}
+
+/// Consecutive messages of a role become one; attachments come first (as
+/// the API recommends), texts are joined with a blank line; a message of
+/// text only is a plain string.
+fn merge_messages(parts: Vec<(&'static str, Vec<Json>)>) -> Vec<Json> {
+    let mut merged: Vec<(&'static str, Vec<Json>)> = Vec::new();
+    for (role, blocks) in parts {
+        match merged.last_mut() {
+            Some((last, all)) if *last == role => all.extend(blocks),
+            _ => merged.push((role, blocks)),
+        }
+    }
+    merged
+        .into_iter()
+        .map(|(role, blocks)| {
+            let texts: Vec<&str> = blocks.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str()).collect();
+            let text = texts.join("\n\n");
+            let attachments: Vec<Json> = blocks.iter().filter(|b| b["type"] != "text").cloned().collect();
+            if attachments.is_empty() {
+                return json!({"role": role, "content": text});
+            }
+            let mut content = attachments;
+            if !text.is_empty() {
+                content.push(json!({"type": "text", "text": text}));
+            }
+            json!({"role": role, "content": content})
+        })
+        .collect()
 }

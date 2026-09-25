@@ -578,6 +578,18 @@ end
 - **Taint.** Nothing untrusted goes to `Mcp.call`, and what it returns is untrusted.
 - **Tests.** `mock_mcp :linear, tools: {"create_issue" => "created L-1"}` stands for a server; `call(:linear__create_issue, …)` in a model's mocked replies calls one of its tools.
 
+### Phase 7 status: documents and images
+
+```ruby
+prompt extract(invoice: Attachment) -> ~Invoice using :fast
+  user "Extract this invoice.", invoice
+end
+
+extract(Pdf.read("invoices/a.pdf"))       # Image.read("scan.png"), Pdf.url("https://…")
+```
+
+`Pdf.read` and `Image.read` (`.png`, `.jpg`, `.gif`, `.webp`) read a file (an `fs.read` effect) into an `Attachment`; `Pdf.url` and `Image.url` point to one the provider fetches. In a prompt, `user` takes attachments among its texts: a message becomes document and image blocks first, then its text; a message of text only is sent as before, so recorded cassettes stay valid.
+
 ### Phase 0.5 status: `grenat fmt`
 
 `grenat fmt [--check] <files or directories>` rewrites Grenat code in its canonical layout (`grenat_fmt`): printed back from the syntax tree with two-space indentation, spaces around operators, only the parentheses the grammar needs (the printer uses the parser's binding powers), one blank line at most, end-of-line comments aligned, arrays, hashes, argument lists and method chains longer than 100 columns broken one item per line. What the syntax leaves to the author is kept: literals as written (`2_000_000`, escapes), modifiers (`x if c`, `x rescue y`), `unless`/`until`, `{ }` or `do … end` blocks, one-line `if … then … end`, `in X then y` and `else y`, heredocs (re-indented with their statement). Comments stay above the code they preceded, or at the end of its line.

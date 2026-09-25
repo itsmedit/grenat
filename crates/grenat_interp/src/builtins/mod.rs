@@ -1,6 +1,7 @@
 //! Standard library, one module per family of functions.
 
 mod args;
+mod attachments;
 mod collections;
 mod db;
 mod globals;
@@ -12,6 +13,7 @@ mod shell;
 mod strings;
 
 pub(crate) use args::*;
+pub(crate) use attachments::*;
 pub(crate) use collections::*;
 pub(crate) use db::*;
 pub(crate) use globals::*;

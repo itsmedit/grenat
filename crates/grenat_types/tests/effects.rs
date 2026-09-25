@@ -130,3 +130,11 @@ fn mcp_servers_are_capabilities() {
     single("def main uses mcp(\"notion\")\n  Mcp.tools(:linear)\nend\n", "E0300", "Mcp.tools(:linear)");
     clean("test \"t\" do\n  mock_mcp :linear, tools: {\"a\" => \"b\"}\nend\n");
 }
+
+#[test]
+fn reading_an_attachment_is_reading_a_file() {
+    let prompt = "model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"\nprompt read(doc: Attachment) -> ~String using :fast\n  user \"Summarize.\", doc\nend\n";
+    let d = single(&format!("{prompt}def main uses llm\n  read(Pdf.read(\"./a.pdf\"))\nend\n"), "E0300", "Pdf.read(\"./a.pdf\")");
+    assert!(d.message.contains("fs.read"), "{}", d.message);
+    clean(&format!("{prompt}def main uses llm, fs.read\n  read(Pdf.read(\"./a.pdf\"))\n  read(Image.url(\"https://x.io/a.png\"))\nend\n"));
+}

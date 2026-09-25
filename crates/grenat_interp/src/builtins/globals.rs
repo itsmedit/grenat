@@ -70,8 +70,19 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
                 "user" => "user",
                 _ => "assistant",
             };
-            let text = args.pos.iter().map(Value::to_display).collect::<Vec<_>>().join("\n");
-            interp.prompt_message(role, text);
+            // text lines, and attachments (documents, images)
+            let mut blocks: Vec<serde_json::Value> = Vec::new();
+            let mut lines: Vec<String> = Vec::new();
+            for v in &args.pos {
+                match v.untainted() {
+                    Value::Record(r) if &*r.ty == ATTACHMENT => blocks.push(attachment_block(&r.fields)),
+                    other => lines.push(other.to_display()),
+                }
+            }
+            if !lines.is_empty() {
+                blocks.push(serde_json::json!({"type": "text", "text": lines.join("\n")}));
+            }
+            interp.prompt_message(role, blocks);
             Ok(Value::Nil)
         }
         "spawn" => arg(&args, 0, name).and_then(|t| interp.spawn(&t)),
