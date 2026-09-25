@@ -215,7 +215,9 @@ impl<'s> Printer<'s> {
             let column = group.iter().map(|&(_, w)| w).max().unwrap_or(0);
             for &(line, width) in &group {
                 let text = &lines[line];
-                let (code, comment) = text.split_at(width.min(text.len()));
+                // `width` counts characters: split at the matching byte
+                let at = text.char_indices().nth(width).map_or(text.len(), |(i, _)| i);
+                let (code, comment) = text.split_at(at);
                 lines[line] = format!("{code}{}  {}", " ".repeat(column - width), comment.trim_start());
             }
         }

@@ -180,3 +180,9 @@ fn top_level_constants_are_kept() {
     let src = "MEMORY = \"memory.json\"\n\ndef path = MEMORY\n";
     assert_eq!(crate::format(src).unwrap(), src);
 }
+
+#[test]
+fn end_of_line_comments_after_accented_text_stay_aligned() {
+    let src = "x = \"é\"  # one\nlong_name = \"“quoted”\"    # two\ny(\"é\")  # three\n";
+    assert_eq!(fmt(src), "x = \"é\"                 # one\nlong_name = \"“quoted”\"  # two\ny(\"é\")                  # three\n");
+}
