@@ -132,6 +132,10 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             };
             interp.mock(model.as_deref(), replies)
         })(),
+        "mock_shell" => (|| {
+            let pattern = arg(&args, 0, name)?.to_display();
+            interp.mock_shell(&pattern, &args)
+        })(),
         "mock_http" => (|| {
             let target = arg(&args, 0, name)?.to_display();
             interp.mock_http(&target, &args)

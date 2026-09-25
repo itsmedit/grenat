@@ -12,7 +12,12 @@ impl<'p> Checker<'p> {
             match arg {
                 Arg::Pos(e) => {
                     let v = self.expr(cx, e);
-                    out.push(ArgV { name: None, v, span: e.span, lit: literal_string(e) });
+                    // an argument vector's program restricts `shell` effects
+                    let lit = literal_string(e).or_else(|| match &e.kind {
+                        grenat_ast::ExprKind::Array(items) => items.first().and_then(literal_string),
+                        _ => None,
+                    });
+                    out.push(ArgV { name: None, v, span: e.span, lit });
                 }
                 Arg::Named { name, value } => {
                     let (v, span, lit) = match value {
@@ -293,7 +298,7 @@ impl<'p> Checker<'p> {
             }
             "deny_all" | "approve_all" => V::new(Ty::Sym),
             // test doubles and evals
-            "mock" | "mock_http" => V::new(Ty::Nil),
+            "mock" | "mock_http" | "mock_shell" => V::new(Ty::Nil),
             "cassette" => self.walk_block(cx, block, &[]).unwrap_or_else(V::unknown),
             "fixture" => {
                 cx.add_effect(Eff { path: "fs.read".into(), arg: None, origin: span });

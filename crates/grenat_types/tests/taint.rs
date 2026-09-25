@@ -108,3 +108,10 @@ fn sql_is_never_untrusted() {
     clean(&format!("{head}  db.query(\"SELECT * FROM t WHERE title = ?\", [s.title])\nend\n"));
     single(&format!("{head}  db.execute(\"UPDATE t SET title = ?\", [s.title])\nend\n"), "E0412", "[s.title]");
 }
+
+#[test]
+fn what_a_program_prints_is_untrusted() {
+    let head = "def main uses shell\n  out = Shell.run([\"git\", \"log\"]).stdout\n";
+    single(&format!("{head}  Shell.run([\"echo\", out])\nend\n"), "E0412", "[\"echo\", out]");
+    clean(&format!("{head}  Shell.run([\"echo\", out.check {{ |o| o.size < 9 }}?])\nend\n"));
+}

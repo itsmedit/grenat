@@ -136,3 +136,8 @@ fn a_class_method_calls_its_siblings_without_a_receiver() {
 fn hash_shorthand_takes_the_variable_of_the_same_name() {
     assert_eq!(run("query = \"rust\"\nn = 2\np({query:, n:, other: 3})\n"), "{query: \"rust\", n: 2, other: 3}\n");
 }
+
+#[test]
+fn a_negation_is_a_command_argument() {
+    assert_eq!(run("def yes?(x) = x\np yes? !false\nx = 3\np x != 2\n"), "true\ntrue\n");
+}

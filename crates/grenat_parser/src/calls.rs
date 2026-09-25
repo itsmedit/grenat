@@ -69,6 +69,8 @@ impl<'d> Parser<'d> {
                     | T::LParen
                     | T::Kw(K::True | K::False | K::Nil | K::SelfKw)
             )
+            // `assert !done`: a negation glued to its operand
+            || (tok.space_before && tok.kind == T::Bang && !self.toks[(self.pos + 1).min(self.toks.len() - 1)].space_before)
     }
 
     /// Parenthesis-free arguments: `do` is not consumed inside them and goes to this call.

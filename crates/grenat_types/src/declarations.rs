@@ -218,6 +218,14 @@ impl<'p> Checker<'p> {
                         self.expr(&mut cx, e);
                     }
                 }
+                "tool_timeout" => {
+                    if let Some(e) = first {
+                        let v = self.expr(&mut cx, e);
+                        if !matches!(v.ty, Ty::Int | Ty::Float | Ty::Duration | Ty::Unknown) {
+                            self.error(E_TYPE, e.span, format!("`tool_timeout` expects a duration, got `{}`", v.ty));
+                        }
+                    }
+                }
                 "budget" => {
                     let args = self.args(&mut cx, &d.args);
                     self.check_budget_options(&args);
@@ -226,7 +234,7 @@ impl<'p> Checker<'p> {
                     E_DECL,
                     d.name.span,
                     format!("unknown agent directive `{other}`"),
-                    suggest(other, ["model", "tools", "max_turns", "instructions", "budget"]),
+                    suggest(other, ["model", "tools", "max_turns", "instructions", "budget", "tool_timeout"]),
                 ),
             }
         }

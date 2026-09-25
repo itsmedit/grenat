@@ -9,7 +9,7 @@ mod concurrency;
 mod construct;
 mod doubles;
 
-pub(crate) use doubles::HttpStub;
+pub(crate) use doubles::{HttpStub, ShellStub};
 mod errors;
 mod expr;
 mod human;

@@ -69,6 +69,7 @@ pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &s
         }
         Value::Record(r) if &*r.ty == RESPONSE && matches!(name, "ok?" | "json") => response_method(&r.fields, name),
         Value::Record(r) if &*r.ty == DATABASE => Some(database_method(interp, &r.fields, name, args)),
+        Value::Record(r) if &*r.ty == SHELL_RESULT && name == "ok?" => shell_result_method(&r.fields, name),
         Value::Record(r) => match name {
             "with" => Some((|| {
                 let mut fields = r.fields.clone();

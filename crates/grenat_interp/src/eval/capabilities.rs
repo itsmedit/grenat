@@ -94,4 +94,22 @@ impl<'p> Interp<'p> {
         }
         Ok(())
     }
+
+    /// Checks that running `program` is covered by every function on the
+    /// stack that declares its effects: `shell`, or `shell("<program>")`.
+    pub(crate) fn check_program(&self, program: &str) -> Result<(), Ctrl<'p>> {
+        for (owner, caps) in &self.capabilities {
+            let allowed =
+                caps.iter().any(|(declared, arg)| declared == "shell" && arg.as_deref().is_none_or(|p| p == program));
+            if !allowed {
+                let declared: Vec<String> =
+                    caps.iter().map(|(p, a)| a.as_ref().map_or(p.clone(), |a| format!("{p}(\"{a}\")"))).collect();
+                return raise(
+                    "CapabilityError",
+                    format!("running `{program}` is not allowed by `{owner}` (uses {})", declared.join(", ")),
+                );
+            }
+        }
+        Ok(())
+    }
 }

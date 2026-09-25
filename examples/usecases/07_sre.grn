@@ -31,15 +31,6 @@ module Observability
   end
 end
 
-# ═══ STUBS ═══
-module Kube
-  def self.apply(command: String) -> String uses shell
-    puts "$ #{command}"
-    "ok"
-  end
-end
-# ═══ END STUBS ═══
-
 ## Recent logs of a service.
 tool logs(service: String, minutes: Int = 15) -> ~String uses net("loki.internal")
   Observability.logs(service, minutes)
@@ -54,6 +45,7 @@ agent Oncall
   model :smart
   tools logs, metrics
   max_turns 12
+  tool_timeout 20
   budget usd: 0.50, time: 3.min
   instructions "You are an SRE. Diagnose from evidence. Propose the least risky action."
 
@@ -66,20 +58,22 @@ supervisor Ops, strategy: :one_for_one, max_restarts: 3, within: 5.min
   child Oncall
 end
 
-def command(action: Action) -> String
+## The kubectl command of an action (an argument vector: nothing is
+## interpreted by a shell).
+def command(action: Action) -> Array(String)
   case action
-  in Restart(service:) then "kubectl rollout restart deploy/#{service}"
-  in ScaleUp(service:, replicas:) then "kubectl scale deploy/#{service} --replicas=#{replicas}"
-  in Rollback(service:) then "kubectl rollout undo deploy/#{service}"
-  in Nothing then ""
+  in Restart(service:) then ["kubectl", "rollout", "restart", "deploy/#{service}"]
+  in ScaleUp(service:, replicas:) then ["kubectl", "scale", "deploy/#{service}", "--replicas=#{replicas}"]
+  in Rollback(service:) then ["kubectl", "rollout", "undo", "deploy/#{service}"]
+  in Nothing then []
   end
 end
 
-def main(args: Array(String)) uses llm, net, shell, human
+def main(args: Array(String)) uses llm, net, shell("kubectl"), human
   Runtime.on_approval { |req| Cli.confirm(req.message) }
   diagnosis = Ops[Oncall].ask(Investigate(alert: args.join(" ")))
   approved = diagnosis.approve(by: :human)
   puts "Cause: #{approved.cause}\nEvidence: #{approved.evidence}"
   cmd = command(approved.action)
-  puts Kube.apply(cmd) unless cmd.empty?
+  puts Shell.run(cmd, timeout: 120).stdout.trust! unless cmd.empty?
 end

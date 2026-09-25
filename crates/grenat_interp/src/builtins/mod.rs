@@ -8,6 +8,7 @@ mod http;
 mod methods;
 mod modules;
 mod numbers;
+mod shell;
 mod strings;
 
 pub(crate) use args::*;
@@ -18,4 +19,5 @@ pub(crate) use http::*;
 pub(crate) use methods::*;
 pub(crate) use modules::*;
 pub(crate) use numbers::*;
+pub(crate) use shell::*;
 pub(crate) use strings::*;

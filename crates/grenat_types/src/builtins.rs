@@ -160,11 +160,15 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Time", "now") => (Float, Some("time")),
         ("Http", "get" | "post" | "put" | "patch" | "delete" | "head") => (User(HTTP_RESPONSE.into()), Some("net")),
         ("Db", "connect") => (User(DATABASE.into()), None),
+        ("Shell", "run") => (User(SHELL_RESULT.into()), Some("shell")),
         _ => return None,
     })
 }
 
-pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db"];
+pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell"];
+
+/// What `Shell.run` returns.
+pub const SHELL_RESULT: &str = "ShellResult";
 
 /// What `Db.connect` returns.
 pub const DATABASE: &str = "Database";
@@ -193,6 +197,9 @@ pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
         (HTTP_RESPONSE, "body") => (Ty::Str, true),
         (HTTP_RESPONSE, "headers") => (Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Str)), true),
         (HTTP_RESPONSE, "json") => (Ty::Unknown, true),
+        (SHELL_RESULT, "status") => (Ty::Int, false),
+        (SHELL_RESULT, "ok?") => (Ty::Bool, false),
+        (SHELL_RESULT, "stdout" | "stderr") => (Ty::Str, true),
         _ => return None,
     })
 }
@@ -221,6 +228,7 @@ pub const GLOBALS: &[&str] = &[
     "assert_raises",
     "mock",
     "mock_http",
+    "mock_shell",
     "cassette",
     "fixture",
     "call",

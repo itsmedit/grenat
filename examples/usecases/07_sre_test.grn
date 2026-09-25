@@ -14,6 +14,7 @@ test "an alert is diagnosed, approved, fixed" do
       action: {kind: "Restart", service: "api"},
     },
   ]
+  mock_shell "kubectl rollout restart deploy/api", stdout: "deployment.apps/api restarted"
   with_human(approve_all) do
     main(["api", "5xx", "rate", "high"])
   end

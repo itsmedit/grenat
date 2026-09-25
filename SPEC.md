@@ -487,7 +487,7 @@ Ten realistic programs, one per kind of agent, are in `examples/usecases` (the f
 
 1. ✅ **`Http` client** with effects (`net("host")` enforced at run time, JSON, headers, timeouts) — unblocks cases 2, 3, 6, 7, 10.
 2. ✅ **`Db`** (SQLite and Postgres, parameterized queries, `db.read` / `db.write` effects) — case 4.
-3. **Sandboxed `shell`** (a process with a timeout, no network unless declared) and per-tool timeouts — cases 2 and 7.
+3. ✅ **Sandboxed `shell`** (a process with a timeout, no network unless declared) and per-tool timeouts — cases 2 and 7.
 4. **MCP client** (`tools from mcp("…")`, capabilities granted per server, results tainted) — case 10.
 5. **Multimodal prompts** (PDF, images) and the **Batch API** — case 5.
 6. **Email** and **triggers** (`every 1.week`, webhooks through an `Http` server) — cases 1, 2, 6.
@@ -538,6 +538,23 @@ end
 - **Effects.** Reads are `db.read`, writes `db.write` (`uses db` for both), checked statically and at run time.
 - **Taint.** SQL text is never untrusted — a model writing a query must have it checked first (E0412, `TaintError`). An untrusted value may filter a read (it is a parameter), never be written unchecked.
 - **Limits.** A connection is shared by the tasks that use it: statements of concurrent tasks may interleave inside a `transaction`; PostgreSQL columns of other types than booleans, integers, floats and text are cast in the query (`created_at::text`).
+
+### Phase 7 status: programs (`Shell`) and tool timeouts
+
+```ruby
+def restart(service: String) -> Bool uses shell("kubectl")
+  res = Shell.run(["kubectl", "rollout", "restart", "deploy/#{service}"], timeout: 120)
+  warn res.stderr.trust! unless res.ok?
+  res.ok?
+end
+```
+
+`Shell.run` takes an **argument vector**, never a shell line: no argument is interpreted by a shell, so there is no shell injection to guard against. Options: `timeout:` (60 s by default; the program is killed after), `cwd:`, `env:` (added to a clean environment: only `PATH`, `HOME` and `LANG` are passed on), `network: false` (no network: `sandbox-exec` on macOS, `unshare` on Linux; where neither exists, the call fails rather than run with network). It returns a `ShellResult`: `status`, `ok?`, `stdout`, `stderr`.
+
+- **Capabilities.** Running a program is a `shell` effect restricted by program: `uses shell("kubectl")` allows `kubectl` only, statically (the program of a literal vector) and at run time.
+- **Taint.** No untrusted argument or environment value goes in (E0412, `TaintError`); what a program prints is untrusted.
+- **Tests.** `grenat test` never starts a program: `mock_shell "kubectl rollout restart*", stdout: "…"` (or `status:`, `stderr:`) stands for it.
+- **Tool timeouts.** `tool_timeout 20` in an agent: a tool call still running after that is cancelled at its next checkpoint and reported to the model as a `TimeoutError`, like any tool error. A blocking call (a request, a program) is bounded by its own `timeout:`.
 
 ### Phase 0.5 status: `grenat fmt`
 

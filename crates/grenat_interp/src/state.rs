@@ -52,6 +52,8 @@ pub(crate) struct Shared<'p> {
     pub provider: Mutex<Option<Arc<dyn Provider>>>,
     /// Mocked models (`mock`): the model mocked (`None`: any), its replies.
     pub mocks: Mutex<Vec<(Option<ModelConfig>, Arc<grenat_llm::Mock>)>>,
+    /// Stubbed programs (`mock_shell`).
+    pub shell_stubs: Mutex<Vec<crate::eval::ShellStub>>,
     /// Open databases (`Db.connect`), by number.
     pub databases: Mutex<Vec<SharedConnection>>,
     /// Stubbed HTTP requests (`mock_http`): (method, URL), the reply.
@@ -140,6 +142,7 @@ impl<'p> Interp<'p> {
             mocks: Mutex::new(Vec::new()),
             http_stubs: Mutex::new(Vec::new()),
             databases: Mutex::new(Vec::new()),
+            shell_stubs: Mutex::new(Vec::new()),
             offline: options.offline,
             record: options.record,
             dir: options.dir.clone().unwrap_or_default(),

@@ -11,6 +11,7 @@ use grenat_llm::{Anthropic, Cassette, Mock, MockReply, ModelConfig, Provider};
 
 use crate::builtins::json_to_untyped;
 use crate::http::{HttpReply, HttpRequest};
+use crate::process::{ProcessReply, ProcessRequest};
 use crate::llm::value_to_json;
 use crate::prelude::*;
 
@@ -89,6 +90,41 @@ impl<'p> Interp<'p> {
         grenat_green::blocking(|| crate::http::send(request)).or_else(|e| {
             raise("HttpError", format!("{} {}: {e}", request.method, request.url))
         })
+    }
+
+    // ── mock_shell ────────────────────────────────────────────
+
+    /// `mock_shell "kubectl rollout restart*", stdout: "ok"` (or `status:`,
+    /// `stderr:`): what every matching program run prints, until the end of
+    /// the test. The pattern is the command line; a trailing `*` matches a
+    /// prefix.
+    pub(crate) fn mock_shell(&mut self, pattern: &str, args: &Args<'p>) -> R<'p> {
+        let mut reply = ProcessReply { status: 0, stdout: String::new(), stderr: String::new() };
+        for (option, value) in &args.named {
+            match (option.as_str(), value.untainted()) {
+                ("status", Value::Int(n)) => reply.status = *n,
+                ("stdout", Value::Str(s)) => reply.stdout = s.to_string(),
+                ("stderr", Value::Str(s)) => reply.stderr = s.to_string(),
+                (option, v) => {
+                    return raise("ArgumentError", format!("invalid `mock_shell` option `{option}: {}`", v.inspect()));
+                }
+            }
+        }
+        self.shell_stubs.borrow_mut().push(ShellStub { pattern: pattern.to_string(), reply });
+        Ok(Value::Nil)
+    }
+
+    /// What running `request` prints: a stub's, else the program's (never in tests).
+    pub(crate) fn process(&self, request: &ProcessRequest) -> Result<ProcessReply, Ctrl<'p>> {
+        let line = request.argv.join(" ");
+        let stub = self.shell_stubs.borrow().iter().rev().find(|s| s.matches(&line)).map(|s| s.reply.clone());
+        if let Some(reply) = stub {
+            return Ok(reply);
+        }
+        if self.offline {
+            return raise("ShellError", format!("no programs in tests: `{line}` is not stubbed with `mock_shell`"));
+        }
+        grenat_green::blocking(|| crate::process::run(request)).or_else(|e| raise("ShellError", e))
     }
 
     // ── cassette ──────────────────────────────────────────────
@@ -188,6 +224,21 @@ impl HttpStub {
             None => request.url == self.url,
         };
         url && self.method.as_deref().is_none_or(|m| m == request.method)
+    }
+}
+
+/// A stubbed program (`mock_shell`).
+pub(crate) struct ShellStub {
+    pattern: String,
+    reply: ProcessReply,
+}
+
+impl ShellStub {
+    fn matches(&self, line: &str) -> bool {
+        match self.pattern.strip_suffix('*') {
+            Some(prefix) => line.starts_with(prefix),
+            None => line == self.pattern,
+        }
     }
 }
 

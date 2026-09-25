@@ -199,7 +199,7 @@ impl<'p> Checker<'p> {
                 }
                 cx.add_effect(Eff { path: path.into(), arg, origin: span });
             }
-            if let Some(sink @ ("fs.write" | "net")) = effect {
+            if let Some(sink @ ("fs.write" | "net" | "shell")) = effect {
                 for arg in &argv {
                     if let Some(origin) = arg.v.taint {
                         self.taint_violation(arg.span, origin, &format!("{t}.{n}"), sink);

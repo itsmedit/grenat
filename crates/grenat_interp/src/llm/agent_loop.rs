@@ -14,6 +14,8 @@ pub(crate) struct AgentConfig<'p> {
     tools: Vec<&'p str>,
     max_turns: usize,
     instructions: Option<String>,
+    /// How long one tool call may take (`tool_timeout 30`).
+    tool_timeout: Option<std::time::Duration>,
 }
 
 impl<'p> Interp<'p> {
@@ -27,6 +29,7 @@ impl<'p> Interp<'p> {
             tools: Vec::new(),
             max_turns: DEFAULT_MAX_TURNS,
             instructions: None,
+            tool_timeout: None,
         };
         for directive in directives {
             let first = directive.args.iter().find_map(|a| match a {
@@ -55,6 +58,13 @@ impl<'p> Interp<'p> {
                         config.instructions = Some(v.to_display());
                     }
                 }
+                "tool_timeout" => match first.map(|e| self.eval(e)).transpose()? {
+                    Some(Value::Int(n)) if n > 0 => config.tool_timeout = Some(std::time::Duration::from_secs(n as u64)),
+                    Some(Value::Float(s) | Value::Duration(s)) if s > 0.0 => {
+                        config.tool_timeout = Some(std::time::Duration::from_secs_f64(s));
+                    }
+                    _ => return raise("TypeError", "`tool_timeout` expects a duration: `tool_timeout 30`"),
+                },
                 "budget" => {}
                 other => return raise("NameError", format!("unknown agent directive `{other}`")),
             }
@@ -137,7 +147,7 @@ impl<'p> Interp<'p> {
                         }
                     }
                 }
-                let (content, is_error) = match self.call_tool(tool_use) {
+                let (content, is_error) = match self.call_tool_within(tool_use, config.tool_timeout) {
                     Ok(v) => (tool_output(&v), false),
                     Err(Ctrl::Raise(e)) if !matches!(&*e.ty, "BudgetExceeded" | "TaintError" | "StackOverflow") => {
                         (format!("{}: {}", e.ty, e.message), true)
@@ -149,6 +159,23 @@ impl<'p> Interp<'p> {
             messages.push(json!({"role": "user", "content": results}));
         }
         raise("MaxTurnsExceeded", format!("agent `{agent_ty}` did not finish within {} turns", config.max_turns))
+    }
+
+    /// A tool call, cancelled at its next checkpoint once `timeout` has
+    /// passed: a `TimeoutError`, reported to the model like any tool error.
+    fn call_tool_within(&mut self, tool_use: &ToolUse, timeout: Option<std::time::Duration>) -> R<'p> {
+        let Some(timeout) = timeout else { return self.call_tool(tool_use) };
+        let expired = crate::deadlines::after(timeout);
+        self.cancel.push(expired.clone());
+        let result = self.call_tool(tool_use);
+        self.cancel.pop();
+        match result {
+            Err(Ctrl::Raise(e)) if &*e.ty == "Cancelled" && expired.load(AtomicOrdering::Relaxed) => raise(
+                "TimeoutError",
+                format!("tool `{}` took more than {}s", tool_use.name, timeout.as_secs_f64()),
+            ),
+            other => other,
+        }
     }
 
     /// Runs a tool requested by the LLM: arguments are validated against the schema,

@@ -104,3 +104,19 @@ fn rows_are_typed_by_the_record_they_are_read_as() {
     let d = single(&format!("{head}  p db.query(\"SELECT * FROM orders\", as: Order).first.nope\nend\n"), "E0200", "nope");
     assert!(d.message.contains("`nope`"), "{}", d.message);
 }
+
+#[test]
+fn programs_are_shell_effects_restricted_by_program() {
+    let d = single("def main\n  Shell.run([\"git\", \"status\"])\nend\n", "E0300", "Shell.run([\"git\", \"status\"])");
+    assert!(d.message.contains("shell(\"git\")"), "{}", d.message);
+    clean("def main uses shell(\"git\")\n  p Shell.run([\"git\", \"status\"]).ok?\nend\n");
+    single("def main uses shell(\"git\")\n  Shell.run([\"rm\", \"-rf\", \"x\"])\nend\n", "E0300", "Shell.run([\"rm\", \"-rf\", \"x\"])");
+    clean("test \"t\" do\n  mock_shell \"git *\", stdout: \"ok\"\nend\n");
+}
+
+#[test]
+fn tool_timeouts_are_durations() {
+    let head = "model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"\nagent A\n  model :fast\n";
+    clean(&format!("{head}  tool_timeout 30\nend\n"));
+    single(&format!("{head}  tool_timeout \"soon\"\nend\n"), "E0200", "\"soon\"");
+}
