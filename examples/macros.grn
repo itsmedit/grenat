@@ -1,0 +1,47 @@
+# macros.grn — code that writes code, at compile time.
+#
+#   grenat run examples/macros.grn
+#
+# Where Ruby would use `attr_accessor` or `define_method` at run time, a
+# Grenat macro expands before the program is checked: the generated code is
+# typed and checked like the rest.
+
+## A reader and a writer for an instance variable.
+macro property(name, type)
+  def {{name}} -> {{type}} = @{{name}}
+
+  def set_{{name}}(value: {{type}})
+    @{{name}} = value
+  end
+end
+
+## Readers for several instance variables.
+macro getters(*names)
+  {% for n in names %}
+  def {{n}} = @{{n}}
+  {% end %}
+end
+
+## A predicate per status: `draft?`, `sent?`…
+macro statuses(*names)
+  {% for s in names %}
+  def {{s}}?(status: String) -> Bool = status == "{{s}}"
+  {% end %}
+end
+
+class Invoice
+  @customer: String = ""
+  @total: Int = 0
+  @currency: String = "EUR"
+  property :customer, String
+  getters :total, :currency
+end
+
+statuses :draft, :sent, :paid
+
+def main
+  invoice = Invoice.new
+  invoice.set_customer("Ada")
+  puts "#{invoice.customer}: #{invoice.total} #{invoice.currency}"
+  puts sent?("sent"), paid?("draft")
+end

@@ -55,6 +55,9 @@ pub enum Item {
     Fn(Box<FnDef>),
     Type(TypeDef),
     Model(ModelDecl),
+    /// `macro name(params) … end`: a template of code, expanded where it is
+    /// invoked (see `grenat_macros`).
+    Macro(MacroDef),
     /// Top-level script code (`test "…" do`, assignments…).
     Stmt(Expr),
 }
@@ -187,6 +190,26 @@ pub struct ModelDecl {
     pub name: Ident,
     pub options: Vec<Arg>,
     pub span: Span,
+}
+
+// ── Macros ───────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MacroDef {
+    pub doc: Option<String>,
+    pub name: Ident,
+    pub params: Vec<MacroParam>,
+    /// The template, as written (between the header line and `end`).
+    pub body: String,
+    pub body_span: Span,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MacroParam {
+    pub name: Ident,
+    /// `*names`: the remaining arguments.
+    pub variadic: bool,
 }
 
 // ── Types ────────────────────────────────────────────────────

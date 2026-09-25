@@ -39,6 +39,34 @@ pub struct Parsed {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// Parses the expansion of a macro: every node gets `span` (the invocation's),
+/// so that what goes wrong in expanded code is shown where it was invoked.
+pub fn parse_expansion(src: &str, span: grenat_ast::Span) -> Parsed {
+    let mut lexed = lex(src);
+    let mut diagnostics: Vec<Diagnostic> =
+        lexed.errors.into_iter().map(|e| Diagnostic::new(span, e.message)).collect();
+    relocate(&mut lexed.tokens, span);
+    let docs = DocTable::new("", &[]);
+    let mut parser = Parser::new(lexed.tokens, &docs);
+    let program = parser.program();
+    diagnostics.extend(parser.diags.into_iter().map(|d| Diagnostic { span, notes: Vec::new(), ..d }));
+    Parsed { program, diagnostics }
+}
+
+fn relocate(tokens: &mut [grenat_lexer::Token], span: grenat_ast::Span) {
+    for token in tokens {
+        token.span = span;
+        if let grenat_lexer::TokenKind::Str(parts) = &mut token.kind {
+            for part in parts {
+                if let grenat_lexer::StrPart::Interp(inner, inner_span) = part {
+                    *inner_span = span;
+                    relocate(inner, span);
+                }
+            }
+        }
+    }
+}
+
 pub fn parse(src: &str) -> Parsed {
     let lexed = lex(src);
     let mut diagnostics: Vec<Diagnostic> =

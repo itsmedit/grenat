@@ -81,6 +81,14 @@ pub(crate) fn definitions(program: &Program) -> Vec<Definition<'_>> {
                 kind: CONSTANT,
                 top_level: true,
             }),
+            Item::Macro(def) => out.push(Definition {
+                name: &def.name.name,
+                name_span: def.name.span,
+                span: def.span,
+                doc: def.doc.as_deref(),
+                kind: FUNCTION,
+                top_level: true,
+            }),
             Item::Stmt(_) => {}
         }
     }

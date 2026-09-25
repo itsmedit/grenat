@@ -19,7 +19,7 @@ impl<'p> Checker<'p> {
                 }
                 Item::Type(def) => self.check_type(def),
                 Item::Model(model) => self.check_model(model),
-                Item::Stmt(_) => {}
+                Item::Stmt(_) | Item::Macro(_) => {}
             }
         }
         let mut cx = Ctx::new(Kind::Top, None, None);

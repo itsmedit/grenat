@@ -89,7 +89,8 @@ impl<'p> Shared<'p> {
                         return raise("NameError", format!("type `{}` defined twice", def.name.name));
                     }
                 }
-                Item::Model(_) | Item::Stmt(_) => {}
+                // macros are expanded before running (see `grenat_macros`)
+                Item::Model(_) | Item::Macro(_) | Item::Stmt(_) => {}
             }
         }
 

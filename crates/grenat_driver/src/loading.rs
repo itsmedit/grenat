@@ -31,13 +31,17 @@ pub fn report(sources: &Sources, diagnostics: &[Diagnostic]) -> bool {
 }
 
 /// Parses the program made of `sources` (without its `require`s, resolved
-/// already), then checks it unless `unchecked`; `None` if it is invalid.
+/// already), expands its macros, then checks it unless `unchecked`; `None`
+/// if it is invalid.
 pub fn parse(sources: &Sources, unchecked: bool) -> Option<Program> {
     let mut parsed = grenat_parser::parse(&sources.text);
     if !report(sources, &parsed.diagnostics) {
         return None;
     }
     grenat_package::strip_requires(&mut parsed.program);
+    if !report(sources, &grenat_macros::expand(&mut parsed.program, &sources.text)) {
+        return None;
+    }
     if !unchecked && !report(sources, &grenat_types::check(&parsed.program)) {
         return None;
     }

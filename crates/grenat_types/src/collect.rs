@@ -25,7 +25,8 @@ impl<'p> Checker<'p> {
                     }
                 }
                 Item::Model(model) => self.models.push(&model.name.name),
-                Item::Stmt(_) => {}
+                // expanded before checking (see `grenat_macros`)
+                Item::Stmt(_) | Item::Macro(_) => {}
             }
         }
         // `include Module`

@@ -450,6 +450,7 @@ version = "0.1.0"
 dependencies = [
  "grenat_ast",
  "grenat_interp",
+ "grenat_macros",
  "grenat_package",
  "grenat_parser",
  "grenat_report",
@@ -513,11 +514,21 @@ dependencies = [
  "grenat_ast",
  "grenat_fmt",
  "grenat_lexer",
+ "grenat_macros",
  "grenat_package",
  "grenat_parser",
  "grenat_report",
  "grenat_types",
  "serde_json",
+]
+
+[[package]]
+name = "grenat_macros"
+version = "0.1.0"
+dependencies = [
+ "grenat_ast",
+ "grenat_parser",
+ "grenat_types",
 ]
 
 [[package]]

@@ -15,4 +15,5 @@ grenat_types.workspace = true
 grenat_fmt.workspace = true
 grenat_report.workspace = true
 grenat_package.workspace = true
+grenat_macros.workspace = true
 serde_json.workspace = true

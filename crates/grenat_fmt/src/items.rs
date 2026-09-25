@@ -1,6 +1,8 @@
 //! Declarations: functions, types and their members, models.
 
-use grenat_ast::{Directive, Effect, Field, FnDef, FnKind, Handler, Item, Member, ModelDecl, Program, Span, TypeDef, TypeKind, Variant};
+use grenat_ast::{
+    Directive, Effect, Field, FnDef, FnKind, Handler, Item, MacroDef, Member, ModelDecl, Program, Span, TypeDef, TypeKind, Variant,
+};
 
 use crate::printer::Printer;
 
@@ -13,6 +15,7 @@ impl Printer<'_> {
                 Item::Fn(def) => self.fn_def(def),
                 Item::Type(def) => self.type_def(def),
                 Item::Model(decl) => self.model(decl),
+                Item::Macro(def) => self.macro_def(def),
                 Item::Stmt(e) => self.stmt(e),
             }
             self.line_end(span.end);
@@ -208,6 +211,20 @@ impl Printer<'_> {
         }
     }
 
+    /// A macro's template is printed as it was written.
+    fn macro_def(&mut self, def: &MacroDef) {
+        self.write("macro ");
+        self.write(&def.name.name);
+        if !def.params.is_empty() {
+            let params: Vec<String> =
+                def.params.iter().map(|p| format!("{}{}", if p.variadic { "*" } else { "" }, p.name.name)).collect();
+            self.write(&format!("({})", params.join(", ")));
+        }
+        self.newline();
+        self.out.push_str(&def.body);
+        self.write("end");
+    }
+
     fn model(&mut self, decl: &ModelDecl) {
         self.write("model :");
         self.write(&decl.name.name);
@@ -220,6 +237,7 @@ fn item_span(item: &Item) -> Span {
         Item::Fn(def) => def.span,
         Item::Type(def) => def.span,
         Item::Model(decl) => decl.span,
+        Item::Macro(def) => def.span,
         Item::Stmt(e) => e.span,
     }
 }

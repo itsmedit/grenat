@@ -23,7 +23,7 @@ end
 ```
 
 - Specification: [`SPEC.md`](SPEC.md)
-- Examples: [`basics.grn`](examples/basics.grn), [`reviews.grn`](examples/reviews.grn) (native statistics + validated LLM analysis), [`explorer.grn`](examples/explorer.grn) (a real agent), [`support_desk.grn`](examples/support_desk.grn) (multi-agent, human approval), [`triage.grn`](examples/triage.grn) (tests with mocks, evals with an LLM judge)
+- Examples: [`basics.grn`](examples/basics.grn), [`reviews.grn`](examples/reviews.grn) (native statistics + validated LLM analysis), [`explorer.grn`](examples/explorer.grn) (a real agent), [`support_desk.grn`](examples/support_desk.grn) (multi-agent, human approval), [`triage.grn`](examples/triage.grn) (tests with mocks, evals with an LLM judge), [`macros.grn`](examples/macros.grn) (compile-time code generation)
 
 ## Status
 
@@ -97,6 +97,7 @@ end })
 | `grenat_package` | `grenat.toml`, `require`, path and git dependencies, `grenat.lock` |
 | `grenat_fmt` | the formatter |
 | `grenat_lsp` | the language server |
+| `grenat_macros` | macro expansion: templates of declarations |
 | `grenat_green` | M:N green threads: scheduler, green locks, channels, timers |
 | `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities, workflows, test doubles, evals |
 | `grenat_cli` | the `grenat` binary |

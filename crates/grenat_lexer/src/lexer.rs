@@ -44,6 +44,8 @@ pub(crate) struct Lexer<'s> {
     pub(crate) brace_depth: u32,
     pub(crate) space_before: bool,
     pub(crate) line_has_token: bool,
+    /// On a `macro` header line: its indentation (its body is read raw).
+    pub(crate) macro_indent: Option<usize>,
 }
 
 impl<'s> Lexer<'s> {
@@ -59,6 +61,7 @@ impl<'s> Lexer<'s> {
             brace_depth: 0,
             space_before: true,
             line_has_token: false,
+            macro_indent: None,
         }
     }
 
@@ -171,6 +174,29 @@ impl<'s> Lexer<'s> {
         if let Some(resume) = self.heredoc_resume.take() {
             self.pos = resume;
         }
+        if let Some(indent) = self.macro_indent.take() {
+            self.macro_body(indent);
+        }
+    }
+
+    /// The body of a `macro`, up to the `end` at the macro's indentation,
+    /// read as it is: a template is not Grenat code until expanded.
+    fn macro_body(&mut self, indent: usize) {
+        let start = self.pos;
+        let mut line = start;
+        while line < self.src.len() {
+            let end = self.line_end(line);
+            let text = &self.src[line..end];
+            if text.trim() == "end" && text.len() - text.trim_start().len() == indent {
+                self.push(TokenKind::MacroBody(self.src[start..line].to_string()), start, line);
+                self.pos = line;
+                return;
+            }
+            line = end + 1;
+        }
+        self.push(TokenKind::MacroBody(self.src[start..].to_string()), start, self.src.len());
+        self.error(start, self.src.len(), "this `macro` has no `end` at its indentation");
+        self.pos = self.src.len();
     }
 
     pub(crate) fn comment(&mut self) {
@@ -218,6 +244,16 @@ impl<'s> Lexer<'s> {
             return;
         }
 
+        // `macro name…` starting a line: its body will be read raw
+        if text == "macro"
+            && !self.line_has_token
+            && !self.in_interp
+            && self.rest().starts_with(' ')
+            && self.rest().trim_start_matches(' ').starts_with(is_ident_start)
+        {
+            let line_start = self.src[..start].rfind('\n').map_or(0, |i| i + 1);
+            self.macro_indent = Some(start - line_start);
+        }
         let kind = if is_const {
             TokenKind::Const(text.to_string())
         } else if let Some(kw) = Keyword::lookup(text) {

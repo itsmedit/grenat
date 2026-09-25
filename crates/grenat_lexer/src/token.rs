@@ -149,6 +149,9 @@ pub enum TokenKind {
     OrOrEq,
     AndAndEq,
 
+    /// The body of a `macro`, as written: raw text up to its `end`.
+    MacroBody(String),
+
     Newline,
     Eof,
 }
@@ -167,6 +170,7 @@ impl TokenKind {
             Const(s) => format!("constant `{s}`"),
             IVar(s) => format!("`@{s}`"),
             Kw(k) => format!("keyword `{}`", k.as_str()),
+            MacroBody(_) => "macro body".into(),
             Newline => "end of line".into(),
             Eof => "end of file".into(),
             other => format!("`{}`", other.punct()),

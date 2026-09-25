@@ -38,6 +38,9 @@ impl Analysis {
         grenat_package::strip_requires(&mut parsed.program);
         let mut diagnostics = parsed.diagnostics;
         if diagnostics.is_empty() {
+            diagnostics = grenat_macros::expand(&mut parsed.program, &bundle.sources.text);
+        }
+        if diagnostics.is_empty() {
             diagnostics = grenat_types::check(&parsed.program);
         }
         Analysis { sources: bundle.sources, program: Some(parsed.program), diagnostics }

@@ -1,6 +1,6 @@
 [package]
-name = "grenat_driver"
-description = "Loading and running Grenat programs, shared by the CLI and built executables"
+name = "grenat_macros"
+description = "Grenat macros: compile-time templates expanded into declarations"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,8 +10,6 @@ rust-version.workspace = true
 [dependencies]
 grenat_ast.workspace = true
 grenat_parser.workspace = true
+
+[dev-dependencies]
 grenat_types.workspace = true
-grenat_interp.workspace = true
-grenat_report.workspace = true
-grenat_package.workspace = true
-grenat_macros.workspace = true

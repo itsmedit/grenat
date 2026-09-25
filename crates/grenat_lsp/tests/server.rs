@@ -166,3 +166,19 @@ fn messages_are_framed_over_a_stream() {
     // the input ends without `exit`
     assert_eq!(serve(&b""[..], &mut Vec::new()), 1);
 }
+
+#[test]
+fn macros_are_expanded_and_documented() {
+    let dir = temp_dir("macros");
+    let path = dir.join("m.grn");
+    let text = "## Makes a constant.\nmacro constant(name, value)\n  def {{name}} = {{value}}\nend\n\nconstant :answer, 42\nputs answer\nputs missing\n";
+    std::fs::write(&path, text).unwrap();
+    let mut server = Server::new();
+    let published = open(&mut server, &path, text);
+    let diagnostics = &published[0].1;
+    // `answer` exists (expanded); `missing` does not
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0]["range"]["start"]["line"], 7);
+    let hover = request(&mut server, 1, "textDocument/hover", at(&path, 5, 3));
+    assert_eq!(hover["result"]["contents"]["value"], "```ruby\nmacro constant(name, value)\n```\n\nMakes a constant.");
+}

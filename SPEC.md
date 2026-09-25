@@ -20,7 +20,7 @@ Name: **Grenat** (French for "garnet", a red gemstone and a cousin of the ruby).
 | Ruby | Grenat |
 |---|---|
 | Dynamic typing | Hindley-Milner inference + annotations at the boundaries (`def`, `struct`) |
-| `method_missing`, `send`, `eval`, `instance_eval` | ❌ replaced by compile-time **macros** (v0.3) |
+| `method_missing`, `send`, `eval`, `instance_eval` | ❌ replaced by compile-time **macros** (§2, *Macros*) |
 | Monkey-patching, open classes | ❌ extension only through `module` + `include` (static traits) |
 | `nil` everywhere | Explicit optional types `String?`; `&.` and `||` are kept |
 | Exceptions | Errors are values (`Result`), with `raise`/`rescue` and `?` as sugar |
@@ -135,6 +135,36 @@ http = { git = "https://github.com/grenat-lang/http", tag = "v0.2.0" }   # or `b
 ```
 
 Git dependencies are fetched into the root package's `.grenat/deps/` and their exact commit recorded in `grenat.lock`, so that the program builds the same everywhere; `grenat update` moves them to the latest commit of their branch or tag. In a package, `grenat run`, `test`, `check` and `build` need no file: they take the package's program, or every file of `src/` and `tests/`.
+
+### Macros
+
+What Ruby does at run time with `attr_accessor`, `define_method` or `method_missing`, Grenat does at compile time. A macro is a template of declarations, invoked as a statement at the top level or in the body of a type, and replaced by its expansion before the program is checked — the generated code is typed and checked like the rest.
+
+```ruby
+## A reader and a writer for an instance variable.
+macro property(name, type)
+  def {{name}} -> {{type}} = @{{name}}
+
+  def set_{{name}}(value: {{type}})
+    @{{name}} = value
+  end
+end
+
+macro statuses(*names)
+  {% for s in names %}
+  def {{s}}?(status: String) -> Bool = status == "{{s}}"
+  {% end %}
+end
+
+class Invoice
+  @customer: String = ""
+  property :customer, String
+end
+
+statuses :draft, :sent, :paid
+```
+
+In a template, `{{name}}` is an argument — a symbol gives its name (`:customer` → `customer`), anything else the text written (`2 * 21`, `"EUR"`, `String`) — and `{% for x in list %}` … `{% end %}` repeats over a `*variadic` parameter (`{{list}}` alone joins it with `, `). Arguments can be named (`property name: :customer, type: String`). An expansion may invoke other macros, including in the types it generates; nesting stops after 32 levels. Macros are not hygienic: the generated code is what the template says. Errors in expanded code — a template that does not parse, a type error — are reported at the invocation.
 
 ---
 
@@ -620,6 +650,10 @@ Programs of several files and packages (§2, *Files and packages*) are in `grena
 ### Phase 6 status: the language server
 
 `grenat lsp` (`grenat_lsp`) speaks the Language Server Protocol over standard input and output. Each change of a document checks its whole program — the files it requires, open buffers taking precedence over the disk, so that an unsaved change of a library shows at once in the files that use it — and publishes the diagnostics of every open document, with their codes. It formats documents as `grenat fmt` does (a document that does not parse is left alone), shows the first line and `##` documentation of the function, type, variant, field or model under the cursor, goes to its definition in whichever file it is, and lists a document's top-level symbols. Positions are counted in UTF-16 units, as the protocol requires.
+
+### Phase 6 status: macros
+
+Macros are expanded by `grenat_macros`, between the resolution of `require`s and the checker. The lexer reads a macro's body raw, up to the `end` at the macro's indentation (a template is not Grenat code until expanded), and `grenat fmt` prints it as written. Expansion is textual and recursive: a template is rendered, the macros it invokes are expanded in place, and the final text is parsed once with every token given the invocation's span — which is how errors in generated code point at the invocation. Inside the body of any type, a line starting with a name is now a directive: a macro invocation, or else, outside agents and supervisors, an unknown macro. The language server expands macros too, and shows a macro's documentation over its invocations.
 
 For the models that recommend it (`claude-opus-5`, `claude-fable-5-1`), the client enables server-side fallbacks (`fallbacks: "default"`): a request refused by a classifier is replayed on another model instead of failing. Disable it with `model :x, …, fallbacks: false`.
 

@@ -46,6 +46,9 @@ impl<'d> Parser<'d> {
             T::Ident(name) if name == "model" && matches!(self.nth(1), T::Symbol(_)) => {
                 self.model_decl().map(Item::Model)
             }
+            T::Ident(name) if name == "macro" && matches!(self.nth(1), T::Ident(_)) => {
+                self.macro_def(doc).map(Item::Macro)
+            }
             _ => self.stmt().map(Item::Stmt),
         }
     }
@@ -183,6 +186,34 @@ impl<'d> Parser<'d> {
         Ok(effects)
     }
 
+    /// `macro name(a, *rest)`, its body (read raw by the lexer), `end`.
+    pub(crate) fn macro_def(&mut self, doc: Option<String>) -> PResult<MacroDef> {
+        let start = self.bump().span;
+        let name = self.ident("a macro name")?;
+        let mut params = Vec::new();
+        if self.at_tight(&T::LParen) {
+            self.bump();
+            while !self.at(&T::RParen) {
+                let variadic = self.eat(&T::Star);
+                params.push(MacroParam { name: self.ident("a parameter name")?, variadic });
+                if !self.eat(&T::Comma) {
+                    break;
+                }
+            }
+            self.expect(T::RParen, "`)`")?;
+        }
+        if params.iter().filter(|p| p.variadic).count() > 1 || params.iter().rev().skip(1).any(|p| p.variadic) {
+            return self.fail(start.to(self.prev_span()), "only the last parameter of a macro can be `*variadic`");
+        }
+        self.expect(T::Newline, "the end of the line")?;
+        let (body, body_span) = match self.kind().clone() {
+            T::MacroBody(body) => (body, self.bump().span),
+            _ => return self.unexpected("the macro's body"),
+        };
+        let end = self.expect_end(start, "macro")?;
+        Ok(MacroDef { doc, name, params, body, body_span, span: start.to(end) })
+    }
+
     pub(crate) fn model_decl(&mut self) -> PResult<ModelDecl> {
         let start = self.bump().span;
         let name = match self.kind().clone() {
@@ -264,7 +295,8 @@ impl<'d> Parser<'d> {
             }
             T::Ident(name) if name == "on" && kind == TypeKind::Agent => self.handler(doc).map(Member::Handler),
             T::Const(_) if kind == TypeKind::Enum => self.variant(doc).map(Member::Variant),
-            T::Ident(_) if matches!(kind, TypeKind::Agent | TypeKind::Supervisor) => {
+            // a directive, or a macro invocation (see `grenat_macros`)
+            T::Ident(_) => {
                 let name = self.ident("a directive")?;
                 let args = if self.at_line_end() { Vec::new() } else { self.command_args()?.0 };
                 Ok(Member::Directive(Directive { name, args, span: start.to(self.prev_span()) }))

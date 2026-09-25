@@ -375,3 +375,20 @@ fn the_language_server_speaks_over_stdio() {
     assert!(stdout.contains("\"serverInfo\":{\"name\":\"grenat\""), "{stdout}");
     assert!(stdout.contains("textDocument/publishDiagnostics") && stdout.contains("E0100"), "{stdout}");
 }
+
+#[test]
+fn the_macros_example_runs() {
+    let out = grenat(&["run", "examples/macros.grn"]);
+    assert_eq!(code(&out), 0, "{}", text(&out.stderr));
+    assert_eq!(text(&out.stdout), "Ada: 0 EUR\ntrue\nfalse\n");
+}
+
+#[test]
+fn errors_in_expanded_code_point_at_the_invocation() {
+    let path = program("macro_error.grn", "macro broken(name)\n  def {{name}} -> Int = \"text\"\nend\n\nbroken :f\n");
+    let out = grenat(&["check", path.to_str().unwrap()]);
+    let err = text(&out.stderr);
+    assert_eq!(code(&out), 1, "{err}");
+    assert!(err.contains("macro_error.grn:5:1\n"), "{err}");
+    assert!(err.contains("5 | broken :f\n"), "{err}");
+}
