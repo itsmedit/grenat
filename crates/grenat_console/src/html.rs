@@ -135,6 +135,8 @@ pub fn ago(t: f64, now: f64) -> String {
 
 /// `$0.0123`, `$12.40`.
 pub fn money(usd: f64) -> String {
+    // an empty sum is -0.0
+    let usd = usd + 0.0;
     if usd != 0.0 && usd.abs() < 1.0 { format!("${usd:.4}") } else { format!("${usd:.2}") }
 }
 
@@ -210,6 +212,7 @@ mod tests {
         assert_eq!(money(0.01234), "$0.0123");
         assert_eq!(money(12.4), "$12.40");
         assert_eq!(money(0.0), "$0.00");
+        assert_eq!(money(Vec::<f64>::new().into_iter().sum()), "$0.00");
         assert_eq!(clip("abc", 5), "abc");
         assert_eq!(clip("<abcdef>", 3), "<span title=\"&lt;abcdef&gt;\">&lt;ab…</span>");
         assert_eq!(table(&["a"], &[], "nothing"), "<p class=\"empty\">nothing</p>");

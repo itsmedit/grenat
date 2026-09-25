@@ -105,7 +105,9 @@ const SECURITY_HEADERS: [(&str, &str); 5] = [
     ("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"),
     ("X-Content-Type-Options", "nosniff"),
     ("X-Frame-Options", "DENY"),
-    ("Referrer-Policy", "no-referrer"),
+    // not `no-referrer`: browsers would then send `Origin: null` with the
+    // console's own forms, which the origin check refuses
+    ("Referrer-Policy", "same-origin"),
     ("Cache-Control", "no-store"),
 ];
 

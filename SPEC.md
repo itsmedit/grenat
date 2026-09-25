@@ -481,7 +481,7 @@ Installed layout:
 | **6** ✅ | LSP, LLVM release builds, macros, package manager (and programs of several files) | ecosystem |
 | **7** ✅ | What real agents need, measured by ten use cases (`examples/usecases`): an I/O library with effects (`Http` client and server, `Db`, email), MCP client, multimodal prompts and the Batch API, conversations and long-term memory, a sandbox for `shell` and per-tool timeouts, triggers (`every`, webhooks) | agents in production |
 | **8** ✅ | Agent applications, in the language and its toolchain (no framework on top): an HTTP server with routes, records and migrations on `Db`, jobs and triggers, a persisted approval queue (a workflow waits days for a human), agents served over HTTP and as MCP servers; `grenat new --app`, `grenat generate agent\|workflow\|record\|tool\|eval`, `grenat serve` | applications of agents |
-| **9** | `grenat console`: the operations console of an application, derived from the program and its runtime — approvals inbox, runs and their journals (replay, resume), costs per agent, evals over time, taint and capability refusals, MCP servers. It observes and operates; code stays the source of truth | agents operated from a browser |
+| **9** ✅ | `grenat console`: the operations console of an application, derived from the program and its runtime — approvals inbox, runs and their journals (replay, resume), costs per agent, evals over time, taint and capability refusals, MCP servers. It observes and operates; code stays the source of truth | agents operated from a browser |
 
 ### Phases 8 and 9: applications, in Grenat itself
 
@@ -610,6 +610,30 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Who may call.** An exposure spends money: it requires `Authorization: Bearer <token>` (compared in constant time; 401 otherwise), unless it says `public: true` — one of the two must be written.
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
+
+### Phase 9 status: `grenat console`
+
+```sh
+grenat serve                                  # the application: routes, jobs, schedules
+grenat console                                # its console, on http://127.0.0.1:4000
+GRENAT_CONSOLE_TOKEN=… grenat console --listen 0.0.0.0:4000   # elsewhere: a token
+```
+
+The operations console of an application, in a browser, open source like the rest. It observes and operates; the code stays the source of truth:
+
+- **Overview** — approvals waiting, failed jobs, what was spent in 24 hours and 7 days, refusals, the last score of each eval, and what the program declares (agents, workflows, tools, routes, MCP servers).
+- **Approvals** — the questions jobs wait on (`approve!` in a job), approved or denied here: the job is queued again and resumes where it stopped.
+- **Jobs** — the queue by status; a job's arguments, last error, journal, approvals and model calls; a failed job retried (a workflow resumes from its journal).
+- **Journals** — each run of a workflow, its steps and their values, completed or not.
+- **Costs** — model calls by agent, workflow, model and day, over 24 hours, 7 or 30 days.
+- **Evals** — each `grenat eval` kept: scores over time against their threshold, and what they cost.
+- **Events** — what failed while serving (a request, a schedule, a job run, an exposed tool), and among them the refusals: untrusted data stopped at a sink, an effect not granted, a human's no, a budget spent.
+- **MCP** — the servers the program uses (their tools, listed on demand; never their headers or environment) and what it serves (`expose`).
+
+What the console shows, the runtime records in the application's database, when it has one (`grenat_ops`): every model call with the agent, workflow and job it was made for; what fails under `grenat serve`; each eval run. Recording never fails a program. A model call made in a `db.transaction` that is rolled back leaves the ledger with it.
+
+- **Who may use it.** Listening on this machine (the default), the console answers only requests addressed to this machine, so that no web page reaches it by renaming a domain to 127.0.0.1. Anywhere else it needs a token (16 characters at least, from `GRENAT_CONSOLE_TOKEN` rather than the command line), then knows the browser by a session cookie (`HttpOnly`, `SameSite=Strict`); behind a proxy, serve it over HTTPS. Every form carries a secret of the process, a form from another origin is refused, pages run no script (a strict `Content-Security-Policy`) and cannot be framed.
+- **Where it runs.** Next to the application — the same directory, the same `DATABASE_URL` — since workflow journals are files there. It runs the program's declarations (its database, MCP servers, routes, exposures), never its workers or schedules.
 
 ### Phase 8 status: generators
 

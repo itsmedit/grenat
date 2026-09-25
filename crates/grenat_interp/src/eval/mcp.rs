@@ -42,6 +42,17 @@ pub(crate) struct McpServer {
     tools: Mutex<Option<Vec<Tool>>>,
 }
 
+impl McpServer {
+    /// Where it is, as the console shows it: its URL or its command —
+    /// never its headers or environment, which hold secrets.
+    pub(crate) fn target(&self) -> String {
+        match &self.endpoint {
+            Endpoint::Url { url, .. } => url.clone(),
+            Endpoint::Command { argv, .. } => argv.join(" "),
+        }
+    }
+}
+
 /// Where a tool handed to a model is: (server, tool).
 pub(crate) type Route = (String, String);
 

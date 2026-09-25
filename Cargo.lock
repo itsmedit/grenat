@@ -724,6 +724,7 @@ version = "0.1.0"
 dependencies = [
  "grenat_ast",
  "grenat_codegen",
+ "grenat_console",
  "grenat_db",
  "grenat_green",
  "grenat_llm",

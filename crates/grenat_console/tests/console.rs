@@ -106,6 +106,8 @@ fn every_page_answers_with_the_security_headers() {
         assert!(response.body.contains("<title>"), "{page}");
         assert!(header(&response, "Content-Security-Policy").unwrap().contains("default-src 'none'"));
         assert_eq!(header(&response, "X-Frame-Options"), Some("DENY"));
+        // with `no-referrer`, browsers post the console's forms with `Origin: null`
+        assert_eq!(header(&response, "Referrer-Policy"), Some("same-origin"));
         assert!(!response.body.contains("<script"), "{page}: no script");
     }
     assert_eq!(s.get("/nothing").status, 404);
@@ -141,6 +143,8 @@ fn a_form_from_elsewhere_changes_nothing() {
     let csrf = s.csrf("/approvals");
     let foreign = s.send("POST", &target, &[("Origin", "https://evil.example")], &format!("csrf={csrf}"));
     assert_eq!(foreign.status, 403, "another site");
+    let opaque = s.send("POST", &target, &[("Origin", "null")], &format!("csrf={csrf}"));
+    assert_eq!(opaque.status, 403, "a sandboxed frame");
     assert_eq!(approvals::pending(s.db.as_mut()).unwrap().len(), 1);
     let ours = s.send("POST", &target, &[("Origin", &format!("http://{HOST}"))], &format!("csrf={csrf}"));
     assert_eq!(ours.status, 303);

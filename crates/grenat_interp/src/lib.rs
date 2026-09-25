@@ -22,6 +22,7 @@ mod outcome;
 mod process;
 mod prelude;
 mod program;
+mod console;
 mod serve;
 mod stack;
 mod state;
@@ -37,6 +38,7 @@ use value::Locked;
 pub use value::Value;
 pub use evals::{EvalReport, RowOutcome, run_evals};
 pub use eval::records::migrate;
+pub use console::console;
 pub use serve::serve;
 
 pub(crate) use control::*;

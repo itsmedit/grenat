@@ -27,6 +27,11 @@ end
 
 ## Status
 
+**Phase 9 — agents operated from a browser**: `grenat console`, open source like the rest —
+approvals waiting for a human, jobs and their workflow journals (retry), what the models cost
+by agent, workflow and day, eval scores over time, failures and refusals, MCP servers. The
+runtime records what it shows in the application's database.
+
 **Phase 8 — applications of agents**, in the language and its toolchain, with no
 framework on top: routes, records and migrations (SQLite and PostgreSQL), jobs, approvals
 that wait days for a human in the database, tools and agents served to other programs over
@@ -76,6 +81,7 @@ target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl        
 target/debug/grenat new --app desk && cd desk # an application: database, models, routes, tests
 grenat generate agent triage                 # a part and its tests (also workflow, record, tool, eval)
 grenat migrate && grenat test && grenat serve
+grenat console                               # its operations console: http://127.0.0.1:4000
 
 target/debug/grenat new hello && cd hello    # a package: grenat.toml, Facetfile, src/, tests/
 setter add http_tools                        # a facet (library) from an index, like a gem
@@ -85,7 +91,7 @@ target/debug/grenat check examples/*.grn     # names, types, effects, taint
 target/debug/grenat fmt examples             # canonical layout (--check: only report)
 target/debug/grenat test examples/triage.grn # `test` blocks: mocks and cassettes, never a real model
 target/debug/grenat eval examples/triage.grn # `eval` blocks: the real model, scored on a dataset
-cargo test                                   # ~410 tests: unit, integration, CLI, HTTP, MCP, JIT, build
+cargo test                                   # ~440 tests: unit, integration, CLI, HTTP, MCP, JIT, build
 ```
 
 ## Editors
@@ -119,6 +125,8 @@ end })
 | `grenat_mcp` | the Model Context Protocol: a client (stdio and HTTP), and the server side of `expose` |
 | `grenat_serve` | triggers: cron schedules, webhook signatures, the HTTP server of `grenat serve` |
 | `grenat_generate` | `grenat new --app` and `grenat generate`: an application's parts, with their tests |
+| `grenat_ops` | the operations store: jobs, approvals, model calls, events, eval runs, workflow journals |
+| `grenat_console` | `grenat console`: pages and actions of the operations console, and who may use it |
 | `grenat_setter` | `setter`: creates, adds, installs and publishes facets (libraries) |
 | `grenat_package` | `grenat.toml`, `require`, facets (`Facetfile`, versions, indexes), path and git dependencies |
 | `grenat_fmt` | the formatter |

@@ -671,3 +671,55 @@ fn serve_records_what_fails_for_the_console() {
     let refusals = grenat_ops::events::latest(db.as_mut(), true, 10).unwrap();
     assert_eq!(refusals.len(), 1, "{refusals:?}");
 }
+
+#[test]
+fn console_shows_and_decides_what_waits() {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let dir = project("console");
+    let url = format!("sqlite://{}", dir.join("app.db").display());
+    let app = format!(
+        "database \"{url}\"\nworkflow publish(id: Int) -> Int uses human\n  step(:review) {{ approve! \"Publish post #{{id}}?\" }}\n  id\nend\n"
+    );
+    std::fs::write(dir.join("app.grn"), app).unwrap();
+    let seed = dir.join("seed.grn");
+    std::fs::write(&seed, "require \"./app\"\nenqueue(:publish, 7)\nJobs.perform\n").unwrap();
+    let out = grenat(&["run", seed.to_str().unwrap()]);
+    assert_eq!(code(&out), 0, "{}", text(&out.stderr));
+
+    // off this machine without a token: refused before listening
+    let open = grenat(&["console", "--listen", "0.0.0.0:0", dir.join("app.grn").to_str().unwrap()]);
+    assert_eq!(code(&open), 1);
+    assert!(text(&open.stderr).contains("needs a token"), "{}", text(&open.stderr));
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_grenat"))
+        .args(["console", "--listen", "127.0.0.1:0", dir.join("app.grn").to_str().unwrap()])
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    BufReader::new(child.stderr.take().unwrap()).read_line(&mut line).unwrap();
+    let address = line.trim().strip_prefix("console on http://").unwrap_or_else(|| panic!("{line}")).to_string();
+    let send = |method: &str, path: &str, body: &str| {
+        let mut stream = std::net::TcpStream::connect(&address).unwrap();
+        write!(
+            stream,
+            "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        response
+    };
+    let page = send("GET", "/approvals", "");
+    let at = page.find("name=\"csrf\" value=\"").map(|i| i + "name=\"csrf\" value=\"".len());
+    let decided = at.map(|at| send("POST", "/approvals/1/approve", &format!("csrf={}", &page[at..at + 64])));
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(page.starts_with("HTTP/1.1 200") && page.contains("Publish post 7?"), "{page}");
+    let decided = decided.expect("an approve form");
+    assert!(decided.starts_with("HTTP/1.1 303"), "{decided}");
+    let mut db = grenat_db::connect(&url).unwrap();
+    let job = grenat_ops::jobs::get(db.as_mut(), 1).unwrap().unwrap();
+    assert_eq!(job.status, grenat_ops::jobs::Status::Queued, "the job runs again");
+}

@@ -1,6 +1,7 @@
 //! `grenat`: entry point of the toolchain.
 
 mod build;
+mod console;
 mod fmt;
 mod generate;
 mod link;
@@ -40,6 +41,10 @@ Usage:
                                  serve the program: routes, `expose`d tools and agents,
                                  `on_webhook` handlers (127.0.0.1:3000 by default),
                                  `every` schedules, and job workers
+  grenat console [--listen host:port] [--token <token>] [<file.grn>]
+                                 the operations console, in a browser: approvals,
+                                 jobs, journals, costs, evals, refusals, MCP servers
+                                 (127.0.0.1:4000 by default; elsewhere, a token)
   grenat migrate [<file.grn>]    apply the migrations the database has not seen yet
   grenat eval <file.grn> [name]  run the `eval` blocks (those whose name contains `name`)
   grenat check [<file.grn>...]   check names, types, effects and taint
@@ -55,6 +60,7 @@ Environment variables:
   ANTHROPIC_API_KEY   Claude API key (prompts and agents)
   GRENAT_LOG=1        log every LLM and tool call, and what the JIT compiled (same as --log)
   GRENAT_RECORD=1     record every cassette again, with real calls
+  GRENAT_CONSOLE_TOKEN  the token of `grenat console` (rather than --token)
   GRENAT_JIT=0        interpret everything (same as --no-jit; also in built executables)
   GRENAT_HOME         where `grenat build` finds lib/grenat/libgrenat_{host,standalone}.a
   GRENAT_KEEP_OBJECT  keep the object file of `grenat build` (in the temporary directory)
@@ -75,6 +81,7 @@ fn main() -> ExitCode {
         Some("new") => package::new(&args[1..]),
         Some("generate" | "g") => generate::generate(&args[1..]),
         Some("serve") => serve::serve(&args[1..]),
+        Some("console") => console::console(&args[1..]),
         Some("migrate") => migrate::migrate(&args[1..]),
         Some("update") if args.len() == 1 => package::update(),
         Some("fmt") => fmt::fmt(&args[1..]),
