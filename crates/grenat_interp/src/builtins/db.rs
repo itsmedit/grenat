@@ -87,6 +87,12 @@ pub(crate) fn database_method<'p>(interp: &mut Interp<'p>, fields: &Fields<'p>, 
             let changed = grenat_green::blocking(|| connection.lock().execute(&sql, &params)).or_else(db_error)?;
             Ok(Value::Int(changed as i64))
         }
+        // the column type of an id the database gives, for portable migrations
+        "primary_key" => Ok(Value::str(connection.lock().dialect().primary_key())),
+        "dialect" => Ok(Value::Symbol(match connection.lock().dialect() {
+            grenat_db::Dialect::Sqlite => "sqlite".into(),
+            grenat_db::Dialect::Postgres => "postgres".into(),
+        })),
         "migrate" => {
             interp.check_effect("db.write")?;
             let sql = sql(&args)?;

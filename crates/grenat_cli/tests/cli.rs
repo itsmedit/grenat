@@ -516,3 +516,44 @@ fn migrate_applies_pending_migrations() {
     let again = grenat(&["migrate", path.to_str().unwrap()]);
     assert!(text(&again.stderr).contains("the database is up to date"), "{}", text(&again.stderr));
 }
+
+#[test]
+fn serve_runs_queued_jobs() {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let dir = project("jobs");
+    let db = dir.join("app.db");
+    let src = format!(
+        "database \"sqlite://{}\"\nstruct Note\n  table :notes\n  id: Int?\n  text: String\nend\nmigration \"001\" do |db|\n  db.migrate(\"CREATE TABLE notes (id #{{db.primary_key}}, text TEXT NOT NULL)\")\nend\ndef note(text: String) uses db = Note.create(text:)\npost \"/notes\" do |req|\n  enqueue(:note, \"queued\")\n  202\nend\nget \"/count\" do |req|\n  Note.count.to_s\nend\n",
+        db.display()
+    );
+    let path = dir.join("app.grn");
+    std::fs::write(&path, src).unwrap();
+    assert_eq!(code(&grenat(&["migrate", path.to_str().unwrap()])), 0);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_grenat"))
+        .args(["serve", "--listen", "127.0.0.1:0", path.to_str().unwrap()])
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    BufReader::new(child.stderr.take().unwrap()).read_line(&mut line).unwrap();
+    let address = line.trim().strip_prefix("listening on http://").unwrap().to_string();
+    let call = |method: &str, path: &str| {
+        let mut stream = std::net::TcpStream::connect(&address).unwrap();
+        write!(stream, "{method} {path} HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        response
+    };
+    assert!(call("POST", "/notes").starts_with("HTTP/1.1 202"));
+    let mut count = String::new();
+    for _ in 0..50 {
+        count = call("GET", "/count");
+        if count.ends_with("\r\n\r\n1") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(count.ends_with("\r\n\r\n1"), "the job did not run: {count}");
+}

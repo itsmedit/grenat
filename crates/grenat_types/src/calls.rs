@@ -302,6 +302,16 @@ impl<'p> Checker<'p> {
             // test doubles and evals
             "mock" | "mock_http" | "mock_shell" | "mcp" | "mock_mcp" => V::new(Ty::Nil),
             "database" => V::new(Ty::Nil),
+            // a job: its arguments are written to the database
+            "enqueue" => {
+                cx.add_effect(Eff { path: "db.write".into(), arg: None, origin: span });
+                for arg in argv {
+                    if let Some(origin) = arg.v.taint {
+                        self.taint_violation(arg.span, origin, "enqueue", "db.write");
+                    }
+                }
+                V::new(Ty::Nil)
+            }
             "migration" => {
                 self.walk_block(cx, block, &[V::new(Ty::User(builtins::DATABASE.into()))]);
                 V::new(Ty::Nil)

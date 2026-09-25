@@ -36,6 +36,10 @@ fn cell(value: ValueRef) -> Cell {
 }
 
 impl Connection for Sqlite {
+    fn dialect(&self) -> crate::Dialect {
+        crate::Dialect::Sqlite
+    }
+
     fn query(&mut self, sql: &str, params: &[Cell]) -> Result<Vec<Row>, String> {
         let mut statement = self.0.prepare(sql).map_err(|e| e.to_string())?;
         let names: Vec<String> = statement.column_names().iter().map(|n| n.to_string()).collect();

@@ -167,6 +167,9 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Mail", "connect") => (User(MAILER.into()), None),
         ("Html", "text" | "escape") => (Str, None),
         ("Conversation", "new") => (User(CONVERSATION.into()), None),
+        ("Jobs", "enqueued") => (Ty::array(Ty::array(Unknown)), Some("db.read")),
+        ("Jobs", "failed") => (Ty::array(Ty::array(Str)), Some("db.read")),
+        ("Jobs", "perform") => (Int, Some("db.write")),
         ("Conversation", "load") => (User(CONVERSATION.into()), Some("fs.read")),
         ("Mail", "deliveries") => (Ty::array(Ty::Hash(Box::new(Str), Box::new(Unknown))), None),
         ("Mcp", "call") => (Str, Some("mcp")),
@@ -175,7 +178,7 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
     })
 }
 
-pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Conversation"];
+pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Conversation", "Jobs"];
 
 /// What `Conversation.new` returns.
 pub const CONVERSATION: &str = "Conversation";
@@ -235,6 +238,8 @@ pub const HTTP_RESPONSE: &str = "HttpResponse";
 /// and whether it is untrusted (tainted).
 pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
     Some(match (record, name) {
+        (DATABASE, "primary_key") => (Ty::Str, false),
+        (DATABASE, "dialect") => (Ty::Sym, false),
         (HTTP_RESPONSE, "status") => (Ty::Int, false),
         (HTTP_RESPONSE, "ok?") => (Ty::Bool, false),
         (HTTP_RESPONSE, "body") => (Ty::Str, true),
@@ -283,6 +288,7 @@ pub const GLOBALS: &[&str] = &[
     "mcp",
     "mock_mcp",
     "database",
+    "enqueue",
     "migration",
     "every",
     "get",

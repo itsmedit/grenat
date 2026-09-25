@@ -148,3 +148,10 @@ fn a_page_never_carries_an_unescaped_untrusted_value() {
     single("get \"/x\" do |req|\n  redirect req.params[\"to\"]\nend\n", "E0412", "req.params[\"to\"]");
     clean("get \"/x\" do |req|\n  json(req.params)\nend\n");
 }
+
+#[test]
+fn a_job_never_carries_an_untrusted_value() {
+    let head = "def note(t: String) = t\n";
+    single(&format!("{head}post \"/n\" do |req|\n  enqueue(:note, req.params[\"t\"])\nend\n"), "E0412", "req.params[\"t\"]");
+    clean(&format!("{head}def main uses db\n  enqueue(:note, \"x\")\nend\n"));
+}

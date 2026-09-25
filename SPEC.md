@@ -528,7 +528,7 @@ struct Ticket
 end
 
 migration "001_create_tickets" do |db|
-  db.migrate("CREATE TABLE tickets (id INTEGER PRIMARY KEY, subject TEXT NOT NULL, status TEXT NOT NULL)")
+  db.migrate("CREATE TABLE tickets (id #{db.primary_key}, subject TEXT NOT NULL, status TEXT NOT NULL)")
 end
 
 t = Ticket.create(subject: "Bug")
@@ -540,8 +540,24 @@ t.delete
 `database` declares the application's database; a struct with `table :name` is a **record**: its fields are the table's columns, `id` its primary key, given by the database (`INSERT … RETURNING`, on SQLite and PostgreSQL alike). `Ticket.all`, `where` (equalities), `find` and `count` read; `create`, `save` (an insert without an id, an update with it) and `delete` write — typed for the checker (`find` is a `Ticket?`, `where` an `Array(Ticket)`). Identifiers are quoted, values always parameters. `migration "name" do |db| … end` declares migrations; `grenat migrate` applies those the database has not seen, in order, each in a transaction, and records them (`grenat_migrations`).
 
 - **Effects and taint.** Reads are `db.read`, writes `db.write`; a record written with an untrusted value is refused (E0412, `TaintError`) — check it first — while an untrusted value may filter a read.
-- **Tests.** In `grenat test`, each test gets a new in-memory SQLite database with every migration applied: no test sees another's data, none touches the real database. Migrations are therefore written in SQL that SQLite and PostgreSQL both accept.
+- **Tests.** In `grenat test`, each test gets a new in-memory SQLite database with every migration applied: no test sees another's data, none touches the real database. Migrations are therefore written in SQL that SQLite and PostgreSQL both accept; where they differ, `db.primary_key` is the column type of an id the database gives (`INTEGER PRIMARY KEY`, `BIGSERIAL PRIMARY KEY`), and `db.dialect` is `:sqlite` or `:postgres`.
 - **Limits.** Fields are integers, floats, strings and booleans (optional or not); no associations yet.
+
+### Phase 8 status: jobs
+
+```ruby
+post "/tickets" do |req|
+  ticket = Ticket.create(subject: req.json["subject"].check { |s| s.size < 200 }?)
+  enqueue(:triage, ticket.id)            # or enqueue(:digest, in: 1.hour)
+  status 202, json(ticket)
+end
+
+workflow triage(id: Int) uses llm, db    # a workflow: durable, its steps journaled
+  step(:classify) { classify(Ticket.find(id).subject) }
+end
+```
+
+`enqueue(:function, args…)` queues a call in the application's database (`grenat_jobs`: the arguments in the exact encoding of workflow journals); `grenat serve` runs workers that claim ready jobs with a conditional update — two workers, or two servers, never run the same job — and mark them done, or retry them 1, 2, 4… minutes later, up to three runs, then mark them failed with their error. A job's arguments are written: nothing untrusted goes in them (E0412). In `grenat test`, jobs wait in the test's database: `Jobs.enqueued` lists them, `Jobs.perform` runs them (and those they queue), `Jobs.failed` gives the ones given up.
 
 ### Phase 7 plan: the ten use cases
 

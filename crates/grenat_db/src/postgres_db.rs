@@ -74,6 +74,10 @@ fn cell(row: &postgres::Row, i: usize) -> Result<Cell, String> {
 }
 
 impl Connection for Postgres {
+    fn dialect(&self) -> crate::Dialect {
+        crate::Dialect::Postgres
+    }
+
     fn query(&mut self, sql: &str, cells: &[Cell]) -> Result<Vec<Row>, String> {
         let statement = self.0.prepare(&numbered(sql)).map_err(message)?;
         let owned = params(cells, statement.params())?;

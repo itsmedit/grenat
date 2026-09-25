@@ -4,6 +4,11 @@
 use grenat_db::{Cell, Connection, connect};
 
 fn exercise(db: &mut dyn Connection, temp: &str) {
+    let key = db.dialect().primary_key();
+    db.batch(&format!("CREATE {temp} TABLE counters (id {key}, n INTEGER)")).unwrap();
+    db.execute("INSERT INTO counters (n) VALUES (?)", &[Cell::Int(1)]).unwrap();
+    let rows = db.query("INSERT INTO counters (n) VALUES (?) RETURNING id", &[Cell::Int(2)]).unwrap();
+    assert_eq!(rows[0][0].1, Cell::Int(2), "ids are given by the database");
     db.batch(&format!(
         "CREATE {temp} TABLE orders (id INTEGER PRIMARY KEY, customer TEXT NOT NULL, total FLOAT, paid BOOLEAN)"
     ))

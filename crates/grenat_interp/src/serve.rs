@@ -9,6 +9,9 @@ use crate::builtins::{Every, HttpAnswer, RawRequest};
 use crate::value::Locked;
 use crate::{Interp, Options, RuntimeError, on_interpreter_thread, spawner};
 
+/// Job workers of an application with a database.
+const WORKERS: usize = 2;
+
 /// Runs the script (which declares the triggers), then serves them until
 /// the process ends. `listening` is told the webhook server's address.
 pub fn serve(
@@ -23,8 +26,9 @@ pub fn serve(
             return Err(interp.runtime_error(ctrl));
         }
         let schedules = interp.schedules.borrow().len();
+        let database = interp.app_db.borrow().is_some();
         let webhooks = !interp.webhooks.borrow().is_empty() || !interp.routes.borrow().is_empty();
-        if schedules == 0 && !webhooks {
+        if schedules == 0 && !webhooks && !database {
             return Err(RuntimeError {
                 ty: "ArgumentError".into(),
                 message: "nothing to serve: declare routes (`get \"/\" do … end`), `on_webhook` or `every`".into(),
@@ -34,6 +38,12 @@ pub fn serve(
         }
         for i in 0..schedules {
             interp.spawn_task(interp.fork(), move |task| task.run_schedule(i));
+        }
+        // with a database, workers run the queued jobs
+        if database {
+            for _ in 0..WORKERS {
+                interp.spawn_task(interp.fork(), |task| task.work());
+            }
         }
         if webhooks {
             let server = grenat_serve::Server::bind(address)

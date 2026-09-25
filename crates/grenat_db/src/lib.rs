@@ -15,7 +15,25 @@ pub use cell::Cell;
 /// A row: (column, value), in the order of the query's columns.
 pub type Row = Vec<(String, Cell)>;
 
+/// Which SQL a database speaks, where it differs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dialect {
+    Sqlite,
+    Postgres,
+}
+
+impl Dialect {
+    /// The column type of an id the database gives.
+    pub fn primary_key(self) -> &'static str {
+        match self {
+            Dialect::Sqlite => "INTEGER PRIMARY KEY",
+            Dialect::Postgres => "BIGSERIAL PRIMARY KEY",
+        }
+    }
+}
+
 pub trait Connection: Send {
+    fn dialect(&self) -> Dialect;
     /// The rows of a query.
     fn query(&mut self, sql: &str, params: &[Cell]) -> Result<Vec<Row>, String>;
     /// Runs a statement; the number of rows it changed.
