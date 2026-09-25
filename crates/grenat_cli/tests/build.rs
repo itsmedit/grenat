@@ -258,3 +258,92 @@ fn a_program_of_several_files_is_built_with_its_file_table() {
         assert!(err.contains("lib/div.grn:1:"), "{flags:?}: {err}");
     }
 }
+
+// ── Release builds (`--release`: LLVM) ───────────────────────────
+
+/// Whether LLVM's `clang` can be run here (release builds need it).
+fn has_clang() -> bool {
+    let found = Command::new(grenat_codegen::llvm::clang()).arg("--version").output().is_ok_and(|o| o.status.success());
+    if !found {
+        eprintln!("no clang: release builds not tested");
+    }
+    found
+}
+
+const NUMERIC: &str = "\
+def arithmetic(a: Int, b: Int) -> Int
+  (a + b) * (a - b) + a / b + a % b + (-a) / b + (-a) % b + a.abs
+end
+
+def floats(x: Float) -> Float
+  Math.sqrt(x) + x.floor + x.ceil + x / 3.0 - (-x).abs
+end
+
+def compare(a: Int, b: Int) -> Bool
+  (a < b && a != 0) || (a >= b && !(a == b))
+end
+
+def mean(xs: Array(Float)) -> Float
+  total = 0.0
+  xs.each do |x|
+    total += x
+  end
+  total / xs.length
+end
+
+def overflow(n: Int) -> Int
+  n * n * n
+end
+
+def main(args: Array(String))
+  puts arithmetic(17, 5), arithmetic(-17, 5), arithmetic(3, -7)
+  puts floats(2.25), floats(10.0)
+  puts compare(1, 2), compare(0, 2), compare(3, 3), compare(4, 3)
+  puts mean([1.5, 2.5, 4.0])
+  puts overflow(args.length * 3_000_000)
+end
+";
+
+#[test]
+fn a_release_build_behaves_like_grenat_run() {
+    if !has_clang() {
+        return;
+    }
+    let hosted = build_with("release_hosted", PROGRAM, &["--release"]);
+    let ran = grenat(&["run", dir().join("release_hosted.grn").to_str().unwrap(), "a", "b"]);
+    let built = run_exe(&hosted, &["a", "b"], &[]);
+    assert_eq!(text(&built.stdout), text(&ran.stdout));
+    assert_eq!(built.status.code(), ran.status.code());
+
+    let native = build_with("release_native", STANDALONE, &["--native", "--release"]);
+    let ran = grenat(&["run", dir().join("release_native.grn").to_str().unwrap(), "Ada"]);
+    let built = run_exe(&native, &["Ada"], &[]);
+    assert_eq!(text(&built.stdout), text(&ran.stdout));
+    assert_eq!(built.status.code(), ran.status.code());
+}
+
+#[test]
+fn release_numerics_and_errors_match_the_interpreter() {
+    if !has_clang() {
+        return;
+    }
+    let exe = build_with("release_numeric", NUMERIC, &["--native", "--release"]);
+    let source = dir().join("release_numeric.grn");
+    for args in [&["x"][..], &["x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p"][..]] {
+        let mut run_args = vec!["run", source.to_str().unwrap()];
+        run_args.extend(args);
+        let ran = grenat(&run_args);
+        let built = run_exe(&exe, args, &[]);
+        assert_eq!(text(&built.stdout), text(&ran.stdout), "{args:?}");
+        assert_eq!(built.status.code(), ran.status.code(), "{args:?}: {}", text(&built.stderr));
+    }
+    // the overflow is reported like the interpreter reports it
+    let built = run_exe(&exe, &["x", "y", "z", "w", "v", "u", "t", "s", "r", "q", "p"], &[]);
+    let err = text(&built.stderr);
+    assert!(err.contains("OverflowError"), "{err}");
+    assert!(err.contains("in `overflow`"), "{err}");
+
+    let exe = build_with("release_div", "def div(a: Int, b: Int) -> Int = a / b\ndef main\n  puts div(1, 0)\nend\n", &["--native", "--release"]);
+    let err = text(&run_exe(&exe, &[], &[]).stderr);
+    assert!(err.starts_with("error: ZeroDivisionError: division by zero\n"), "{err}");
+}

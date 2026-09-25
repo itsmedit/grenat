@@ -8,13 +8,13 @@
 //! [`Native::link`]: nothing is compiled at run time.
 
 use cranelift_module::{Linkage, Module};
-use cranelift_object::{ObjectBuilder, ObjectModule};
 use grenat_ast::Program;
 use grenat_runtime::Shape;
 
 use crate::eligibility::select;
 use crate::infer::Target;
-use crate::emit::{emit, isa};
+use crate::Backend;
+use crate::emit::emit;
 use crate::native::{Native, Report, Trampoline};
 use crate::object_data::{Strings, Word, new_record, record};
 use crate::structs::Structs;
@@ -79,27 +79,36 @@ pub struct Object {
 
 /// The object file of `program` (parsed from `source`, whose file table is
 /// `files`, and checked).
-pub fn object(program: &Program, source: &str, files: &str) -> Result<Object, String> {
-    let fail = |e: cranelift_module::ModuleError| e.to_string();
+pub fn object(program: &Program, source: &str, files: &str, backend: Backend) -> Result<Object, String> {
     let structs = Structs::from_program(program);
     let (selected, interpreted) = select(program, &structs, Target::Hosted);
     let report = Report { compiled: selected.iter().map(|c| c.def.name.name.clone()).collect(), interpreted };
-    let builder =
-        ObjectBuilder::new(isa(true)?, "grenat_program", cranelift_module::default_libcall_names()).map_err(fail)?;
-    let mut module = ObjectModule::new(builder);
-    let emitted = emit(&mut module, &selected, &structs)?;
+    let (bytes, ()) = backend.object(|mut module| image(&mut module, &selected, &structs, source, files))?;
+    Ok(Object { bytes, report })
+}
+
+/// The compiled functions and the [`Image`] describing them.
+fn image(
+    module: &mut impl Module,
+    selected: &[crate::eligibility::Compiled],
+    structs: &Structs,
+    source: &str,
+    files: &str,
+) -> Result<(), String> {
+    let fail = |e: cranelift_module::ModuleError| e.to_string();
+    let emitted = emit(module, selected, structs)?;
 
     let names = selected.iter().map(|c| c.def.name.name.as_str()).collect::<Vec<_>>().join("\n");
     let mut strings = Strings::default();
     let functions: Vec<Word> = emitted.trampolines.iter().map(|id| Word::Function(*id)).collect();
-    let functions = new_record(&mut module, &functions)?;
+    let functions = new_record(module, &functions)?;
     let shapes: Vec<Word> = emitted.shapes.iter().map(|id| Word::Data(*id)).collect();
-    let shapes = new_record(&mut module, &shapes)?;
+    let shapes = new_record(module, &shapes)?;
 
     let image = module.declare_data(IMAGE_SYMBOL, Linkage::Export, false, false).map_err(fail)?;
-    let [source_ptr, source_len] = strings.words(&mut module, source)?;
-    let [files_ptr, files_len] = strings.words(&mut module, files)?;
-    let [names_ptr, names_len] = strings.words(&mut module, &names)?;
+    let [source_ptr, source_len] = strings.words(module, source)?;
+    let [files_ptr, files_len] = strings.words(module, files)?;
+    let [names_ptr, names_len] = strings.words(module, &names)?;
     let words = [
         source_ptr,
         source_len,
@@ -112,10 +121,7 @@ pub fn object(program: &Program, source: &str, files: &str) -> Result<Object, St
         Word::Data(shapes),
         Word::Number(emitted.shapes.len() as u64),
     ];
-    record(&mut module, image, &words)?;
-
-    let bytes = module.finish().emit().map_err(|e| e.to_string())?;
-    Ok(Object { bytes, report })
+    record(module, image, &words)
 }
 
 impl Native {

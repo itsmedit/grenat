@@ -4,7 +4,6 @@
 use std::collections::HashMap;
 
 use cranelift_module::{DataDescription, DataId, FuncId, Module};
-use cranelift_object::ObjectModule;
 
 /// A field of a record: a number, or the address of a function or of data.
 pub(crate) enum Word {
@@ -14,7 +13,7 @@ pub(crate) enum Word {
 }
 
 /// Defines a read-only record of 64-bit words (with relocations for addresses).
-pub(crate) fn record(module: &mut ObjectModule, id: DataId, words: &[Word]) -> Result<(), String> {
+pub(crate) fn record(module: &mut impl Module, id: DataId, words: &[Word]) -> Result<(), String> {
     let mut data = DataDescription::new();
     let mut bytes = vec![0u8; 8 * words.len().max(1)];
     for (i, word) in words.iter().enumerate() {
@@ -43,7 +42,7 @@ pub(crate) fn record(module: &mut ObjectModule, id: DataId, words: &[Word]) -> R
 }
 
 /// A new read-only record.
-pub(crate) fn new_record(module: &mut ObjectModule, words: &[Word]) -> Result<DataId, String> {
+pub(crate) fn new_record(module: &mut impl Module, words: &[Word]) -> Result<DataId, String> {
     let id = module.declare_anonymous_data(false, false).map_err(|e| e.to_string())?;
     record(module, id, words)?;
     Ok(id)
@@ -57,7 +56,7 @@ pub(crate) struct Strings {
 }
 
 impl Strings {
-    pub fn get(&mut self, module: &mut ObjectModule, text: &str) -> Result<DataId, String> {
+    pub fn get(&mut self, module: &mut impl Module, text: &str) -> Result<DataId, String> {
         if let Some(id) = self.defined.get(text) {
             return Ok(*id);
         }
@@ -70,7 +69,7 @@ impl Strings {
     }
 
     /// The two words of a `Bytes` (address, length).
-    pub fn words(&mut self, module: &mut ObjectModule, text: &str) -> Result<[Word; 2], String> {
+    pub fn words(&mut self, module: &mut impl Module, text: &str) -> Result<[Word; 2], String> {
         Ok([Word::Data(self.get(module, text)?), Word::Number(text.len() as u64)])
     }
 }

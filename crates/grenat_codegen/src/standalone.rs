@@ -10,13 +10,13 @@
 //! on) is an error here, reported where it happens.
 
 use cranelift_module::{Linkage, Module};
-use cranelift_object::{ObjectBuilder, ObjectModule};
 use grenat_ast::{FnKind, Item, Program, TypeKind};
 use grenat_runtime::abi::STANDALONE_SYMBOL;
 
 use crate::aot::Object;
 use crate::eligibility::select;
-use crate::emit::{emit, isa};
+use crate::Backend;
+use crate::emit::emit;
 use crate::infer::Target;
 use crate::native::Report;
 use crate::object_data::{Strings, Word, new_record, record};
@@ -25,7 +25,7 @@ use crate::ty::{Elem, Ty};
 
 /// The object file of a standalone `program` (parsed from `source`, whose
 /// file table is `files`), or why the program needs the interpreter.
-pub fn object(program: &Program, source: &str, files: &str) -> Result<Object, Vec<String>> {
+pub fn object(program: &Program, source: &str, files: &str, backend: Backend) -> Result<Object, Vec<String>> {
     let structs = Structs::from_program(program);
     let (selected, rejected) = select(program, &structs, Target::Standalone);
     let mut reasons = interpreter_only(program, &selected.iter().map(|c| c.def.name.name.as_str()).collect::<Vec<_>>());
@@ -49,18 +49,32 @@ pub fn object(program: &Program, source: &str, files: &str) -> Result<Object, Ve
     }
     let main = main.expect("checked");
 
-    let fail = |e: cranelift_module::ModuleError| vec![e.to_string()];
-    let builder = ObjectBuilder::new(isa(true).map_err(|e| vec![e])?, "grenat_program", cranelift_module::default_libcall_names())
-        .map_err(fail)?;
-    let mut module = ObjectModule::new(builder);
-    let emitted = emit(&mut module, &selected, &structs).map_err(|e| vec![e])?;
+    let (bytes, ()) = backend
+        .object(|mut module| descriptor(&mut module, &selected, &structs, main, takes_args, source, files))
+        .map_err(|e| vec![e])?;
+    let report = Report { compiled: selected.iter().map(|c| c.def.name.name.clone()).collect(), interpreted: rejected };
+    Ok(Object { bytes, report })
+}
+
+/// The compiled functions and the [`Standalone`](grenat_runtime::abi::Standalone) describing them.
+fn descriptor(
+    module: &mut impl Module,
+    selected: &[crate::eligibility::Compiled],
+    structs: &Structs,
+    main: usize,
+    takes_args: bool,
+    source: &str,
+    files: &str,
+) -> Result<(), String> {
+    let fail = |e: cranelift_module::ModuleError| e.to_string();
+    let emitted = emit(module, selected, structs)?;
     let mut strings = Strings::default();
-    let one = |e: String| vec![e];
+    let one = |e: String| e;
 
     let mut sites = Vec::new();
     for site in &emitted.sites {
-        let [function_ptr, function_len] = strings.words(&mut module, &site.function).map_err(one)?;
-        let [reason_ptr, reason_len] = strings.words(&mut module, site.reason.unwrap_or("")).map_err(one)?;
+        let [function_ptr, function_len] = strings.words(module, &site.function).map_err(one)?;
+        let [reason_ptr, reason_len] = strings.words(module, site.reason.unwrap_or("")).map_err(one)?;
         sites.extend([
             function_ptr,
             function_len,
@@ -72,9 +86,9 @@ pub fn object(program: &Program, source: &str, files: &str) -> Result<Object, Ve
             reason_len,
         ]);
     }
-    let sites_table = new_record(&mut module, &sites).map_err(one)?;
-    let [source_ptr, source_len] = strings.words(&mut module, source).map_err(one)?;
-    let [path_ptr, path_len] = strings.words(&mut module, files).map_err(one)?;
+    let sites_table = new_record(module, &sites).map_err(one)?;
+    let [source_ptr, source_len] = strings.words(module, source).map_err(one)?;
+    let [path_ptr, path_len] = strings.words(module, files).map_err(one)?;
     let descriptor = module.declare_data(STANDALONE_SYMBOL, Linkage::Export, false, false).map_err(fail)?;
     let words = [
         Word::Function(emitted.trampolines[main]),
@@ -86,11 +100,7 @@ pub fn object(program: &Program, source: &str, files: &str) -> Result<Object, Ve
         Word::Data(sites_table),
         Word::Number(emitted.sites.len() as u64),
     ];
-    record(&mut module, descriptor, &words).map_err(one)?;
-
-    let bytes = module.finish().emit().map_err(|e| vec![e.to_string()])?;
-    let report = Report { compiled: selected.iter().map(|c| c.def.name.name.clone()).collect(), interpreted: rejected };
-    Ok(Object { bytes, report })
+    record(module, descriptor, &words)
 }
 
 /// Parts of the program only the interpreter runs.

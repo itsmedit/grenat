@@ -478,7 +478,7 @@ Installed layout:
 | **3** ✅ | Concurrent actor agents, real `parallel_map`/`race`, cancellation, deadlock detection, supervision | multi-agent |
 | **4** ✅ | Cranelift codegen: 4a JIT for numeric functions, 4b strings/arrays/structs with Perceus RC, 4c `grenat build`, 4d M:N green threads, 4e programs without the interpreter | fast native binaries |
 | **5** ✅ | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
-| **6** | LSP, LLVM release builds, macros, package manager (and programs of several files) | ecosystem |
+| **6** ✅ | LSP, LLVM release builds, macros, package manager (and programs of several files) | ecosystem |
 | **7** | What real agents need (from ten use cases: support, code review, research, data, documents, scheduled, operations, chat, multi-agent teams, third-party tools): an I/O library with effects (`Http` client and server, `Db`, email), MCP client, multimodal prompts and the Batch API, conversations and long-term memory, a sandbox for `shell` and per-tool timeouts, triggers (`every`, webhooks) | agents in production |
 
 ### Phase 0.5 status: `grenat fmt`
@@ -654,6 +654,12 @@ Programs of several files and packages (§2, *Files and packages*) are in `grena
 ### Phase 6 status: macros
 
 Macros are expanded by `grenat_macros`, between the resolution of `require`s and the checker. The lexer reads a macro's body raw, up to the `end` at the macro's indentation (a template is not Grenat code until expanded), and `grenat fmt` prints it as written. Expansion is textual and recursive: a template is rendered, the macros it invokes are expanded in place, and the final text is parsed once with every token given the invocation's span — which is how errors in generated code point at the invocation. Inside the body of any type, a line starting with a name is now a directive: a macro invocation, or else, outside agents and supervisors, an unknown macro. The language server expands macros too, and shows a macro's documentation over its invocations.
+
+### Phase 6 status: release builds through LLVM
+
+`grenat build --release` (with or without `--native`) has LLVM optimize and compile the code. The front end is shared: `grenat_codegen::llvm::LlvmModule` is a `cranelift_module::Module` that records the Cranelift IR of every function and the contents of every data object instead of compiling them, then translates the whole module into LLVM IR — values and blocks keep their numbers, block parameters become `phi`s (a conditional branch goes through edge blocks), overflow checks become `llvm.s*.with.overflow`, float operations LLVM intrinsics, addresses `inttoptr`/`ptrtoint` — which `clang -O3` compiles (`GRENAT_CLANG` chooses the compiler). An instruction the translator does not know is an error, never a silent difference; differential tests build programs both ways and compare them with `grenat run`, down to overflow and division errors.
+
+Measured on this machine (Apple M-series, `--native`): `fib(38)` 0.33 s with Cranelift, 0.26 s with LLVM; `examples/objects.grn` 0.05 s and 0.04 s. What remains is the price of the semantics — checked arithmetic, the recursion depth, the cancellation flag, a status returned with every result — not of the code generator.
 
 For the models that recommend it (`claude-opus-5`, `claude-fable-5-1`), the client enables server-side fallbacks (`fallbacks: "default"`): a request refused by a classifier is replayed on another model instead of failing. Disable it with `model :x, …, fallbacks: false`.
 

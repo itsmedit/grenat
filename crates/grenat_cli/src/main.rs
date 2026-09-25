@@ -21,9 +21,10 @@ Usage:
   grenat run [--log] [--unchecked] [--no-jit] [<file.grn>] [args…]
                                  check, then run the program (and `main`);
                                  without a file, the current package's
-  grenat build [--native] [<file.grn>] [-o <executable>]
+  grenat build [--native] [--release] [<file.grn>] [-o <executable>]
                                  compile the program ahead of time into an executable
-                                 (--native: the whole program, without the interpreter)
+                                 (--native: the whole program, without the interpreter;
+                                 --release: optimized by LLVM, needs clang)
   grenat test [<file.grn>...]    run the `test \"…\" do … end` blocks (never a real model:
                                  `mock`, or `cassette` recorded once); without a
                                  file, those of the package's src/ and tests/

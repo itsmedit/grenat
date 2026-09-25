@@ -22,12 +22,14 @@
 
 mod abi;
 pub mod aot;
+mod backend;
 mod data;
 mod eligibility;
 mod emit;
 mod infer;
 mod jit;
 mod liveness;
+pub mod llvm;
 mod marshal;
 mod native;
 mod object_data;
@@ -39,6 +41,8 @@ mod structs;
 mod translate;
 mod ty;
 mod walk;
+
+pub use backend::Backend;
 
 pub use abi::{Failure, Trap};
 pub use data::{Data, Returned};

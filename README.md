@@ -27,6 +27,10 @@ end
 
 ## Status
 
+**Phase 6 — ecosystem**: programs of several files and packages (`grenat.toml`, path
+and git dependencies, `grenat.lock`), a language server (`grenat lsp`), compile-time
+macros, and release builds optimized by LLVM (`grenat build --release`).
+
 **Phase 5 — production-ready**: workflows are durable — each `step` is journaled, and an
 interrupted run resumes where it stopped, without paying twice for a model call. Tests
 never reach a real model: `mock` gives the model's replies as plain values, `cassette`
@@ -52,6 +56,7 @@ target/debug/grenat run --log examples/fib.grn        # native code: see what th
 target/debug/grenat run --log examples/objects.grn    # strings, arrays, structs, natively
 target/debug/grenat build examples/objects.grn && ./objects   # a standalone executable (needs `cc`)
 target/debug/grenat build --native examples/objects.grn        # without the interpreter: ~0.5 MB
+target/debug/grenat build --native --release examples/fib.grn  # optimized by LLVM (needs clang)
 
 export ANTHROPIC_API_KEY=sk-ant-…
 target/debug/grenat run --log examples/explorer.grn crates/grenat_parser        # a real agent
@@ -88,7 +93,7 @@ end })
 | `grenat_parser` | recursive descent + Pratt, diagnostics with error recovery |
 | `grenat_llm` | Claude API client (structured output, tools, fallbacks); mocks, cassettes and a scripted provider for tests |
 | `grenat_types` | checker: names, types, effects, `~T` taint (E0100–E0500) |
-| `grenat_codegen` | Cranelift: typing, liveness (Perceus), translation, boundary; JIT and object files |
+| `grenat_codegen` | Cranelift: typing, liveness (Perceus), translation, boundary; JIT and object files; LLVM IR for release builds |
 | `grenat_runtime` | reference-counted strings, arrays and records called by native code |
 | `grenat_driver` | load, check and run a program (shared by the CLI and built executables) |
 | `grenat_host` | static library linked into the executables of `grenat build` |
