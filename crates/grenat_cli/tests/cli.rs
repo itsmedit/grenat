@@ -627,3 +627,47 @@ fn a_generated_application_checks_passes_its_tests_and_migrates() {
     assert_eq!(code(&again), 1);
     assert!(text(&again.stderr).contains("already exists"), "{}", text(&again.stderr));
 }
+
+#[test]
+fn serve_records_what_fails_for_the_console() {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let dir = project("events");
+    let url = format!("sqlite://{}", dir.join("app.db").display());
+    let src = format!(
+        "database \"{url}\"\nget \"/boom\" do |req|\n  raise ArgumentError, \"no\"\nend\n\
+         agent Pager\n  on Show(text: String) -> String\n    html(text)\n    \"shown\"\n  end\nend\n\
+         expose \"/mcp\", agents: [Pager], public: true\n"
+    );
+    let path = dir.join("app.grn");
+    std::fs::write(&path, src).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_grenat"))
+        .args(["serve", "--listen", "127.0.0.1:0", path.to_str().unwrap()])
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    // standard error is closed after this line: logging a failure must not
+    // stop the server from recording it
+    BufReader::new(child.stderr.take().unwrap()).read_line(&mut line).unwrap();
+    let address = line.trim().strip_prefix("listening on http://").unwrap().to_string();
+    let send = |request: String| {
+        let mut stream = std::net::TcpStream::connect(&address).unwrap();
+        stream.write_all(request.as_bytes()).unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        response
+    };
+    let boom = send("GET /boom HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n".into());
+    let body = "{\"text\": \"<script>\"}";
+    let refused = send(format!("POST /mcp/pager_show HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()));
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(boom.starts_with("HTTP/1.1 500"), "{boom}");
+    assert!(refused.starts_with("HTTP/1.1 422"), "{refused}");
+    let mut db = grenat_db::connect(&url).unwrap();
+    let all = grenat_ops::events::latest(db.as_mut(), false, 10).unwrap();
+    let seen: Vec<_> = all.iter().map(|e| (e.source.as_str(), e.subject.as_str(), e.error.as_str())).collect();
+    assert_eq!(seen, [("mcp", "pager_show", "TaintError"), ("request", "GET /boom", "ArgumentError")]);
+    let refusals = grenat_ops::events::latest(db.as_mut(), true, 10).unwrap();
+    assert_eq!(refusals.len(), 1, "{refusals:?}");
+}

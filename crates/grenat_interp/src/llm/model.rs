@@ -94,14 +94,16 @@ impl<'p> Interp<'p> {
         };
         self.llm_calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         // after a server-side fallback, the model that actually answered is billed
-        let cost = cost_usd(&response.model, &response.usage)
-            .or_else(|| cost_usd(&request.model.name, &response.usage))
-            .unwrap_or(0.0);
+        let (billed, cost) = match cost_usd(&response.model, &response.usage) {
+            Some(cost) => (response.model.clone(), cost),
+            None => (request.model.name.clone(), cost_usd(&request.model.name, &response.usage).unwrap_or(0.0)),
+        };
         // a batch costs half
         let cost = if batched.is_some() { cost / 2.0 } else { cost };
         for budget in &self.budgets {
             budget.add(cost, response.usage.total_tokens());
         }
+        self.record_call(&billed, &response.usage, cost);
         if self.log {
             let line = format!(
                 "[llm] {} · {} in / {} out · {} · {:.1}s\n",

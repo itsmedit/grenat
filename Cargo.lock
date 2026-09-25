@@ -623,6 +623,7 @@ version = "0.1.0"
 dependencies = [
  "grenat_ast",
  "grenat_codegen",
+ "grenat_db",
  "grenat_driver",
  "grenat_fmt",
  "grenat_generate",
@@ -630,6 +631,7 @@ dependencies = [
  "grenat_lexer",
  "grenat_lsp",
  "grenat_mcp",
+ "grenat_ops",
  "grenat_package",
  "grenat_parser",
  "grenat_types",

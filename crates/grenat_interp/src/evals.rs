@@ -71,7 +71,13 @@ pub fn run_evals(
         }
         let evals = std::mem::take(&mut *interp.evals.borrow_mut());
         let selected = evals.into_iter().filter(|e| filter.is_none_or(|f| e.name.contains(f)));
-        Ok(selected.map(|eval| interp.run_eval(eval)).collect())
+        let mut reports = Vec::new();
+        for eval in selected {
+            let report = interp.run_eval(eval);
+            interp.record_eval(&report);
+            reports.push(report);
+        }
+        Ok(reports)
     })
 }
 

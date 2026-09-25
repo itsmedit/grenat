@@ -26,4 +26,6 @@ grenat_generate.workspace = true
 
 [dev-dependencies]
 grenat_mcp.workspace = true
+grenat_db.workspace = true
+grenat_ops.workspace = true
 serde_json.workspace = true

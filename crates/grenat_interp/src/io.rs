@@ -19,7 +19,10 @@ impl<'p> Interp<'p> {
 
     pub(crate) fn write_err(&self, text: &str) {
         match &self.output {
-            Output::Stdout => eprint!("{text}"),
+            // a closed standard error (a server's log pipe gone) is not fatal
+            Output::Stdout => {
+                let _ = std::io::stderr().lock().write_all(text.as_bytes());
+            }
             Output::Capture(buffer) => buffer.borrow_mut().push_str(text),
         }
     }

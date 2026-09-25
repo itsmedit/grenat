@@ -241,7 +241,11 @@ impl<'p> Interp<'p> {
         }
         match result {
             Ok(value) => Ok(Outcome::Value(crate::llm::value_to_json(&value), crate::llm::tool_output(&value))),
-            Err(Ctrl::Raise(e)) => Ok(Outcome::Failed(format!("{}: {}", e.ty, e.message))),
+            Err(Ctrl::Raise(e)) => {
+                let error = self.runtime_error(Ctrl::Raise(e));
+                self.record_event("mcp", &entry.spec.name, &error);
+                Ok(Outcome::Failed(format!("{}: {}", error.ty, error.message)))
+            }
             Err(other) => Err(other),
         }
     }

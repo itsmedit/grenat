@@ -100,6 +100,7 @@ impl<'p> Interp<'p> {
                 if self.log {
                     self.write_err(&format!("[job] {} failed: {message}\n", job.name));
                 }
+                self.record_event("job", &format!("job {} ({})", job.id, job.name), &error);
                 // a human said no: asking again would not change it
                 if attempts >= ATTEMPTS || error.ty == "ApprovalDenied" {
                     self.store("jobs", |db| jobs::fail(db, job.id, attempts, &message, now()))?;

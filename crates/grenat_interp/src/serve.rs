@@ -66,6 +66,7 @@ pub fn serve(
                         Err(ctrl) => {
                             let error = task.runtime_error(ctrl);
                             task.write_err(&format!("[{} {}] {}: {}\n", incoming.method, incoming.path, error.ty, error.message));
+                            task.record_event("request", &format!("{} {}", incoming.method, incoming.path), &error);
                             HttpAnswer::text(500, "error")
                         }
                     };
@@ -102,6 +103,7 @@ impl Interp<'_> {
             if let Err(ctrl) = self.call_block(&block, Vec::new()) {
                 let error = self.runtime_error(ctrl);
                 self.write_err(&format!("[{label}] failed: {}: {}\n", error.ty, error.message));
+                self.record_event("schedule", &label, &error);
             }
         }
     }

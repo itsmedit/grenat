@@ -30,6 +30,10 @@ pub(crate) struct WorkflowRun {
 }
 
 impl WorkflowRun {
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
     fn open(name: &str, path: PathBuf) -> Result<WorkflowRun, String> {
         let read = journal::read(&path)?;
         Ok(WorkflowRun {

@@ -24,4 +24,6 @@ lettre = { version = "0.11", default-features = false, features = ["smtp-transpo
 [dev-dependencies]
 grenat_mcp = { workspace = true, features = ["fake"] }
 grenat_parser.workspace = true
+grenat_db.workspace = true
+grenat_ops.workspace = true
 serde_json.workspace = true
