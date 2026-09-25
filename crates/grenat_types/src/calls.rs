@@ -293,7 +293,7 @@ impl<'p> Checker<'p> {
             }
             "deny_all" | "approve_all" => V::new(Ty::Sym),
             // test doubles and evals
-            "mock" => V::new(Ty::Nil),
+            "mock" | "mock_http" => V::new(Ty::Nil),
             "cassette" => self.walk_block(cx, block, &[]).unwrap_or_else(V::unknown),
             "fixture" => {
                 cx.add_effect(Eff { path: "fs.read".into(), arg: None, origin: span });

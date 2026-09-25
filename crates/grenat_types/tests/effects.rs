@@ -64,3 +64,19 @@ fn test_doubles_and_evals_are_known() {
     let d = single(&format!("{PRELUDE}def grade(t: String) -> Float = judge(\"Good?\", t)\ndef main\n  grade(\"x\")\nend\n"), "E0300", "grade(\"x\")");
     assert!(d.message.contains("llm"), "{}", d.message);
 }
+
+#[test]
+fn http_requests_are_net_effects_on_their_host() {
+    let d = single("def main\n  Http.get(\"https://api.github.com/repos/x\")\nend\n", "E0300", "Http.get(\"https://api.github.com/repos/x\")");
+    assert!(d.message.contains("net(\"api.github.com\")"), "{}", d.message);
+    clean("def main uses net(\"api.github.com\")\n  p Http.get(\"https://api.github.com/repos/x\").status\nend\n");
+    let d = single(
+        "def main uses net(\"api.github.com\")\n  Http.get(\"https://evil.io/x\")\nend\n",
+        "E0300",
+        "Http.get(\"https://evil.io/x\")",
+    );
+    assert!(d.message.contains("net(\"evil.io\")"), "{}", d.message);
+    // a URL built at run time is checked at run time
+    clean("def main(args: Array(String)) uses net(\"api.github.com\")\n  Http.get(\"https://#{args.first}/x\")\nend\n");
+    clean("test \"t\" do\n  mock_http \"GET https://x.io/*\", status: 200, json: {a: 1}\nend\n");
+}

@@ -49,6 +49,8 @@ pub(crate) struct Shared<'p> {
     pub provider: Mutex<Option<Arc<dyn Provider>>>,
     /// Mocked models (`mock`): the model mocked (`None`: any), its replies.
     pub mocks: Mutex<Vec<(Option<ModelConfig>, Arc<grenat_llm::Mock>)>>,
+    /// Stubbed HTTP requests (`mock_http`): (method, URL), the reply.
+    pub http_stubs: Mutex<Vec<crate::eval::HttpStub>>,
     /// See [`Options::offline`] and [`Options::record`].
     pub offline: bool,
     pub record: bool,
@@ -131,6 +133,7 @@ impl<'p> Interp<'p> {
             models: Mutex::new(Vec::new()),
             provider: Mutex::new(options.provider),
             mocks: Mutex::new(Vec::new()),
+            http_stubs: Mutex::new(Vec::new()),
             offline: options.offline,
             record: options.record,
             dir: options.dir.clone().unwrap_or_default(),

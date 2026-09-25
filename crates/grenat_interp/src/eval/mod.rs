@@ -8,6 +8,8 @@ mod capabilities;
 mod concurrency;
 mod construct;
 mod doubles;
+
+pub(crate) use doubles::HttpStub;
 mod errors;
 mod expr;
 mod human;

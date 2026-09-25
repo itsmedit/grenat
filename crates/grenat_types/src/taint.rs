@@ -34,10 +34,10 @@ impl<'p> Checker<'p> {
         self.report(
             Diagnostic::new(
                 arg_span,
-                format!("an LLM-produced value reaches `{target}` (effect `{effect}`) without validation"),
+                format!("an untrusted value reaches `{target}` (effect `{effect}`) without validation"),
             )
             .with_code(E_TAINT)
-            .with_note(origin, "produced here by an LLM")
+            .with_note(origin, "untrusted from here (a model's answer or a network response)")
             .with_help(TAINT_HELP),
         );
     }

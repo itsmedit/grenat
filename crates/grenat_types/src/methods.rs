@@ -112,6 +112,11 @@ impl<'p> Checker<'p> {
             if kind == Some(TypeKind::Enum) && n == "name" {
                 return V { ty: Ty::Str, taint };
             }
+            if kind.is_none()
+                && let Some((ty, untrusted)) = builtins::record_field(t, n)
+            {
+                return V { ty, taint: if untrusted { taint.or(Some(span)) } else { taint } };
+            }
             if kind.is_none() && is_error_name(t) {
                 // built-in or undeclared errors: free-form fields
                 return V { ty: builtins::error_field(t, n).unwrap_or(Ty::Unknown), taint };
@@ -182,18 +187,24 @@ impl<'p> Checker<'p> {
         if let Some((ty, effect)) = builtins::static_method(t, n) {
             let block_v = self.walk_block(cx, block, &[]);
             if let Some(path) = effect {
-                let arg = argv.first().and_then(|a| a.lit.clone());
+                let mut arg = argv.first().and_then(|a| a.lit.clone());
+                if path == "net" {
+                    // `net` is restricted by host: that of a literal URL
+                    arg = arg.and_then(|url| crate::effects::url_host(&url).map(str::to_string));
+                }
                 cx.add_effect(Eff { path: path.into(), arg, origin: span });
             }
-            if effect == Some("fs.write") {
+            if let Some(sink @ ("fs.write" | "net")) = effect {
                 for arg in &argv {
                     if let Some(origin) = arg.v.taint {
-                        self.taint_violation(arg.span, origin, &format!("{t}.{n}"), "fs.write");
+                        self.taint_violation(arg.span, origin, &format!("{t}.{n}"), sink);
                     }
                 }
             }
             let _ = block_v;
-            return V::new(ty);
+            // what a pure function makes of untrusted data is untrusted
+            let taint = if effect.is_none() { argv.iter().find_map(|a| a.v.taint) } else { None };
+            return V { ty, taint };
         }
         self.walk_block(cx, block, &[]);
         let mut candidates: Vec<&str> = Vec::new();

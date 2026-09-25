@@ -13,6 +13,7 @@ mod builtins;
 mod control;
 mod eval;
 mod evals;
+mod http;
 mod io;
 mod llm;
 mod outcome;
@@ -153,6 +154,7 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
             interp.wait_for_tasks();
             // each test declares its own mocks
             interp.mocks.borrow_mut().clear();
+            interp.http_stubs.borrow_mut().clear();
             outcomes.push(TestOutcome { name, error });
         }
         Ok(outcomes)

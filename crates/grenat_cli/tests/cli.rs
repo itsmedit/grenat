@@ -67,8 +67,8 @@ fn check_reports_taint_errors_with_their_code_and_origin() {
     let out = grenat(&["check", path.to_str().unwrap()]);
     assert_eq!(code(&out), 1);
     let err = text(&out.stderr);
-    assert!(err.contains("error[E0412]: an LLM-produced value reaches `send`"), "{err}");
-    assert!(err.contains("note: produced here by an LLM"), "{err}");
+    assert!(err.contains("error[E0412]: an untrusted value reaches `send`"), "{err}");
+    assert!(err.contains("note: untrusted from here (a model's answer or a network response)"), "{err}");
     assert!(err.contains("= help: validate it"), "{err}");
 }
 

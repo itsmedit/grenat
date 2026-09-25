@@ -409,12 +409,12 @@ grenat/
 Error messages: every diagnostic has a stable code, the offending line and, for taint, **the place where the LLM produced the value**. Actual output of `grenat check` when the agent's unvalidated answer is sent in `support_desk.grn`:
 
 ```
-error[E0412]: an LLM-produced value reaches `send_reply` (effect `net`) without validation
+error[E0412]: an untrusted value reaches `send_reply` (effect `net`) without validation
    --> support_desk.grn:163:29
     |
 163 |     send_reply(ticket.from, answer.body)
     |                             ^^^^^^^^^^^
-note: produced here by an LLM
+note: untrusted from here (a model's answer or a network response)
    --> support_desk.grn:132:5
     |
 132 |     run <<~T
@@ -485,13 +485,31 @@ Installed layout:
 
 Ten realistic programs, one per kind of agent, are in `examples/usecases` (the first is `examples/support_desk.grn`): support, code review, research, data, documents, a scheduled digest, operations, a chat with memory, a team of agents, third-party tools. Each checks and passes its tests today, the model mocked, in 24 to 47 lines of logic (113 for the full support desk). Only two run for real: the others fake, between `STUBS` markers, the I/O the standard library lacks. Phase 7 is done when every stub is gone. In order:
 
-1. **`Http` client** with effects (`net("host")` enforced at run time, JSON, headers, timeouts, cancellation of requests in flight) — unblocks cases 2, 3, 6, 7, 10.
+1. ✅ **`Http` client** with effects (`net("host")` enforced at run time, JSON, headers, timeouts) — unblocks cases 2, 3, 6, 7, 10.
 2. **`Db`** (SQLite and Postgres, parameterized queries, `db.read` / `db.write` effects) — case 4.
 3. **Sandboxed `shell`** (a process with a timeout, no network unless declared) and per-tool timeouts — cases 2 and 7.
 4. **MCP client** (`tools from mcp("…")`, capabilities granted per server, results tainted) — case 10.
 5. **Multimodal prompts** (PDF, images) and the **Batch API** — case 5.
 6. **Email** and **triggers** (`every 1.week`, webhooks through an `Http` server) — cases 1, 2, 6.
-7. Smaller gaps met while writing them: the ternary `c ? a : b`; conversations as a type (history compacted automatically) for case 8; web search as a model server tool for case 3.
+7. **Facets**: libraries shared like Ruby's gems. A *facet* (a garnet's face) is a package; a program lists the facets it uses in its `Facetfile`, pinned in `Facetfile.lock`; the `setter` tool (who sets stones in a jewel) creates, adds, installs, updates and publishes them, with versions (`facet "http", "~> 0.3"`) resolved from git tags through an index repository. It replaces the `[dependencies]` of `grenat.toml`.
+8. Smaller gaps met while writing them: the ternary `c ? a : b`; conversations as a type (history compacted automatically) for case 8; web search as a model server tool for case 3.
+
+### Phase 7 status: the `Http` client
+
+```ruby
+def stars(repo: String) -> Int uses net("api.github.com"), env
+  res = Http.get("https://api.github.com/repos/#{repo}",
+                 headers: {"Authorization" => "Bearer #{Env.fetch("GITHUB_TOKEN")}"})
+  raise "GitHub answered #{res.status}" unless res.ok?
+  res.json["stargazers_count"].check { |n| n >= 0 }?
+end
+```
+
+`Http.get`, `post`, `put`, `patch`, `delete` and `head` take a URL and `headers:`, `json:` (sent as JSON) or `body:`, and `timeout:` (30 s by default). They return an `HttpResponse`: `status`, `ok?` (2xx), `headers`, `body`, `json`. A status is an answer, not an error; `HttpError` is for no answer at all (connection, timeout).
+
+- **Capabilities.** A request is a `net` effect restricted by host: `uses net("api.github.com")` allows that host only. The checker takes the host of a literal URL (E0300 otherwise); a URL built at run time is checked when the request is made (`CapabilityError`).
+- **Taint, both ways.** Nothing untrusted goes out: a model's answer or a response, unchecked, in the URL, headers or body is E0412 (and a `TaintError` at run time). What comes back is untrusted, as a model's answer is: `body`, `headers` and `json` are tainted — a web page can carry a prompt injection as well as a model can. `status` and `ok?` are not. Parsing untrusted text (`Json.parse`) gives untrusted data.
+- **Tests.** `grenat test` never reaches the network: `mock_http "GET https://api.github.com/repos/*", json: {…}` (or `status:`, `body:`, `headers:`) answers every matching request of the test — without a method, any method; a trailing `*` matches a prefix. An unstubbed request is an `HttpError`.
 
 ### Phase 0.5 status: `grenat fmt`
 

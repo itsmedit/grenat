@@ -3,6 +3,7 @@
 mod args;
 mod collections;
 mod globals;
+mod http;
 mod methods;
 mod modules;
 mod numbers;
@@ -11,6 +12,7 @@ mod strings;
 pub(crate) use args::*;
 pub(crate) use collections::*;
 pub(crate) use globals::*;
+pub(crate) use http::*;
 pub(crate) use methods::*;
 pub(crate) use modules::*;
 pub(crate) use numbers::*;

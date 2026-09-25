@@ -182,7 +182,7 @@ impl<'p> Interp<'p> {
                 return raise(
                     "TaintError",
                     format!(
-                        "an LLM-produced value reaches `{}` (effect `{effect}`) without validation; \
+                        "an untrusted value reaches `{}` (effect `{effect}`) without validation; \
                          validate it with `.check {{ … }}`, `.approve(by: :human)` or `.trust!`",
                         def.name.name
                     ),

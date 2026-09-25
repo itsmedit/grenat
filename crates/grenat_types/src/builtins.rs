@@ -158,11 +158,28 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Cli", "confirm") => (Bool, Some("human")),
         ("Cli", "ask") => (Ty::opt(Str), Some("human")),
         ("Time", "now") => (Float, Some("time")),
+        ("Http", "get" | "post" | "put" | "patch" | "delete" | "head") => (User(HTTP_RESPONSE.into()), Some("net")),
         _ => return None,
     })
 }
 
-pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time"];
+pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http"];
+
+/// What `Http` requests return.
+pub const HTTP_RESPONSE: &str = "HttpResponse";
+
+/// A field (or method without arguments) of a built-in record: its type,
+/// and whether it is untrusted (tainted).
+pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
+    Some(match (record, name) {
+        (HTTP_RESPONSE, "status") => (Ty::Int, false),
+        (HTTP_RESPONSE, "ok?") => (Ty::Bool, false),
+        (HTTP_RESPONSE, "body") => (Ty::Str, true),
+        (HTTP_RESPONSE, "headers") => (Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Str)), true),
+        (HTTP_RESPONSE, "json") => (Ty::Unknown, true),
+        _ => return None,
+    })
+}
 
 pub const TYPE_NAMES: &[&str] =
     &["Int", "Float", "String", "Bool", "Array", "Hash", "Symbol", "Nil", "Range", "Money", "Duration"];
@@ -187,6 +204,7 @@ pub const GLOBALS: &[&str] = &[
     "assert_equal",
     "assert_raises",
     "mock",
+    "mock_http",
     "cassette",
     "fixture",
     "call",

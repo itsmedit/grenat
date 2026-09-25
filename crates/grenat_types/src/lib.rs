@@ -4,7 +4,7 @@
 //! `Ty::Unknown`, which is compatible with everything and never produces an
 //! error. What it does prove, it proves before execution:
 //!
-//! - **taint**: an LLM-produced value cannot reach a function with a
+//! - **taint**: an untrusted value (a model's answer, a network response) cannot reach a function with a
 //!   dangerous effect (`shell`, `net`, `fs.write`, `human`) without
 //!   `.check`, `.approve(by: :human)` or `.trust!` (E0412); the analysis
 //!   follows taint through calls (each function is checked for the actual

@@ -49,6 +49,13 @@ pub(crate) fn covers(declared: &Eff, used: &Eff) -> bool {
         }
 }
 
+/// The host of a URL (`https://api.github.com/x` → `api.github.com`).
+pub(crate) fn url_host(url: &str) -> Option<&str> {
+    let rest = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://"))?;
+    let host = rest.split(['/', '?', '#']).next()?.rsplit('@').next()?.split(':').next()?;
+    (!host.is_empty()).then_some(host)
+}
+
 pub(crate) fn literal_string(e: &Expr) -> Option<String> {
     match &e.kind {
         ExprKind::Str(segs) => segs

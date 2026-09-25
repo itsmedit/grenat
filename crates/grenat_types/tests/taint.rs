@@ -83,3 +83,20 @@ fn prompts_and_run_must_declare_taint() {
     let src = "model :m, name: \"claude-haiku-4-5\"\nagent A\n  on Go -> String\n    run \"fais\"\n  end\nend\n";
     single(src, "E0413", "String");
 }
+
+#[test]
+fn what_the_network_returns_is_untrusted() {
+    let head = "def main uses net\n  r = Http.get(\"https://x.io/a\")\n";
+    single(&format!("{head}  Http.post(\"https://x.io/b\", body: r.body)\nend\n"), "E0412", "r.body");
+    single(&format!("{head}  Http.post(\"https://x.io/b\", json: Json.parse(r.body))\nend\n"), "E0412", "Json.parse(r.body)");
+    single(&format!("{head}  Http.post(\"https://x.io/b\", json: r.json)\nend\n"), "E0412", "r.json");
+    clean(&format!("{head}  Http.post(\"https://x.io/b\", json: {{code: r.status}})\nend\n"));
+    clean(&format!("{head}  Http.post(\"https://x.io/b\", body: r.body.check {{ |b| b.size < 100 }}?)\nend\n"));
+}
+
+#[test]
+fn a_model_s_answer_cannot_be_sent_unchecked() {
+    let src = format!("{PRELUDE}def main uses llm, net\n  s = summarize(\"x\")\n  Http.post(\"https://x.io\", json: {{t: s.title}})\nend\n");
+    let d = single(&src, "E0412", "{t: s.title}");
+    assert!(d.message.starts_with("an untrusted value reaches `Http.post` (effect `net`)"), "{}", d.message);
+}

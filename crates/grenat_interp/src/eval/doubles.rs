@@ -1,6 +1,7 @@
 //! Test doubles for model-driven code: `mock` (the model's replies, given as
 //! values), `cassette` (real calls recorded once, then replayed), `fixture`
-//! (test data files) and `call` (a mocked reply calling a tool).
+//! (test data files), `call` (a mocked reply calling a tool) and `mock_http`
+//! (the replies of web services).
 //!
 //! `cassettes/` and `fixtures/` are found in the program's directory.
 
@@ -9,6 +10,7 @@ use std::path::PathBuf;
 use grenat_llm::{Anthropic, Cassette, Mock, MockReply, ModelConfig, Provider};
 
 use crate::builtins::json_to_untyped;
+use crate::http::{HttpReply, HttpRequest};
 use crate::llm::value_to_json;
 use crate::prelude::*;
 
@@ -40,6 +42,53 @@ impl<'p> Interp<'p> {
         let own = mocks.iter().find(|(m, _)| m.as_ref() == Some(model));
         let any = || mocks.iter().find(|(m, _)| m.is_none());
         own.or_else(any).map(|(_, mock)| mock.clone() as Arc<dyn Provider>)
+    }
+
+    // ── mock_http ─────────────────────────────────────────────
+
+    /// `mock_http "GET https://api.x.io/items", status: 200, json: {…}`
+    /// (or `body: "…"`): the reply of every matching request, until the end
+    /// of the test. Without a method, any method; a URL ending with `*`
+    /// matches every URL it starts.
+    pub(crate) fn mock_http(&mut self, target: &str, args: &Args<'p>) -> R<'p> {
+        let (method, url) = match target.split_once(' ') {
+            Some((m, u)) if m.chars().all(|c| c.is_ascii_uppercase()) => (Some(m.to_string()), u.trim().to_string()),
+            _ => (None, target.to_string()),
+        };
+        let mut reply = HttpReply { status: 200, headers: Vec::new(), body: String::new() };
+        for (option, value) in &args.named {
+            match (option.as_str(), value.untainted()) {
+                ("status", Value::Int(n)) => reply.status = *n as u16,
+                ("body", Value::Str(s)) => reply.body = s.to_string(),
+                ("json", v) => {
+                    reply.body = value_to_json(v).to_string();
+                    reply.headers.push(("content-type".into(), "application/json".into()));
+                }
+                ("headers", Value::Hash(h)) => {
+                    reply.headers.extend(h.borrow().iter().map(|(k, v)| (k.to_display(), v.to_display())));
+                }
+                (option, v) => return raise("ArgumentError", format!("invalid `mock_http` option `{option}: {}`", v.inspect())),
+            }
+        }
+        self.http_stubs.borrow_mut().push(HttpStub { method, url, reply });
+        Ok(Value::Nil)
+    }
+
+    /// The reply to `request`: a stub's, else the network's (never in tests).
+    pub(crate) fn http(&self, request: &HttpRequest) -> Result<HttpReply, Ctrl<'p>> {
+        let stub = self.http_stubs.borrow().iter().rev().find(|s| s.matches(request)).map(|s| s.reply.clone());
+        if let Some(reply) = stub {
+            return Ok(reply);
+        }
+        if self.offline {
+            return raise(
+                "HttpError",
+                format!("no network in tests: `{} {}` is not stubbed with `mock_http`", request.method, request.url),
+            );
+        }
+        grenat_green::blocking(|| crate::http::send(request)).or_else(|e| {
+            raise("HttpError", format!("{} {}: {e}", request.method, request.url))
+        })
     }
 
     // ── cassette ──────────────────────────────────────────────
@@ -122,6 +171,23 @@ impl<'p> Interp<'p> {
             ("input".into(), Value::Hash(Arc::new(Mutex::new(input)))),
         ];
         Ok(Value::record(TOOL_CALL, fields))
+    }
+}
+
+/// A stubbed HTTP request (`mock_http`).
+pub(crate) struct HttpStub {
+    method: Option<String>,
+    url: String,
+    reply: HttpReply,
+}
+
+impl HttpStub {
+    fn matches(&self, request: &HttpRequest) -> bool {
+        let url = match self.url.strip_suffix('*') {
+            Some(prefix) => request.url.starts_with(prefix),
+            None => request.url == self.url,
+        };
+        url && self.method.as_deref().is_none_or(|m| m == request.method)
     }
 }
 

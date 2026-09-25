@@ -493,6 +493,7 @@ dependencies = [
  "grenat_parser",
  "grenat_runtime",
  "serde_json",
+ "ureq",
 ]
 
 [[package]]

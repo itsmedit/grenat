@@ -1,4 +1,5 @@
-//! Built-in modules: `File`, `Dir`, `Math`, `Env`, `Json`, `Runtime`, `Cli`, `Time`.
+//! Built-in modules: `File`, `Dir`, `Math`, `Env`, `Json`, `Runtime`, `Cli`, `Time`
+//! (and `Http`, in its own module).
 
 use crate::prelude::*;
 
@@ -9,6 +10,7 @@ use super::*;
 pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, args: Args<'p>) -> R<'p> {
     let unknown = || raise("NoMethodError", format!("unknown method `{ty}.{name}`"));
     match (ty, name) {
+        ("Http", _) => call_http(interp, name, args),
         ("File", "read") => {
             let path = str_arg(&args, 0, name)?;
             interp.check_fs("fs.read", &path)?;
@@ -32,7 +34,7 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
             if content.contains_taint() {
                 return raise(
                     "TaintError",
-                    "an LLM-produced value reaches `File.write` (effect `fs.write`) without validation",
+                    "an untrusted value reaches `File.write` (effect `fs.write`) without validation",
                 );
             }
             std::fs::write(&*path, content.to_display()).or_else(|e| io_error("writing", &path, e))?;
@@ -69,8 +71,11 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         }
         ("Json", "dump" | "generate") => Ok(Value::str(value_to_json(&arg(&args, 0, name)?).to_string())),
         ("Json", "parse") => {
+            // what untrusted text holds is untrusted
+            let tainted = arg(&args, 0, name)?.contains_taint();
             let text = str_arg(&args, 0, name)?;
             match serde_json::from_str::<serde_json::Value>(&text) {
+                Ok(json) if tainted => Ok(json_to_untyped(&json).taint()),
                 Ok(json) => Ok(json_to_untyped(&json)),
                 Err(e) => raise("ParseError", format!("invalid JSON: {e}")),
             }
