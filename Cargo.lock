@@ -715,6 +715,7 @@ dependencies = [
  "grenat_green",
  "grenat_llm",
  "grenat_mcp",
+ "grenat_ops",
  "grenat_parser",
  "grenat_runtime",
  "grenat_serve",
@@ -766,6 +767,14 @@ dependencies = [
  "grenat_mcp",
  "serde_json",
  "ureq",
+]
+
+[[package]]
+name = "grenat_ops"
+version = "0.1.0"
+dependencies = [
+ "grenat_db",
+ "serde_json",
 ]
 
 [[package]]

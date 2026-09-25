@@ -8,11 +8,11 @@
 //! synced step by step. Steps are numbered by name, in the order they run.
 
 use std::collections::HashMap;
-use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use serde_json::{Value as Json, json};
+use grenat_ops::journal;
+use serde_json::Value as Json;
 
 use crate::prelude::*;
 use crate::value::codec;
@@ -31,44 +31,15 @@ pub(crate) struct WorkflowRun {
 
 impl WorkflowRun {
     fn open(name: &str, path: PathBuf) -> Result<WorkflowRun, String> {
-        let mut run = WorkflowRun {
+        let read = journal::read(&path)?;
+        Ok(WorkflowRun {
             name: name.to_string(),
             path,
-            done: HashMap::new(),
-            result: None,
+            done: read.steps.into_iter().map(|s| ((s.name, s.n), s.value)).collect(),
+            result: read.result,
             counts: Mutex::new(HashMap::new()),
-        };
-        let text = match std::fs::read_to_string(&run.path) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(run),
-            Err(e) => return Err(format!("cannot read the journal {}: {e}", run.path.display())),
-        };
-        // a line cut by a crash is ignored: its step runs again
-        for entry in text.lines().filter_map(|l| serde_json::from_str::<Json>(l).ok()) {
-            if let Some(step) = entry["step"].as_str() {
-                let n = entry["n"].as_u64().unwrap_or(0) as usize;
-                run.done.insert((step.to_string(), n), entry["value"].clone());
-            } else if entry.get("result").is_some() {
-                run.result = Some(entry["result"].clone());
-            }
-        }
-        Ok(run)
+        })
     }
-
-    fn append(&self, entry: Json) -> Result<(), String> {
-        let fail = |e: std::io::Error| format!("cannot write the journal {}: {e}", self.path.display());
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir).map_err(fail)?;
-        }
-        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&self.path).map_err(fail)?;
-        writeln!(file, "{entry}").map_err(fail)?;
-        file.sync_data().map_err(fail)
-    }
-}
-
-/// FNV-1a: a stable hash of the arguments, naming the run.
-fn fingerprint(text: &str) -> u64 {
-    text.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3))
 }
 
 impl<'p> Interp<'p> {
@@ -84,8 +55,7 @@ impl<'p> Interp<'p> {
             }
         }
         let names: Vec<&str> = args.named.iter().map(|(n, _)| n.as_str()).collect();
-        let id = fingerprint(&json!([key, names]).to_string());
-        let path = self.journal_dir.borrow().join(format!("{}-{id:016x}.jsonl", def.name.name));
+        let path = journal::path(&self.journal_dir.borrow(), &def.name.name, &key, &names);
         match WorkflowRun::open(&def.name.name, path) {
             Ok(run) => Ok(Arc::new(run)),
             Err(e) => raise("JournalError", e),
@@ -113,7 +83,7 @@ impl<'p> Interp<'p> {
         let json = codec::encode(&value).or_else(|why| {
             raise("TypeError", format!("the result of workflow `{}` must be data: {why}", run.name))
         })?;
-        run.append(json!({"result": json})).or_else(|e| raise("JournalError", e))?;
+        journal::append_result(&run.path, &json).or_else(|e| raise("JournalError", e))?;
         Ok(value)
     }
 
@@ -138,7 +108,7 @@ impl<'p> Interp<'p> {
         let json = codec::encode(&value).or_else(|why| {
             raise("TypeError", format!("step :{name} must return data to be journaled: {why}"))
         })?;
-        run.append(json!({"step": name, "n": n, "value": json})).or_else(|e| raise("JournalError", e))?;
+        journal::append_step(&run.path, name, n, &json).or_else(|e| raise("JournalError", e))?;
         Ok(value)
     }
 }

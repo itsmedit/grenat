@@ -17,52 +17,26 @@
 //! question is known by its job and its rank among the questions of a run,
 //! so the same question gets the same answer on every run.
 
-use grenat_db::Cell;
+use grenat_ops::approvals::{self, Decision};
 
-use crate::builtins::{cell_value, db_error};
+use crate::eval::store::now;
 use crate::prelude::*;
 
-const TABLE: &str = "grenat_approvals";
 /// What a job that waits for a human raises (and the worker understands).
 pub(crate) const SUSPENDED: &str = "Suspended";
 
-fn now() -> f64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64()
-}
-
 impl<'p> Interp<'p> {
-    fn approvals_connection(&mut self) -> Result<crate::SharedConnection, Ctrl<'p>> {
-        let Some(database) = self.app_db.borrow().clone() else {
-            return raise("DbError", "approvals need a database: declare one (`database Env.fetch(\"DATABASE_URL\")`)");
-        };
-        let connection = self.connection_of(&database).expect("a database");
-        let key = connection.lock().dialect().primary_key();
-        let sql = format!(
-            "CREATE TABLE IF NOT EXISTS {TABLE} (id {key}, job_id INTEGER NOT NULL, rank INTEGER NOT NULL, \
-             message TEXT NOT NULL, status TEXT NOT NULL, created_at FLOAT NOT NULL, decided_at FLOAT)"
-        );
-        grenat_green::blocking(|| connection.lock().batch(&sql)).or_else(db_error)?;
-        Ok(connection)
-    }
-
     /// In a job: the stored decision on this question, or else the question
     /// stored and the job suspended.
     pub(crate) fn stored_approval(&mut self, job: i64, message: &str) -> Result<bool, Ctrl<'p>> {
-        let rank = self.approval_rank.get();
-        self.approval_rank.set(rank + 1);
-        let connection = self.approvals_connection()?;
-        let sql = format!("SELECT id, status FROM {TABLE} WHERE job_id = ? AND rank = ?");
-        let params = [Cell::Int(job), Cell::Int(rank as i64)];
-        let rows = grenat_green::blocking(|| connection.lock().query(&sql, &params)).or_else(db_error)?;
-        let status = rows.first().and_then(|r| r.get(1)).map(|(_, c)| cell_value(c.clone()).to_display());
-        match status.as_deref() {
-            Some("approved") => return Ok(true),
-            Some("denied") => return Ok(false),
-            Some(_) => {}
+        let rank = self.approval_rank.get() as i64;
+        self.approval_rank.set(rank as usize + 1);
+        match self.store("approvals", |db| approvals::decision(db, job, rank))? {
+            Some(Decision::Approved) => return Ok(true),
+            Some(Decision::Denied) => return Ok(false),
+            Some(Decision::Pending) => {}
             None => {
-                let insert = format!("INSERT INTO {TABLE} (job_id, rank, message, status, created_at) VALUES (?, ?, ?, 'pending', ?)");
-                let params = [Cell::Int(job), Cell::Int(rank as i64), Cell::Text(message.to_string()), Cell::Float(now())];
-                grenat_green::blocking(|| connection.lock().execute(&insert, &params)).or_else(db_error)?;
+                self.store("approvals", |db| approvals::ask(db, job, rank, message, now()))?;
                 if self.log {
                     self.write_err(&format!("[approval] job {job} waits: {message}\n"));
                 }
@@ -73,13 +47,16 @@ impl<'p> Interp<'p> {
 
     /// `Approvals.pending`: the questions waiting, oldest first.
     pub(crate) fn pending_approvals(&mut self) -> R<'p> {
-        let connection = self.approvals_connection()?;
-        let sql = format!("SELECT id, job_id, message, created_at FROM {TABLE} WHERE status = 'pending' ORDER BY id");
-        let rows = grenat_green::blocking(|| connection.lock().query(&sql, &[])).or_else(db_error)?;
-        let items = rows
+        let pending = self.store("approvals", approvals::pending)?;
+        let items = pending
             .into_iter()
-            .map(|row| {
-                let pairs = row.into_iter().map(|(k, c)| (Value::str(k), cell_value(c))).collect();
+            .map(|a| {
+                let pairs = vec![
+                    (Value::str("id"), Value::Int(a.id)),
+                    (Value::str("job_id"), Value::Int(a.job_id)),
+                    (Value::str("message"), Value::str(a.message)),
+                    (Value::str("created_at"), Value::Float(a.created_at)),
+                ];
                 Value::Hash(Arc::new(Mutex::new(pairs)))
             })
             .collect();
@@ -97,18 +74,9 @@ impl<'p> Interp<'p> {
             return raise("TaintError", "an untrusted value decides an approval: check it first");
         }
         self.check_effect("human")?;
-        let connection = self.approvals_connection()?;
-        let status = if approved { "approved" } else { "denied" };
-        let update = format!("UPDATE {TABLE} SET status = ?, decided_at = ? WHERE id = ? AND status = 'pending'");
-        let params = [Cell::Text(status.into()), Cell::Float(now()), Cell::Int(id)];
-        let changed = grenat_green::blocking(|| connection.lock().execute(&update, &params)).or_else(db_error)?;
-        if changed == 0 {
+        if !self.store("approvals", |db| approvals::decide(db, id, approved, now()))? {
             return raise("ArgumentError", format!("no pending approval {id}"));
         }
-        let requeue = "UPDATE grenat_jobs SET status = 'queued' WHERE status = 'waiting' AND id = \
-                       (SELECT job_id FROM grenat_approvals WHERE id = ?)";
-        let params = [Cell::Int(id)];
-        grenat_green::blocking(|| connection.lock().execute(requeue, &params)).or_else(db_error)?;
         Ok(Value::Nil)
     }
 }
