@@ -27,9 +27,27 @@ pub(crate) const DATABASE: &str = "Database";
 pub(crate) fn connect<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
     let url = str_arg(args, 0, "connect")?.to_string();
     let connection = grenat_green::blocking(|| grenat_db::connect(&url)).or_else(db_error)?;
-    let mut databases = interp.databases.borrow_mut();
-    databases.push(Arc::new(grenat_green::Mutex::new(connection)));
-    Ok(Value::record(DATABASE, vec![("id".into(), Value::Int(databases.len() as i64 - 1))]))
+    Ok(interp.register_database(connection))
+}
+
+impl<'p> Interp<'p> {
+    /// A connection, as the `Database` record programs use.
+    pub(crate) fn register_database(&self, connection: Box<dyn grenat_db::Connection>) -> Value<'p> {
+        let mut databases = self.databases.borrow_mut();
+        databases.push(Arc::new(grenat_green::Mutex::new(connection)));
+        Value::record(DATABASE, vec![("id".into(), Value::Int(databases.len() as i64 - 1))])
+    }
+
+    /// The connection of a `Database` record.
+    pub(crate) fn connection_of(&self, database: &Value<'p>) -> Option<crate::SharedConnection> {
+        match database.untainted() {
+            Value::Record(r) if &*r.ty == DATABASE => match r.fields.first() {
+                Some((_, Value::Int(id))) => self.databases.borrow().get(*id as usize).cloned(),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
 }
 
 /// The methods of a database.
@@ -92,7 +110,7 @@ pub(crate) fn database_method<'p>(interp: &mut Interp<'p>, fields: &Fields<'p>, 
     }
 }
 
-fn db_error<'p, T>(message: String) -> Result<T, Ctrl<'p>> {
+pub(crate) fn db_error<'p, T>(message: String) -> Result<T, Ctrl<'p>> {
     raise("DbError", message)
 }
 
@@ -108,7 +126,7 @@ fn params<'p>(args: &Args<'p>, write: bool) -> Result<Vec<Cell>, Ctrl<'p>> {
     items.borrow().iter().map(cell).collect()
 }
 
-fn cell<'p>(value: &Value<'p>) -> Result<Cell, Ctrl<'p>> {
+pub(crate) fn cell<'p>(value: &Value<'p>) -> Result<Cell, Ctrl<'p>> {
     Ok(match value.untainted() {
         Value::Nil => Cell::Null,
         Value::Bool(b) => Cell::Bool(*b),
@@ -119,7 +137,7 @@ fn cell<'p>(value: &Value<'p>) -> Result<Cell, Ctrl<'p>> {
     })
 }
 
-fn value<'p>(cell: Cell) -> Value<'p> {
+pub(crate) fn cell_value<'p>(cell: Cell) -> Value<'p> {
     match cell {
         Cell::Null => Value::Nil,
         Cell::Bool(b) => Value::Bool(b),
@@ -132,9 +150,9 @@ fn value<'p>(cell: Cell) -> Value<'p> {
 /// A row as a hash (column → value), or as a record of type `record`.
 fn row_value<'p>(interp: &mut Interp<'p>, row: grenat_db::Row, record: Option<&str>) -> R<'p> {
     match record {
-        None => Ok(Value::Hash(Arc::new(Mutex::new(row.into_iter().map(|(k, c)| (Value::str(k), value(c))).collect())))),
+        None => Ok(Value::Hash(Arc::new(Mutex::new(row.into_iter().map(|(k, c)| (Value::str(k), cell_value(c))).collect())))),
         Some(ty) => {
-            let named = row.into_iter().map(|(k, c)| (k, value(c))).collect();
+            let named = row.into_iter().map(|(k, c)| (k, cell_value(c))).collect();
             interp.construct(ty, Args { named, ..Args::default() })
         }
     }

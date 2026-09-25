@@ -41,3 +41,17 @@ pub(crate) fn number(v: &Value) -> Option<f64> {
 pub(crate) fn io_error<'p, T>(action: &str, path: &str, e: std::io::Error) -> Result<T, Ctrl<'p>> {
     raise("IoError", format!("{action} `{path}`: {e}"))
 }
+
+/// The text of a string literal without interpolation.
+pub(crate) fn literal_text(e: &grenat_ast::Expr) -> Option<String> {
+    match &e.kind {
+        grenat_ast::ExprKind::Str(segments) => segments
+            .iter()
+            .map(|s| match s {
+                grenat_ast::StrSeg::Lit(t) => Some(t.as_str()),
+                grenat_ast::StrSeg::Interp(_) => None,
+            })
+            .collect(),
+        _ => None,
+    }
+}

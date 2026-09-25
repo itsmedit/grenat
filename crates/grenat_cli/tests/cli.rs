@@ -502,3 +502,17 @@ fn serve_answers_routes() {
     assert!(response.to_lowercase().contains("content-type: text/html; charset=utf-8"), "{response}");
     assert!(response.ends_with("<b>Ada&amp;Co</b>"), "{response}");
 }
+
+#[test]
+fn migrate_applies_pending_migrations() {
+    let dir = project("migrate");
+    let db = dir.join("app.db");
+    let src = format!("database \"sqlite://{}\"\nmigration \"001_notes\" do |db|\n  db.migrate(\"CREATE TABLE notes (id INTEGER PRIMARY KEY, text TEXT)\")\nend\n", db.display());
+    std::fs::write(dir.join("app.grn"), src).unwrap();
+    let path = dir.join("app.grn");
+    let out = grenat(&["migrate", path.to_str().unwrap()]);
+    assert_eq!(code(&out), 0, "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains("applied 001_notes"), "{}", text(&out.stderr));
+    let again = grenat(&["migrate", path.to_str().unwrap()]);
+    assert!(text(&again.stderr).contains("the database is up to date"), "{}", text(&again.stderr));
+}

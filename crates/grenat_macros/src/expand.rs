@@ -59,6 +59,10 @@ pub fn expand(program: &mut Program, text: &str) -> Vec<Diagnostic> {
                             Err(diagnostic) => diagnostics.push(diagnostic),
                         }
                     }
+                    // `table :tickets` makes a struct a record
+                    Member::Directive(d) if d.name.name == "table" && def.kind == TypeKind::Struct => {
+                        def.members.push(Member::Directive(d));
+                    }
                     Member::Directive(d) if !matches!(def.kind, TypeKind::Agent | TypeKind::Supervisor) => {
                         diagnostics.push(Diagnostic::new(d.name.span, format!("unknown macro `{}`", d.name.name)));
                     }

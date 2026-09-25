@@ -36,6 +36,7 @@ pub use grenat_llm::{ModelConfig, Provider, Response, Scripted};
 use value::Locked;
 pub use value::Value;
 pub use evals::{EvalReport, RowOutcome, run_evals};
+pub use eval::records::migrate;
 pub use serve::serve;
 
 pub(crate) use control::*;
@@ -151,7 +152,13 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
         }
         let tests = std::mem::take(&mut *interp.tests.borrow_mut());
         let mut outcomes = Vec::new();
+        let migrated = !interp.migrations.borrow().is_empty();
         for (name, block) in tests {
+            // each test has a database of its own, migrated
+            if migrated && let Err(ctrl) = interp.fresh_test_database() {
+                outcomes.push(TestOutcome { name, error: Some(interp.runtime_error(ctrl)) });
+                continue;
+            }
             let error = match interp.call_block(&block, Vec::new()) {
                 Ok(_) => None,
                 Err(ctrl) => Some(interp.runtime_error(ctrl)),

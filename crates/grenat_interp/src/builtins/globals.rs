@@ -146,6 +146,8 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
         "get" | "post" | "put" | "patch" | "delete" if args.block.is_some() => declare_route(interp, name, &args),
         "html" | "json" | "status" | "redirect" => response_helper(name, &args),
         "request" => test_request(interp, &args),
+        "database" => interp.declare_database(&args),
+        "migration" => interp.declare_migration(&args),
         "every" => every(interp, &args),
         "on_webhook" => on_webhook(interp, &args),
         "deliver_webhook" => deliver_webhook(interp, &args),

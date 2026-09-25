@@ -150,3 +150,17 @@ fn a_conversation_is_a_model_and_its_answers_are_untrusted() {
         "a",
     );
 }
+
+#[test]
+fn records_are_typed_and_are_database_effects() {
+    let head = "struct Ticket\n  table :tickets\n  id: Int?\n  subject: String\nend\n";
+    clean(&format!("{head}def titles -> Array(String) uses db.read = Ticket.all.map {{ |t| t.subject }}\n"));
+    single(&format!("{head}def main\n  Ticket.create(subject: \"x\")\nend\n"), "E0300", "Ticket.create(subject: \"x\")");
+    single(&format!("{head}def f uses db.read\n  Ticket.find(1).subject.nope\nend\n"), "E0200", "nope");
+    single(&format!("{head}def f(t: Ticket) uses db.read\n  t.delete\nend\n"), "E0300", "t.delete");
+    single(
+        &format!("{head}post \"/t\" do |req|\n  Ticket.create(subject: req.json[\"s\"])\nend\n"),
+        "E0412",
+        "req.json[\"s\"]",
+    );
+}

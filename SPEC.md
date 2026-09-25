@@ -515,6 +515,34 @@ end
 - **Taint.** Everything a request carries but its method and path is untrusted. A page is a sink: `html` refuses an untrusted value that was not escaped — `Html.escape` is the check that makes it safe — so a page cannot carry a script someone slipped in; `redirect` refuses an untrusted URL (no open redirects). Statically (E0412) and at run time.
 - **Tests.** `request :get, "/tickets/42"` (or `json:`, `body:`, `headers:`) goes through the routes without a server and returns `{"status" => …, "body" => …, "content_type" => …, "headers" => …}`.
 
+### Phase 8 status: records and migrations
+
+```ruby
+database Env.fetch("DATABASE_URL")
+
+struct Ticket
+  table :tickets
+  id: Int?
+  subject: String
+  status: String = "open"
+end
+
+migration "001_create_tickets" do |db|
+  db.migrate("CREATE TABLE tickets (id INTEGER PRIMARY KEY, subject TEXT NOT NULL, status TEXT NOT NULL)")
+end
+
+t = Ticket.create(subject: "Bug")
+Ticket.find(t.id)                     # Ticket? — also Ticket.where(status: "open"), Ticket.all, Ticket.count
+t.with(status: "closed").save
+t.delete
+```
+
+`database` declares the application's database; a struct with `table :name` is a **record**: its fields are the table's columns, `id` its primary key, given by the database (`INSERT … RETURNING`, on SQLite and PostgreSQL alike). `Ticket.all`, `where` (equalities), `find` and `count` read; `create`, `save` (an insert without an id, an update with it) and `delete` write — typed for the checker (`find` is a `Ticket?`, `where` an `Array(Ticket)`). Identifiers are quoted, values always parameters. `migration "name" do |db| … end` declares migrations; `grenat migrate` applies those the database has not seen, in order, each in a transaction, and records them (`grenat_migrations`).
+
+- **Effects and taint.** Reads are `db.read`, writes `db.write`; a record written with an untrusted value is refused (E0412, `TaintError`) — check it first — while an untrusted value may filter a read.
+- **Tests.** In `grenat test`, each test gets a new in-memory SQLite database with every migration applied: no test sees another's data, none touches the real database. Migrations are therefore written in SQL that SQLite and PostgreSQL both accept.
+- **Limits.** Fields are integers, floats, strings and booleans (optional or not); no associations yet.
+
 ### Phase 7 plan: the ten use cases
 
 Ten realistic programs, one per kind of agent, are in `examples/usecases` (the first is `examples/support_desk.grn`): support, code review, research, data, documents, a scheduled digest, operations, a chat with memory, a team of agents, third-party tools. Each checks and passes its tests today, the model mocked, in 24 to 47 lines of logic (113 for the full support desk). Only two run for real: the others fake, between `STUBS` markers, the I/O the standard library lacks. Phase 7 is done when every stub is gone. In order:

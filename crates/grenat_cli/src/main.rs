@@ -3,6 +3,7 @@
 mod build;
 mod fmt;
 mod link;
+mod migrate;
 mod package;
 mod serve;
 mod testing;
@@ -32,6 +33,7 @@ Usage:
   grenat serve [--listen host:port] [<file.grn>]
                                  run the program's triggers: `every` schedules, and
                                  `on_webhook` handlers (127.0.0.1:3000 by default)
+  grenat migrate [<file.grn>]    apply the migrations the database has not seen yet
   grenat eval <file.grn> [name]  run the `eval` blocks (those whose name contains `name`)
   grenat check [<file.grn>...]   check names, types, effects and taint
   grenat update                  fetch the latest commits of git dependencies (grenat.lock)
@@ -64,6 +66,7 @@ fn main() -> ExitCode {
         Some("build") => build::build(&args[1..]),
         Some("new") => package::new(&args[1..]),
         Some("serve") => serve::serve(&args[1..]),
+        Some("migrate") => migrate::migrate(&args[1..]),
         Some("update") if args.len() == 1 => package::update(),
         Some("fmt") => fmt::fmt(&args[1..]),
         Some("lsp") if args.len() == 1 => {

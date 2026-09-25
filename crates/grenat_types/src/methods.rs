@@ -97,6 +97,9 @@ impl<'p> Checker<'p> {
     ) -> V {
         let n = name.name.as_str();
         let taint = recv.taint;
+        if let Some(v) = self.record_instance(cx, span, &recv, t, n) {
+            return v;
+        }
         if let Some(def) = self.method_def(&recv.ty, n) {
             return self.user_method(cx, span, recv, def, argv, block);
         }
@@ -189,6 +192,9 @@ impl<'p> Checker<'p> {
                 return self.construct(span, n, argv);
             }
         }
+        if let Some(v) = self.record_static(cx, span, t, n, &argv) {
+            return v;
+        }
         if let Some((ty, effect)) = builtins::static_method(t, n) {
             let block_v = self.walk_block(cx, block, &[]);
             if let Some(path) = effect {
@@ -277,5 +283,49 @@ impl<'p> Checker<'p> {
             _ => ty,
         };
         V { ty, taint }
+    }
+
+    /// Whether the struct `t` is stored in a table (`table :tickets`).
+    pub(crate) fn is_record(&self, t: &str) -> bool {
+        self.types.get(t).is_some_and(|d| d.directives.iter().any(|d| d.name.name == "table"))
+    }
+
+    /// `Ticket.all/where/find/count/create`: typed, with their effects; a
+    /// record created from untrusted values is refused.
+    fn record_static(&mut self, cx: &mut Ctx<'p>, span: Span, t: &str, n: &str, argv: &[ArgV]) -> Option<V> {
+        if !self.is_record(t) {
+            return None;
+        }
+        let record = Ty::User(t.into());
+        let (ty, effect) = match n {
+            "all" | "where" => (Ty::array(record), "db.read"),
+            "find" => (Ty::opt(record), "db.read"),
+            "count" => (Ty::Int, "db.read"),
+            "create" => (record, "db.write"),
+            _ => return None,
+        };
+        cx.add_effect(Eff { path: effect.into(), arg: None, origin: span });
+        if effect == "db.write" {
+            for arg in argv {
+                if let Some(origin) = arg.v.taint {
+                    self.taint_violation(arg.span, origin, &format!("{t}.create"), effect);
+                }
+            }
+        }
+        Some(V::new(ty))
+    }
+
+    /// `record.save` and `record.delete`: writes.
+    pub(crate) fn record_instance(&mut self, cx: &mut Ctx<'p>, span: Span, recv: &V, t: &str, n: &str) -> Option<V> {
+        if !matches!(n, "save" | "delete") || !self.is_record(t) || self.method_def(&recv.ty, n).is_some() {
+            return None;
+        }
+        cx.add_effect(Eff { path: "db.write".into(), arg: None, origin: span });
+        if n == "save"
+            && let Some(origin) = recv.taint
+        {
+            self.taint_violation(span, origin, "save", "db.write");
+        }
+        Some(if n == "save" { V::new(recv.ty.clone()) } else { V::new(Ty::Nil) })
     }
 }

@@ -258,6 +258,13 @@ impl<'p> Interp<'p> {
     }
 
     pub(crate) fn call_method(&mut self, receiver: Value<'p>, name: &str, args: Args<'p>) -> R<'p> {
+        // a stored record's `save` and `delete` (unless the struct has its own)
+        if matches!(name, "save" | "delete")
+            && self.method_of(receiver.untainted(), name).is_none()
+            && let Some(result) = self.record_instance(&receiver, name)
+        {
+            return result;
+        }
         match &receiver {
             Value::Tainted(inner) => {
                 let inner = (**inner).clone();
@@ -351,6 +358,9 @@ impl<'p> Interp<'p> {
             if self.variants.get(name) == Some(&info.def.name.name.as_str()) {
                 return self.construct(name, args);
             }
+        }
+        if let Some(result) = self.record_static(ty, name, &args) {
+            return result;
         }
         builtins::call_static(self, ty, name, args)
     }

@@ -301,6 +301,11 @@ impl<'p> Checker<'p> {
             "deny_all" | "approve_all" => V::new(Ty::Sym),
             // test doubles and evals
             "mock" | "mock_http" | "mock_shell" | "mcp" | "mock_mcp" => V::new(Ty::Nil),
+            "database" => V::new(Ty::Nil),
+            "migration" => {
+                self.walk_block(cx, block, &[V::new(Ty::User(builtins::DATABASE.into()))]);
+                V::new(Ty::Nil)
+            }
             "every" => {
                 self.walk_block(cx, block, &[]);
                 V::new(Ty::Nil)
