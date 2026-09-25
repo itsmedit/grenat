@@ -23,9 +23,9 @@ use crate::object_data::{Strings, Word, new_record, record};
 use crate::structs::Structs;
 use crate::ty::{Elem, Ty};
 
-/// The object file of a standalone `program` (parsed from `source`, found
-/// at `path`), or why the program needs the interpreter.
-pub fn object(program: &Program, source: &str, path: &str) -> Result<Object, Vec<String>> {
+/// The object file of a standalone `program` (parsed from `source`, whose
+/// file table is `files`), or why the program needs the interpreter.
+pub fn object(program: &Program, source: &str, files: &str) -> Result<Object, Vec<String>> {
     let structs = Structs::from_program(program);
     let (selected, rejected) = select(program, &structs, Target::Standalone);
     let mut reasons = interpreter_only(program, &selected.iter().map(|c| c.def.name.name.as_str()).collect::<Vec<_>>());
@@ -74,7 +74,7 @@ pub fn object(program: &Program, source: &str, path: &str) -> Result<Object, Vec
     }
     let sites_table = new_record(&mut module, &sites).map_err(one)?;
     let [source_ptr, source_len] = strings.words(&mut module, source).map_err(one)?;
-    let [path_ptr, path_len] = strings.words(&mut module, path).map_err(one)?;
+    let [path_ptr, path_len] = strings.words(&mut module, files).map_err(one)?;
     let descriptor = module.declare_data(STANDALONE_SYMBOL, Linkage::Export, false, false).map_err(fail)?;
     let words = [
         Word::Function(emitted.trampolines[main]),

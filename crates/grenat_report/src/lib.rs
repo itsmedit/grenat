@@ -1,6 +1,14 @@
 //! Diagnostic rendering, rustc style.
+//!
+//! A program may span several files (`require`): its [`Sources`] are the
+//! files' texts one after the other, spans being offsets in that whole, and
+//! each diagnostic is shown in the file it points into.
 
 use grenat_ast::{Diagnostic, Span};
+
+mod sources;
+
+pub use sources::{SourceFile, Sources};
 
 /// Line and column (in characters), 1-based.
 pub fn line_col(src: &str, offset: usize) -> (usize, usize) {
@@ -18,17 +26,23 @@ impl Painter {
     }
 }
 
+/// A diagnostic of a single-file program.
 pub fn render(path: &str, src: &str, diag: &Diagnostic, color: bool) -> String {
+    render_in(&Sources::single(path, src), diag, color)
+}
+
+/// A diagnostic of a program made of `sources`.
+pub fn render_in(sources: &Sources, diag: &Diagnostic, color: bool) -> String {
     let p = Painter(color);
     let title = match diag.code {
         Some(code) => format!("error[{code}]"),
         None => "error".into(),
     };
     let mut out = format!("{}: {}\n", p.paint("1;31", &title), p.paint("1", &diag.message));
-    snippet(&mut out, &p, path, src, diag.span, "1;31");
+    snippet(&mut out, &p, sources, diag.span, "1;31");
     for (span, note) in &diag.notes {
         out.push_str(&format!("{}: {note}\n", p.paint("1;36", "note")));
-        snippet(&mut out, &p, path, src, *span, "1;36");
+        snippet(&mut out, &p, sources, *span, "1;36");
     }
     if let Some(help) = &diag.help {
         out.push_str(&format!("  = {}: {help}\n", p.paint("1", "help")));
@@ -37,7 +51,9 @@ pub fn render(path: &str, src: &str, diag: &Diagnostic, color: bool) -> String {
     out
 }
 
-fn snippet(out: &mut String, p: &Painter, path: &str, src: &str, span: Span, ansi: &str) {
+fn snippet(out: &mut String, p: &Painter, sources: &Sources, span: Span, ansi: &str) {
+    let (file, span) = sources.locate(span);
+    let (path, src) = (file.path.as_str(), sources.text_of(file));
     let (line, col) = line_col(src, span.start as usize);
     let text = src.lines().nth(line - 1).unwrap_or("");
     let gutter = " ".repeat(line.to_string().len());

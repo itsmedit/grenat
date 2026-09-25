@@ -57,6 +57,9 @@ export ANTHROPIC_API_KEY=sk-ant-…
 target/debug/grenat run --log examples/explorer.grn crates/grenat_parser        # a real agent
 target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl        # multi-agent + approval
 
+target/debug/grenat new hello && cd hello    # a package: grenat.toml, src/, tests/
+grenat run && grenat test                    # in a package, no file to name
+
 target/debug/grenat check examples/*.grn     # names, types, effects, taint
 target/debug/grenat fmt examples             # canonical layout (--check: only report)
 target/debug/grenat test examples/triage.grn # `test` blocks: mocks and cassettes, never a real model
@@ -78,13 +81,14 @@ cargo test                                   # ~250 tests: unit, integration, CL
 | `grenat_driver` | load, check and run a program (shared by the CLI and built executables) |
 | `grenat_host` | static library linked into the executables of `grenat build` |
 | `grenat_standalone` | static library linked into `grenat build --native` executables |
-| `grenat_report` | diagnostic rendering |
+| `grenat_report` | diagnostic rendering, in the file each error points into |
+| `grenat_package` | `grenat.toml`, `require`, path and git dependencies, `grenat.lock` |
 | `grenat_fmt` | the formatter |
 | `grenat_green` | M:N green threads: scheduler, green locks, channels, timers |
 | `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities, workflows, test doubles, evals |
 | `grenat_cli` | the `grenat` binary |
 
-External dependencies: `ureq` (HTTP + rustls), `serde_json`, and Cranelift for native code.
+External dependencies: `ureq` (HTTP + rustls), `serde_json`, `toml`, and Cranelift for native code.
 
 ## License
 

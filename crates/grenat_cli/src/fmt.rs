@@ -39,7 +39,7 @@ pub fn fmt(args: &[String]) -> ExitCode {
             },
             Err(FmtError::Syntax) => {
                 failed += 1;
-                report(&path, &src, &grenat_parser::parse(&src).diagnostics);
+                report(&grenat_driver::Sources::single(&path, &src), &grenat_parser::parse(&src).diagnostics);
             }
             Err(FmtError::Unsafe(why)) => {
                 failed += 1;

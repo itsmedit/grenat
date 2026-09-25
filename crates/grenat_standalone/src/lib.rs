@@ -66,9 +66,9 @@ fn run(program: &Standalone, args: Vec<String>) -> c_int {
 /// The error, rendered as `grenat run` renders a runtime error.
 fn report(program: &Standalone, ctx: &Context, status: i64) {
     // SAFETY: data of the executable, emitted by `grenat_codegen::standalone`
-    let (site, source, path) = unsafe {
+    let (site, source, files) = unsafe {
         let sites = std::slice::from_raw_parts(program.sites, program.site_count as usize);
-        (&sites[ctx.site as usize], program.source.text(), program.path.text())
+        (&sites[ctx.site as usize], program.source.text(), program.files.text())
     };
     let SiteRecord { function, function_start, function_end, start, end, reason } = site;
     // SAFETY: as above
@@ -81,5 +81,5 @@ fn report(program: &Standalone, ctx: &Context, status: i64) {
     let diagnostic = Diagnostic::new(span(*start, *end), message)
         .with_note(span(*function_start, *function_end), format!("in `{function}`"));
     let color = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
-    eprint!("{}", grenat_report::render(path, source, &diagnostic, color));
+    eprint!("{}", grenat_report::render_in(&grenat_report::Sources::from_table(source, files), &diagnostic, color));
 }

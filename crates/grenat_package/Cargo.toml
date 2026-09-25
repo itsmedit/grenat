@@ -1,6 +1,6 @@
 [package]
-name = "grenat_driver"
-description = "Loading and running Grenat programs, shared by the CLI and built executables"
+name = "grenat_package"
+description = "Grenat packages: grenat.toml, dependencies, and programs made of several files"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,5 @@ rust-version.workspace = true
 [dependencies]
 grenat_ast.workspace = true
 grenat_parser.workspace = true
-grenat_types.workspace = true
-grenat_interp.workspace = true
 grenat_report.workspace = true
-grenat_package.workspace = true
+toml = "1"

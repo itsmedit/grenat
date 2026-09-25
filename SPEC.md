@@ -109,6 +109,33 @@ rescue IoError => e
 end
 ```
 
+### Files and packages
+
+A program is a file and every file it `require`s. Requires are static — a literal path, at the top level — and resolved before anything runs; each file is loaded once, after the files it requires, and all of them share one namespace, as in Ruby.
+
+```ruby
+require "./helpers"        # helpers.grn, next to this file
+require "../shared/text"   # ../shared/text.grn
+require "http"             # the dependency `http`: its src/lib.grn
+require "http/client"      # its src/client.grn
+```
+
+A package is a directory with a `grenat.toml` (`grenat new <name>` creates one, with `src/main.grn`, `src/lib.grn` and `tests/`):
+
+```toml
+[package]
+name = "support"
+version = "0.1.0"
+# main = "src/main.grn"    what `grenat run` runs (the default)
+# lib  = "src/lib.grn"     what `require "support"` loads (the default)
+
+[dependencies]
+utils = { path = "../utils" }
+http = { git = "https://github.com/grenat-lang/http", tag = "v0.2.0" }   # or `branch`, `rev`
+```
+
+Git dependencies are fetched into the root package's `.grenat/deps/` and their exact commit recorded in `grenat.lock`, so that the program builds the same everywhere; `grenat update` moves them to the latest commit of their branch or tag. In a package, `grenat run`, `test`, `check` and `build` need no file: they take the package's program, or every file of `src/` and `tests/`.
+
 ---
 
 ## 3. Effects and capabilities
@@ -421,7 +448,7 @@ Installed layout:
 | **3** ✅ | Concurrent actor agents, real `parallel_map`/`race`, cancellation, deadlock detection, supervision | multi-agent |
 | **4** ✅ | Cranelift codegen: 4a JIT for numeric functions, 4b strings/arrays/structs with Perceus RC, 4c `grenat build`, 4d M:N green threads, 4e programs without the interpreter | fast native binaries |
 | **5** ✅ | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
-| **6** | LSP, LLVM release builds, macros, package manager | ecosystem |
+| **6** | LSP, LLVM release builds, macros, package manager (and programs of several files) | ecosystem |
 | **7** | What real agents need (from ten use cases: support, code review, research, data, documents, scheduled, operations, chat, multi-agent teams, third-party tools): an I/O library with effects (`Http` client and server, `Db`, email), MCP client, multimodal prompts and the Batch API, conversations and long-term memory, a sandbox for `shell` and per-tool timeouts, triggers (`every`, webhooks) | agents in production |
 
 ### Phase 0.5 status: `grenat fmt`
@@ -585,6 +612,10 @@ Next slices (native `main`, I/O, the agent runtime in native code); M:N green th
 ✗ replies are kind · score 0.62 (threshold 0.70) · 5 row(s), 1 failed · $0.0104 · 3.4s
     row 4: LlmError: truncated response: increase the model's `max_tokens`
 ```
+
+### Phase 6 status: packages
+
+Programs of several files and packages (§2, *Files and packages*) are in `grenat_package`: the manifest, the lock file, git dependencies (with the `git` command), `require` resolution and loading. Loading gives the program's `Sources`, every file's text one after the other: each file is parsed alone first (its syntax errors reported in it), then the whole program is parsed once, so that spans stay offsets in one text and nothing downstream — the checker, the interpreter, the code generators — knows about files. Diagnostics and runtime errors are rendered in the file they point into (`grenat_report`), and built executables embed the file table next to the source, so their errors do too.
 
 For the models that recommend it (`claude-opus-5`, `claude-fable-5-1`), the client enables server-side fallbacks (`fallbacks: "default"`): a request refused by a classifier is replayed on another model instead of failing. Disable it with `model :x, …, fallbacks: false`.
 

@@ -234,3 +234,27 @@ fn a_program_needing_the_interpreter_is_not_built_native() {
     assert!(err.contains("`show` cannot be compiled: its parameters need types"), "{err}");
     assert!(!exe.exists());
 }
+
+#[test]
+fn a_program_of_several_files_is_built_with_its_file_table() {
+    ensure_host_library();
+    let root = dir().join("several");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("lib")).unwrap();
+    std::fs::write(root.join("main.grn"), "require \"./lib/div\"\n\ndef main\n  puts div(6, 3)\n  puts div(1, 0)\nend\n").unwrap();
+    std::fs::write(root.join("lib/div.grn"), "def div(a: Int, b: Int) -> Int = a / b\n").unwrap();
+    let main = root.join("main.grn");
+    for flags in [&[][..], &["--native"][..]] {
+        let exe = root.join(if flags.is_empty() { "hosted" } else { "native" });
+        let mut args = vec!["build"];
+        args.extend(flags);
+        args.extend([main.to_str().unwrap(), "-o", exe.to_str().unwrap()]);
+        let out = grenat(&args);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        let out = run_exe(&exe, &[], &[]);
+        assert_eq!(text(&out.stdout), "2\n");
+        let err = text(&out.stderr);
+        assert!(err.contains("ZeroDivisionError: division by zero"), "{err}");
+        assert!(err.contains("lib/div.grn:1:"), "{flags:?}: {err}");
+    }
+}

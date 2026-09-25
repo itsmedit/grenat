@@ -12,6 +12,7 @@ name = "grenat"
 path = "src/main.rs"
 
 [dependencies]
+grenat_package.workspace = true
 grenat_lexer.workspace = true
 grenat_ast.workspace = true
 grenat_parser.workspace = true

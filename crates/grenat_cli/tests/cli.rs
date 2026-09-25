@@ -287,3 +287,60 @@ fn the_triage_example_tests_pass_offline() {
     assert_eq!(code(&out), 0, "{err}");
     assert!(err.ends_with("3 passed, 0 failed\n"), "{err}");
 }
+
+/// `grenat` run from `dir`.
+fn grenat_in(dir: &std::path::Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_grenat"))
+        .args(args)
+        .current_dir(dir)
+        .env("NO_COLOR", "1")
+        .env_remove("ANTHROPIC_API_KEY")
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn a_new_package_runs_tests_and_checks_without_naming_files() {
+    let dir = project("packages");
+    let out = grenat_in(&dir, &["new", "hello"]);
+    assert_eq!(code(&out), 0, "{}", text(&out.stderr));
+    let package = dir.join("hello");
+    for file in ["grenat.toml", ".gitignore", "src/main.grn", "src/lib.grn", "tests/lib_test.grn"] {
+        assert!(package.join(file).is_file(), "no {file}");
+    }
+    assert_eq!(text(&grenat_in(&package, &["run"]).stdout), "Hello, world!\n");
+    assert_eq!(text(&grenat_in(&package, &["run", "Ada"]).stdout), "Hello, Ada!\n");
+    let out = grenat_in(&package, &["test"]);
+    assert_eq!(code(&out), 0, "{}", text(&out.stderr));
+    assert!(text(&out.stderr).ends_with("1 passed, 0 failed\n"));
+    let out = grenat_in(&package, &["check"]);
+    assert!(text(&out.stderr).contains("✓ 3 file(s) OK"), "{}", text(&out.stderr));
+    assert_eq!(code(&grenat_in(&package, &["fmt", "--check", "src", "tests"])), 0);
+
+    assert_eq!(code(&grenat_in(&dir, &["new", "hello"])), 1);
+    let out = grenat_in(&dir, &["run"]);
+    assert_eq!(code(&out), 2);
+    assert!(text(&out.stderr).contains("no file given, and no grenat.toml here or above"));
+}
+
+#[test]
+fn errors_are_shown_in_the_required_file() {
+    let dir = project("required");
+    std::fs::write(dir.join("main.grn"), "require \"./lib/math\"\n\ndef main\n  puts half(3)\nend\n").unwrap();
+    std::fs::create_dir_all(dir.join("lib")).unwrap();
+    std::fs::write(dir.join("lib/math.grn"), "def half(n: Int) -> Int\n  raise \"odd\" if n % 2 == 1\n  n / 2\nend\n").unwrap();
+    let out = grenat_in(&dir, &["run", "main.grn"]);
+    let err = text(&out.stderr);
+    assert_eq!(code(&out), 1, "{err}");
+    assert!(err.contains("error: RuntimeError: odd\n --> lib/math.grn:2:3\n"), "{err}");
+    assert!(err.contains("note: in `main`\n --> main.grn:3:1\n"), "{err}");
+
+    std::fs::write(dir.join("lib/math.grn"), "def half(n: Int) -> Int = n / \"2\"\n").unwrap();
+    let err = text(&grenat_in(&dir, &["check", "main.grn"]).stderr);
+    assert!(err.contains("--> lib/math.grn:1:"), "{err}");
+
+    std::fs::write(dir.join("main.grn"), "require \"./lib/nope\"\n").unwrap();
+    let err = text(&grenat_in(&dir, &["run", "main.grn"]).stderr);
+    assert!(err.contains("cannot find `./lib/nope`"), "{err}");
+    assert!(err.contains("--> main.grn:1:1"), "{err}");
+}

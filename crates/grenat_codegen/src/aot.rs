@@ -27,6 +27,9 @@ pub const IMAGE_SYMBOL: &str = "grenat_image";
 pub struct Image {
     source: *const u8,
     source_len: u64,
+    /// The source's file table (`grenat_report::Sources::table`).
+    files: *const u8,
+    files_len: u64,
     /// Compiled function names, one per line, in the order of `functions`.
     names: *const u8,
     names_len: u64,
@@ -50,6 +53,15 @@ impl Image {
         unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.source, self.source_len as usize)) }
     }
 
+    /// The file table of [`source`](Self::source).
+    ///
+    /// # Safety
+    /// As [`Image::source`].
+    pub unsafe fn files(&self) -> &str {
+        // SAFETY: as `source`
+        unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.files, self.files_len as usize)) }
+    }
+
     /// # Safety
     /// As [`Image::source`].
     unsafe fn names(&self) -> Vec<&str> {
@@ -65,8 +77,9 @@ pub struct Object {
     pub report: Report,
 }
 
-/// The object file of `program` (parsed from `source`, and checked).
-pub fn object(program: &Program, source: &str) -> Result<Object, String> {
+/// The object file of `program` (parsed from `source`, whose file table is
+/// `files`, and checked).
+pub fn object(program: &Program, source: &str, files: &str) -> Result<Object, String> {
     let fail = |e: cranelift_module::ModuleError| e.to_string();
     let structs = Structs::from_program(program);
     let (selected, interpreted) = select(program, &structs, Target::Hosted);
@@ -85,10 +98,13 @@ pub fn object(program: &Program, source: &str) -> Result<Object, String> {
 
     let image = module.declare_data(IMAGE_SYMBOL, Linkage::Export, false, false).map_err(fail)?;
     let [source_ptr, source_len] = strings.words(&mut module, source)?;
+    let [files_ptr, files_len] = strings.words(&mut module, files)?;
     let [names_ptr, names_len] = strings.words(&mut module, &names)?;
     let words = [
         source_ptr,
         source_len,
+        files_ptr,
+        files_len,
         names_ptr,
         names_len,
         Word::Data(functions),

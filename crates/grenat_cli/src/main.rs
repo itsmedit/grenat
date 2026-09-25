@@ -3,12 +3,13 @@
 mod build;
 mod fmt;
 mod link;
+mod package;
 mod testing;
 
 use std::env;
 use std::process::ExitCode;
 
-use grenat_driver::{execute, load, log_from_env, native_from_env, read, report};
+use grenat_driver::{Sources, execute, load, log_from_env, native_from_env, read, report};
 
 use grenat_lexer::{StrPart, TokenKind};
 
@@ -16,15 +17,19 @@ const USAGE: &str = "\
 grenat — an agentic programming language
 
 Usage:
-  grenat run [--log] [--unchecked] [--no-jit] <file.grn> [args…]
-                                 check, then run the program (and `main`)
-  grenat build [--native] <file.grn> [-o <executable>]
+  grenat new <name>              create a package: grenat.toml, src/, tests/
+  grenat run [--log] [--unchecked] [--no-jit] [<file.grn>] [args…]
+                                 check, then run the program (and `main`);
+                                 without a file, the current package's
+  grenat build [--native] [<file.grn>] [-o <executable>]
                                  compile the program ahead of time into an executable
                                  (--native: the whole program, without the interpreter)
-  grenat test <file.grn>...      run the `test \"…\" do … end` blocks (never a real model:
-                                 `mock`, or `cassette` recorded once)
+  grenat test [<file.grn>...]    run the `test \"…\" do … end` blocks (never a real model:
+                                 `mock`, or `cassette` recorded once); without a
+                                 file, those of the package's src/ and tests/
   grenat eval <file.grn> [name]  run the `eval` blocks (those whose name contains `name`)
-  grenat check <file.grn>...     check names, types, effects and taint
+  grenat check [<file.grn>...]   check names, types, effects and taint
+  grenat update                  fetch the latest commits of git dependencies (grenat.lock)
   grenat fmt [--check] <file.grn | dir>...
                                  rewrite in the canonical layout (--check: only report)
   grenat parse <file.grn>        print the syntax tree
@@ -44,13 +49,15 @@ Environment variables:
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     match args.first().map(String::as_str) {
-        Some("check") if args.len() > 1 => check(&args[1..]),
+        Some("check") => check(&args[1..]),
         Some("parse") if args.len() == 2 => dump_ast(&args[1]),
         Some("tokens") if args.len() == 2 => dump_tokens(&args[1]),
-        Some("run") if args.len() > 1 => run(&args[1..]),
-        Some("test") if args.len() > 1 => testing::test(&args[1..]),
+        Some("run") => run(&args[1..]),
+        Some("test") => testing::test(&args[1..]),
         Some("eval") if args.len() > 1 => testing::eval(&args[1..]),
-        Some("build") if args.len() > 1 => build::build(&args[1..]),
+        Some("build") => build::build(&args[1..]),
+        Some("new") => package::new(&args[1..]),
+        Some("update") if args.len() == 1 => package::update(),
         Some("fmt") => fmt::fmt(&args[1..]),
         Some("-V" | "--version") => {
             println!("grenat {}", env!("CARGO_PKG_VERSION"));
@@ -68,8 +75,12 @@ fn main() -> ExitCode {
 }
 
 fn check(paths: &[String]) -> ExitCode {
+    let paths = match package::or_package_files(paths) {
+        Ok(paths) => paths,
+        Err(code) => return code,
+    };
     let mut failed = 0;
-    for path in paths {
+    for path in &paths {
         if load(path, false).is_none() {
             failed += 1;
         }
@@ -99,20 +110,27 @@ fn run(args: &[String]) -> ExitCode {
         }
         args = &args[1..];
     }
-    let Some(path) = args.first() else {
-        eprint!("{USAGE}");
-        return ExitCode::from(2);
+    // a program, or else the current package's
+    let (path, args) = match args.split_first() {
+        Some((file, rest)) if file.ends_with(".grn") => (file.clone(), rest),
+        _ => match package::main_file() {
+            Ok(main) => (main, args),
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::from(2);
+            }
+        },
     };
-    let Some((src, program)) = load(path, unchecked) else { return ExitCode::FAILURE };
-    let options = grenat_interp::Options { log, jit, ..grenat_driver::options_for(path) };
-    ExitCode::from(execute(path, &src, &program, args[1..].to_vec(), options))
+    let Some(loaded) = load(&path, unchecked) else { return ExitCode::FAILURE };
+    let options = grenat_interp::Options { log, jit, ..grenat_driver::options_for(&path) };
+    ExitCode::from(execute(&loaded.sources, &loaded.program, args.to_vec(), options))
 }
 
 fn dump_ast(path: &str) -> ExitCode {
     let Some(src) = read(path) else { return ExitCode::FAILURE };
     let parsed = grenat_parser::parse(&src);
     println!("{:#?}", parsed.program);
-    if report(path, &src, &parsed.diagnostics) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    if report(&Sources::single(path, &src), &parsed.diagnostics) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }
 
 fn dump_tokens(path: &str) -> ExitCode {
@@ -124,7 +142,7 @@ fn dump_tokens(path: &str) -> ExitCode {
     }
     let diagnostics: Vec<_> =
         lexed.errors.into_iter().map(|e| grenat_parser::Diagnostic::new(e.span, e.message)).collect();
-    if report(path, &src, &diagnostics) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    if report(&Sources::single(path, &src), &diagnostics) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }
 
 fn describe(kind: &TokenKind) -> String {

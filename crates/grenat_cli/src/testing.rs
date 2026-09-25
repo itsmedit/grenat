@@ -6,14 +6,19 @@ use grenat_driver::{load, options_for, render_runtime_error};
 use grenat_interp::EvalReport;
 
 /// Runs the `test` blocks of each file; a test never reaches a real model.
+/// With no file, the files of the current package.
 pub fn test(paths: &[String]) -> ExitCode {
+    let paths = match crate::package::or_package_files(paths) {
+        Ok(paths) => paths,
+        Err(code) => return code,
+    };
     let (mut passed, mut failed) = (0, 0);
-    for path in paths {
-        let Some((src, program)) = load(path, false) else {
+    for path in &paths {
+        let Some(loaded) = load(path, false) else {
             failed += 1;
             continue;
         };
-        match grenat_interp::run_tests(&program, options_for(path)) {
+        match grenat_interp::run_tests(&loaded.program, options_for(path)) {
             Ok(outcomes) => {
                 for outcome in outcomes {
                     match outcome.error {
@@ -24,14 +29,14 @@ pub fn test(paths: &[String]) -> ExitCode {
                         Some(error) => {
                             failed += 1;
                             eprintln!("✗ {}", outcome.name);
-                            render_runtime_error(path, &src, &error);
+                            render_runtime_error(&loaded.sources, &error);
                         }
                     }
                 }
             }
             Err(error) => {
                 failed += 1;
-                render_runtime_error(path, &src, &error);
+                render_runtime_error(&loaded.sources, &error);
             }
         }
     }
@@ -50,11 +55,11 @@ pub fn eval(args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let Some((src, program)) = load(path, false) else { return ExitCode::FAILURE };
-    let reports = match grenat_interp::run_evals(&program, options_for(path), filter) {
+    let Some(loaded) = load(path, false) else { return ExitCode::FAILURE };
+    let reports = match grenat_interp::run_evals(&loaded.program, options_for(path), filter) {
         Ok(reports) => reports,
         Err(error) => {
-            render_runtime_error(path, &src, &error);
+            render_runtime_error(&loaded.sources, &error);
             return ExitCode::FAILURE;
         }
     };

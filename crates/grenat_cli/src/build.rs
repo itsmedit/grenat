@@ -20,14 +20,26 @@ pub fn build(args: &[String]) -> ExitCode {
     let native = args.iter().any(|a| a == "--native");
     let args: Vec<&String> = args.iter().filter(|a| *a != "--native").collect();
     let (path, output) = match args.as_slice() {
-        [path] => (*path, default_output(path)),
-        [path, flag, out] | [flag, out, path] if *flag == "-o" => (*path, PathBuf::from(out)),
-        _ => {
-            eprintln!("usage: grenat build [--native] <file.grn> [-o <executable>]");
-            return ExitCode::from(2);
-        }
+        [path] => ((*path).clone(), default_output(path)),
+        [path, flag, out] | [flag, out, path] if *flag == "-o" => ((*path).clone(), PathBuf::from(out)),
+        // the current package's program, named after the package
+        [] | [_, _] => match crate::package::current() {
+            Ok(package) => {
+                let output = match args.as_slice() {
+                    [flag, out] if *flag == "-o" => PathBuf::from(out),
+                    [] => PathBuf::from(&package.manifest.name),
+                    _ => return usage(),
+                };
+                (crate::package::shown(&package.main()), output)
+            }
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::from(2);
+            }
+        },
+        _ => return usage(),
     };
-    match compile(path, &output, native) {
+    match compile(&path, &output, native) {
         Ok(summary) => {
             eprintln!("✓ built {} ({summary})", output.display());
             ExitCode::SUCCESS
@@ -41,6 +53,11 @@ pub fn build(args: &[String]) -> ExitCode {
     }
 }
 
+fn usage() -> ExitCode {
+    eprintln!("usage: grenat build [--native] [<file.grn>] [-o <executable>]");
+    ExitCode::from(2)
+}
+
 /// `app.grn` → `./app`
 fn default_output(path: &str) -> PathBuf {
     PathBuf::from(Path::new(path).file_stem().unwrap_or_default())
@@ -48,15 +65,16 @@ fn default_output(path: &str) -> PathBuf {
 
 fn compile(path: &str, output: &Path, standalone: bool) -> Result<String, String> {
     // diagnostics are printed by `load`
-    let (src, program) = load(path, false).ok_or_else(String::new)?;
+    let loaded = load(path, false).ok_or_else(String::new)?;
+    let (src, files, program) = (&loaded.sources.text, loaded.sources.table(), &loaded.program);
     let (object, library) = if standalone {
-        let object = grenat_codegen::standalone::object(&program, &src, path).map_err(|reasons| {
+        let object = grenat_codegen::standalone::object(program, src, &files).map_err(|reasons| {
             let list: Vec<String> = reasons.iter().map(|r| format!("  - {r}")).collect();
             format!("{path} cannot be compiled without the interpreter:\n{}", list.join("\n"))
         })?;
         (object, "libgrenat_standalone.a")
     } else {
-        (grenat_codegen::aot::object(&program, &src)?, HOST)
+        (grenat_codegen::aot::object(program, src, &files)?, HOST)
     };
     let native = object.report.compiled.len();
     let host = library_path(library)?;

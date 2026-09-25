@@ -68,7 +68,8 @@ pub struct Standalone {
     /// `main(args: Array(String))` rather than `main`.
     pub takes_args: u64,
     pub source: Bytes,
-    pub path: Bytes,
+    /// The source's file table (`base path` lines), for error reports.
+    pub files: Bytes,
     pub sites: *const SiteRecord,
     pub site_count: u64,
 }

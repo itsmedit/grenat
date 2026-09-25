@@ -21,15 +21,14 @@ unsafe extern "C" {
 pub unsafe extern "C" fn main(argc: c_int, argv: *const *const c_char) -> c_int {
     // SAFETY: `argc` valid C strings, as the C runtime passes them
     let arg = |i: c_int| unsafe { CStr::from_ptr(*argv.add(i as usize)) }.to_string_lossy().into_owned();
-    let name = if argc > 0 { arg(0) } else { "grenat".into() };
     let args: Vec<String> = (1..argc).map(arg).collect();
     // SAFETY: the image linked into this executable, never moved
     let image: &'static Image = unsafe { &*std::ptr::addr_of!(grenat_image) };
     // SAFETY: as above
-    let source = unsafe { image.source() };
+    let sources = unsafe { grenat_driver::Sources::from_table(image.source(), image.files()) };
 
     // checked when it was built
-    let status = match grenat_driver::parse(&name, source, true) {
+    let status = match grenat_driver::parse(&sources, true) {
         Some(program) => {
             let options = grenat_interp::Options {
                 log: grenat_driver::log_from_env(),
@@ -37,7 +36,7 @@ pub unsafe extern "C" fn main(argc: c_int, argv: *const *const c_char) -> c_int 
                 linked: Some(image),
                 ..Default::default()
             };
-            grenat_driver::execute(&name, source, &program, args, options)
+            grenat_driver::execute(&sources, &program, args, options)
         }
         None => 1,
     };
