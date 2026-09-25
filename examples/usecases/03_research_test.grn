@@ -1,0 +1,9 @@
+require "./03_research"
+test "research" do
+  mock :smart, replies: [
+    call(:search, query: "x"),
+    call(:read_page, url: "https://a.io"),
+    {question: "q", answer: "A.", claims: [{text: "c", sources: ["https://a.io"]}]},
+  ]
+  main(["why", "rust"])
+end

@@ -1,0 +1,50 @@
+# A team of agents: a planner splits the task, writers work in parallel,
+# a critic grades, and the team iterates until the grade is good enough.
+model :smart, provider: :anthropic, name: "claude-opus-5"
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+struct Plan
+  sections: Array(String)  ## titles, in order, 3 to 6
+end
+
+struct Grade
+  score: Float      ## 0.0 to 1.0
+  feedback: String  ## what to improve, concretely
+end
+
+## Plans a document.
+prompt plan(task: String) -> ~Plan using :smart
+  user "Plan the sections of: #{task}"
+end
+
+## Grades a draft.
+prompt grade(task: String, draft: String) -> ~Grade using :smart
+  system "You are a demanding editor."
+  user "Task: #{task}\n\nDraft:\n#{draft}"
+end
+
+agent Writer
+  model :fast
+  max_turns 4
+  on Write(task: String, section: String, feedback: String) -> ~String
+    run "Write the section \"#{section}\" of: #{task}. Editor's feedback: #{feedback}"
+  end
+end
+
+def main(args: Array(String)) uses llm
+  task = args.join(" ")
+  writers = spawn_pool(Writer, size: 4)
+  sections = plan(task).check { |p| p.sections.size.between?(3, 6) }?.sections
+  within budget(usd: 3.00) do
+    draft = ""
+    feedback = "none yet"
+    3.times do
+      parts = sections.parallel_map { |s| writers.ask(Write(task:, section: s, feedback:)) }
+      draft = parts.map { |p| p.trust! }.join("\n\n")
+      verdict = grade(task, draft).trust!
+      break if verdict.score >= 0.8
+      feedback = verdict.feedback
+    end
+    puts draft
+  end
+end

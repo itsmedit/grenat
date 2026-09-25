@@ -1,0 +1,50 @@
+# Conversational assistant with memory: the recent turns in the agent's
+# state, compacted into a summary when they grow, long-term facts in a file.
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+struct Reply
+  text: String
+  facts: Array(String)  ## new durable facts about the user, if any
+end
+
+## Answers the user, knowing the conversation and what we know about them.
+prompt respond(facts: String, summary: String, recent: String, message: String) -> ~Reply using :fast
+  system "You are a helpful assistant.\nKnown facts:\n#{facts}\nEarlier: #{summary}"
+  user "#{recent}\nUser: #{message}"
+end
+
+## Compacts old turns.
+prompt compact(summary: String, turns: String) -> ~String using :fast
+  user "Summary so far: #{summary}\nNew turns:\n#{turns}\nWrite the updated summary in 5 lines."
+end
+
+agent Assistant
+  @turns: Array(String) = []
+  @summary: String = ""
+  @facts: Array(String) = []
+
+  on Say(message: String) -> String
+    reply = respond(@facts.join("\n"), @summary, @turns.join("\n"), message).trust!
+    @facts = @facts + reply.facts
+    @turns = @turns + ["User: #{message}", "Assistant: #{reply.text}"]
+    if @turns.size > 20
+      @summary = compact(@summary, @turns.join("\n")).trust!
+      @turns = []
+    end
+    reply.text
+  end
+
+  on Facts -> Array(String)
+    @facts
+  end
+end
+
+def main uses llm, human, fs.write
+  bot = spawn Assistant
+  loop do
+    line = Cli.ask("> ")
+    break if line.nil? || line == "exit"
+    puts bot.ask(Say(message: line))
+  end
+  File.write("memory.json", Json.dump(bot.ask(Facts())))
+end

@@ -1,0 +1,7 @@
+require "./08_chat"
+test "chat" do
+  mock :fast, replies: [{text: "Hi Ada!", facts: ["name is Ada"]}]
+  bot = spawn Assistant
+  assert_equal "Hi Ada!", bot.ask(Say(message: "I am Ada"))
+  assert_equal ["name is Ada"], bot.ask(Facts())
+end

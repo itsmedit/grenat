@@ -1,0 +1,62 @@
+# Code review of a pull request: the agent reads the diff and the files it
+# needs, then posts one review comment.
+model :smart, provider: :anthropic, name: "claude-opus-5"
+
+enum Severity
+  Blocker
+  Major
+  Minor
+end
+
+struct Finding
+  path: String
+  line: Int
+  severity: Severity
+  message: String  ## what is wrong and how to fix it
+end
+
+struct Review
+  summary: String  ## two sentences at most
+  findings: Array(Finding)
+end
+
+# ═══ STUBS ═══
+module GitHub
+  def self.diff(repo: String, pr: Int) -> String uses net("api.github.com") = ""
+  def self.file(repo: String, path: String) -> String uses net("api.github.com") = ""
+
+  def self.comment(repo: String, pr: Int, body: String) -> Unit uses net("api.github.com")
+    puts body
+  end
+end
+# ═══ END STUBS ═══
+
+## Reads a file of the repository, at the head of the pull request.
+tool read_file(path: String) -> String uses net("api.github.com")
+  GitHub.file("acme/app", path)
+end
+
+agent Reviewer
+  model :smart
+  tools read_file
+  max_turns 15
+  budget usd: 1.00
+  instructions "You review pull requests. Report real problems only: bugs, security, missing tests."
+
+  on ReviewPr(diff: String) -> ~Review
+    run "Review this diff:\n#{diff}"
+  end
+end
+
+def markdown(r: Review) -> String
+  lines = r.findings.map { |f| "- **#{f.severity}** `#{f.path}:#{f.line}` #{f.message}" }
+  "#{r.summary}\n\n#{lines.join("\n")}"
+end
+
+def main(args: Array(String)) uses llm, net("api.github.com")
+  repo = args[0]
+  pr = args[1].to_i
+  review = spawn(Reviewer).ask(ReviewPr(diff: GitHub.diff(repo, pr)))
+  safe = review.check { |r| r.findings.all? { |f| f.line > 0 } }?
+  GitHub.comment(repo, pr, markdown(safe))
+end

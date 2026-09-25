@@ -1,0 +1,5 @@
+require "./06_weekly_digest"
+test "digest" do
+  mock :fast, replies: [{headline: "Quiet week", bullets: ["nothing"]}]
+  main(["2026-W39", "https://blog.rust-lang.org/feed.xml"])
+end

@@ -1,0 +1,11 @@
+require "./10_mcp_tools"
+test "mcp" do
+  mock :smart, replies: [
+    call(:linear_search, query: "sso"),
+    call(:linear_create, title: "SSO", body: "b"),
+    [{id: "L-1", title: "SSO", status: "todo"}],
+  ]
+  with_human(approve_all) do
+    main(["SSO", "spec"])
+  end
+end

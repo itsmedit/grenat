@@ -1,0 +1,50 @@
+# Scheduled agent: every Monday, what changed in the watched sources since
+# last week, summarized and emailed. Memory: a JSON file between runs.
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+struct Item
+  url: String
+  title: String
+end
+
+struct Digest
+  headline: String
+  bullets: Array(String)  ## at most 7, the most important first
+end
+
+# ═══ STUBS ═══
+module Feeds
+  def self.items(feed: String) -> Array(Item) uses net = []
+end
+
+module Mail
+  def self.send(to: String, subject: String, body: String) -> Unit uses net("smtp.acme.com")
+    puts "#{subject}\n#{body}"
+  end
+end
+# ═══ END STUBS ═══
+
+## Summarizes the week's new items.
+prompt digest(titles: Array(String)) -> ~Digest using :fast
+  system "You write a weekly technology watch for engineers."
+  user titles.join("\n")
+end
+
+workflow weekly(week: String, feeds: Array(String)) -> Int uses llm, net, fs.read, fs.write
+  seen = step(:memory) do
+    if File.exist?("seen.json") then Json.parse(File.read("seen.json")) else [] end
+  end
+  fresh = step(:collect) {
+    feeds.flat_map { |f| Feeds.items(f) }.reject { |i| seen.include?(i.url) }.map { |i| i.title }
+  }
+  summary = step(:summarize) { digest(fresh).check { |d| d.bullets.size <= 7 }? }
+  step(:send) {
+    Mail.send("team@acme.com", "Watch #{week}: #{summary.headline}", summary.bullets.join("\n"))
+  }
+  step(:remember) { File.write("seen.json", Json.dump(seen + fresh)) }
+  fresh.size
+end
+
+def main(args: Array(String)) uses llm, net, fs.read, fs.write
+  puts "#{weekly(args.first, args.drop(1))} new items"
+end

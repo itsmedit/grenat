@@ -1,0 +1,12 @@
+require "./05_documents"
+test "documents" do
+  inv = {
+    number: "A-1",
+    supplier: "S",
+    date: "2026-01-01",
+    total: 3.0,
+    lines: [{label: "x", amount: 1.0}, {label: "y", amount: 2.0}],
+  }
+  mock :fast, replies: [inv, inv]
+  main(["invoices"])
+end

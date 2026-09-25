@@ -1,0 +1,40 @@
+# Data agent: a question in plain language, SQL written by the model,
+# checked read-only, run, then explained.
+model :smart, provider: :anthropic, name: "claude-opus-5"
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+struct Query
+  sql: String          ## one SELECT statement, PostgreSQL dialect
+  explanation: String  ## what the query computes
+end
+
+# ═══ STUBS ═══
+module Db
+  def self.schema -> String uses net("db.internal") = "orders(id, customer_id, total, created_at)"
+  def self.query(sql: String) -> Array(Hash(String, String)) uses net("db.internal") = []
+end
+# ═══ END STUBS ═══
+
+## Writes the SQL answering a question.
+prompt to_sql(question: String, schema: String) -> ~Query using :smart
+  system "You write read-only PostgreSQL queries. Schema:\n#{schema}"
+  user question
+end
+
+## Explains a result to a business user.
+prompt explain(question: String, rows: String) -> ~String using :fast
+  user "Question: #{question}\nResult (JSON): #{rows}\nAnswer in two sentences."
+end
+
+def read_only?(sql: String) -> Bool
+  s = sql.strip.downcase
+  s.start_with?("select") && !s.include?(";") && !s.include?("insert") && !s.include?("update") && !s.include?("delete")
+end
+
+def main(args: Array(String)) uses llm, net("db.internal")
+  question = args.join(" ")
+  query = to_sql(question, Db.schema).check { |q| read_only?(q.sql) }?
+  rows = Db.query(query.sql)
+  puts query.sql
+  puts explain(question, Json.dump(rows.first(50)))
+end

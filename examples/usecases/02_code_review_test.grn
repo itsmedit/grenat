@@ -1,0 +1,11 @@
+require "./02_code_review"
+test "review" do
+  mock :smart, replies: [
+    call(:read_file, path: "app.rb"),
+    {
+      summary: "One bug.",
+      findings: [{path: "app.rb", line: 3, severity: "Major", message: "nil check"}],
+    },
+  ]
+  main(["acme/app", "12"])
+end

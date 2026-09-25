@@ -1,0 +1,74 @@
+# Operations: an alert arrives, the agent reads logs and metrics, proposes a
+# remediation from an allowlist, a human approves, then it runs.
+model :smart, provider: :anthropic, name: "claude-opus-5"
+
+enum Action
+  Restart(service: String)
+  ScaleUp(service: String, replicas: Int)
+  Rollback(service: String)
+  Nothing
+end
+
+struct Diagnosis
+  cause: String     ## the most likely root cause
+  evidence: String  ## log lines or metrics that support it
+  action: Action
+end
+
+# ═══ STUBS ═══
+module Observability
+  def self.logs(service: String, minutes: Int) -> String uses net("loki.internal") = ""
+  def self.metrics(service: String) -> String uses net("prometheus.internal") = ""
+end
+
+module Kube
+  def self.apply(command: String) -> String uses shell
+    puts "$ #{command}"
+    "ok"
+  end
+end
+# ═══ END STUBS ═══
+
+## Recent logs of a service.
+tool logs(service: String, minutes: Int = 15) -> String uses net("loki.internal")
+  Observability.logs(service, minutes)
+end
+
+## Current metrics of a service (latency, errors, saturation).
+tool metrics(service: String) -> String uses net("prometheus.internal")
+  Observability.metrics(service)
+end
+
+agent Oncall
+  model :smart
+  tools logs, metrics
+  max_turns 12
+  budget usd: 0.50, time: 3.min
+  instructions "You are an SRE. Diagnose from evidence. Propose the least risky action."
+
+  on Investigate(alert: String) -> ~Diagnosis
+    run "Alert: #{alert}"
+  end
+end
+
+supervisor Ops, strategy: :one_for_one, max_restarts: 3, within: 5.min
+  child Oncall
+end
+
+def command(action: Action) -> String
+  case action
+  in Restart(service:) then "kubectl rollout restart deploy/#{service}"
+  in ScaleUp(service:, replicas:) then "kubectl scale deploy/#{service} --replicas=#{replicas}"
+  in Rollback(service:) then "kubectl rollout undo deploy/#{service}"
+  in Nothing then ""
+  end
+end
+
+def main(args: Array(String)) uses llm, net, shell, human
+  Runtime.on_approval { |req| Cli.confirm(req.message) }
+  diagnosis = Ops[Oncall].ask(Investigate(alert: args.join(" ")))
+  approved = diagnosis.approve(by: :human)
+  puts "Cause: #{approved.cause}\nEvidence: #{approved.evidence}"
+  cmd = command(approved.action)
+  puts Kube.apply(cmd) unless cmd.empty?
+end

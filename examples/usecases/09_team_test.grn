@@ -1,0 +1,17 @@
+require "./09_team"
+test "team" do
+  mock :smart, replies: [
+    {sections: ["a", "b", "c"]},
+    {score: 0.5, feedback: "more"},
+    {score: 0.9, feedback: "ok"},
+  ]
+  mock :fast, replies: [
+    {value: "A"},
+    {value: "B"},
+    {value: "C"},
+    {value: "A2"},
+    {value: "B2"},
+    {value: "C2"},
+  ]
+  main(["a", "guide"])
+end

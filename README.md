@@ -23,7 +23,7 @@ end
 ```
 
 - Specification: [`SPEC.md`](SPEC.md)
-- Examples: [`basics.grn`](examples/basics.grn), [`reviews.grn`](examples/reviews.grn) (native statistics + validated LLM analysis), [`explorer.grn`](examples/explorer.grn) (a real agent), [`support_desk.grn`](examples/support_desk.grn) (multi-agent, human approval), [`triage.grn`](examples/triage.grn) (tests with mocks, evals with an LLM judge), [`macros.grn`](examples/macros.grn) (compile-time code generation)
+- Examples: [`basics.grn`](examples/basics.grn), [`reviews.grn`](examples/reviews.grn) (native statistics + validated LLM analysis), [`explorer.grn`](examples/explorer.grn) (a real agent), [`support_desk.grn`](examples/support_desk.grn) (multi-agent, human approval), [`triage.grn`](examples/triage.grn) (tests with mocks, evals with an LLM judge), [`macros.grn`](examples/macros.grn) (compile-time code generation), [`usecases/`](examples/usecases) (ten agent use cases, the phase 7 target)
 
 ## Status
 

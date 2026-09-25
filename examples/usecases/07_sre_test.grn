@@ -1,0 +1,10 @@
+require "./07_sre"
+test "sre" do
+  mock :smart, replies: [
+    call(:logs, service: "api"),
+    {cause: "OOM", evidence: "killed", action: {kind: "Restart", service: "api"}},
+  ]
+  with_human(approve_all) do
+    main(["api", "5xx", "rate", "high"])
+  end
+end

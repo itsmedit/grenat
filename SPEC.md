@@ -479,7 +479,19 @@ Installed layout:
 | **4** ✅ | Cranelift codegen: 4a JIT for numeric functions, 4b strings/arrays/structs with Perceus RC, 4c `grenat build`, 4d M:N green threads, 4e programs without the interpreter | fast native binaries |
 | **5** ✅ | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
 | **6** ✅ | LSP, LLVM release builds, macros, package manager (and programs of several files) | ecosystem |
-| **7** | What real agents need (from ten use cases: support, code review, research, data, documents, scheduled, operations, chat, multi-agent teams, third-party tools): an I/O library with effects (`Http` client and server, `Db`, email), MCP client, multimodal prompts and the Batch API, conversations and long-term memory, a sandbox for `shell` and per-tool timeouts, triggers (`every`, webhooks) | agents in production |
+| **7** | What real agents need, measured by ten use cases (`examples/usecases`): an I/O library with effects (`Http` client and server, `Db`, email), MCP client, multimodal prompts and the Batch API, conversations and long-term memory, a sandbox for `shell` and per-tool timeouts, triggers (`every`, webhooks) | agents in production |
+
+### Phase 7 plan: the ten use cases
+
+Ten realistic programs, one per kind of agent, are in `examples/usecases` (the first is `examples/support_desk.grn`): support, code review, research, data, documents, a scheduled digest, operations, a chat with memory, a team of agents, third-party tools. Each checks and passes its tests today, the model mocked, in 24 to 47 lines of logic (113 for the full support desk). Only two run for real: the others fake, between `STUBS` markers, the I/O the standard library lacks. Phase 7 is done when every stub is gone. In order:
+
+1. **`Http` client** with effects (`net("host")` enforced at run time, JSON, headers, timeouts, cancellation of requests in flight) — unblocks cases 2, 3, 6, 7, 10.
+2. **`Db`** (SQLite and Postgres, parameterized queries, `db.read` / `db.write` effects) — case 4.
+3. **Sandboxed `shell`** (a process with a timeout, no network unless declared) and per-tool timeouts — cases 2 and 7.
+4. **MCP client** (`tools from mcp("…")`, capabilities granted per server, results tainted) — case 10.
+5. **Multimodal prompts** (PDF, images) and the **Batch API** — case 5.
+6. **Email** and **triggers** (`every 1.week`, webhooks through an `Http` server) — cases 1, 2, 6.
+7. Smaller gaps met while writing them: the ternary `c ? a : b`; conversations as a type (history compacted automatically) for case 8; web search as a model server tool for case 3.
 
 ### Phase 0.5 status: `grenat fmt`
 

@@ -1,0 +1,59 @@
+# Research assistant: searches the web, reads pages, writes a sourced report.
+model :smart, provider: :anthropic, name: "claude-opus-5"
+
+struct Claim
+  text: String
+  sources: Array(String)  ## URLs of the pages read that support it
+end
+
+struct Report
+  question: String
+  answer: String  ## three paragraphs at most
+  claims: Array(Claim)
+end
+
+struct Hit
+  url: String
+  title: String
+  snippet: String
+end
+
+# ═══ STUBS ═══
+module Web
+  def self.search(query: String) -> Array(Hit) uses net = []
+  def self.fetch(url: String) -> String uses net = ""
+end
+# ═══ END STUBS ═══
+
+## Searches the web.
+tool search(query: String) -> Array(Hit) uses net
+  Web.search(query)
+end
+
+## Reads a web page, as text.
+tool read_page(url: String) -> String uses net
+  Web.fetch(url)
+end
+
+agent Researcher
+  model :smart
+  tools search, read_page
+  max_turns 25
+  budget usd: 2.00, time: 10.min
+  instructions "Answer from the pages you read. Every claim cites at least one page."
+
+  on Research(question: String) -> ~Report
+    run question
+  end
+end
+
+def main(args: Array(String)) uses llm, net
+  report = spawn(Researcher).ask(Research(question: args.join(" ")))
+  sourced = report.check { |r| r.claims.all? { |c| c.sources.any? } }?
+  puts sourced.answer
+  sourced
+    .claims
+    .each_with_index do |c, i|
+      puts "[#{i + 1}] #{c.text} — #{c.sources.join(", ")}"
+    end
+end

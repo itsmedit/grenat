@@ -1,0 +1,49 @@
+# Document processing: thousands of invoices to structured data, checked,
+# resumable after a crash, measured by an eval.
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+struct Line
+  label: String
+  amount: Float
+end
+
+struct Invoice
+  number: String
+  supplier: String
+  date: String  ## ISO 8601
+  total: Float
+  lines: Array(Line)
+end
+
+# ═══ STUBS ═══
+module Pdf
+  def self.text(path: String) -> String uses fs.read = File.read(path)
+end
+# ═══ END STUBS ═══
+
+## Extracts an invoice.
+prompt extract(text: String) -> ~Invoice using :fast
+  user text
+end
+
+def consistent?(i: Invoice) -> Bool
+  sum = i.lines.map { |l| l.amount }.sum
+  (sum - i.total).abs < 0.01
+end
+
+workflow process(path: String) -> String uses llm, fs.read
+  invoice = step(:extract) { extract(Pdf.text(path)).check { |i| consistent?(i) }? }
+  Json.dump(invoice)
+end
+
+def main(args: Array(String)) uses llm, fs.read, fs.write
+  within budget(usd: 20.00) do
+    rows = Dir.list(args.first).parallel_map(limit: 32) { |name| process("#{args.first}/#{name}") }
+    File.write("invoices.jsonl", rows.join("\n"))
+    puts "#{rows.size} invoices — #{budget.spent}"
+  end
+end
+
+eval "extraction", dataset: "invoices_gold.jsonl", threshold: 0.95 do |row|
+  extract(row.text).trust!.total == row.total
+end

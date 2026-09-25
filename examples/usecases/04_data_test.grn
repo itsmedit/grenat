@@ -1,0 +1,10 @@
+require "./04_data"
+test "data" do
+  mock :smart, replies: [{sql: "select count(*) from orders", explanation: "count"}]
+  mock :fast, replies: ["There are 0 orders."]
+  main(["how", "many", "orders"])
+end
+test "a write is refused" do
+  mock :smart, replies: [{sql: "delete from orders", explanation: "oops"}]
+  assert_raises(CheckError) { main(["purge"]) }
+end

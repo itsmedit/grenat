@@ -392,3 +392,41 @@ fn errors_in_expanded_code_point_at_the_invocation() {
     assert!(err.contains("macro_error.grn:5:1\n"), "{err}");
     assert!(err.contains("5 | broken :f\n"), "{err}");
 }
+
+#[test]
+fn the_use_cases_pass_their_tests() {
+    // in a copy: they write their journals and memory where they run
+    let dir = project("usecases");
+    let source = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/usecases"));
+    let mut tests = Vec::new();
+    for entry in std::fs::read_dir(source).unwrap().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            std::fs::create_dir_all(dir.join(entry.file_name())).unwrap();
+            for inner in std::fs::read_dir(&path).unwrap().flatten() {
+                std::fs::copy(inner.path(), dir.join(entry.file_name()).join(inner.file_name())).unwrap();
+            }
+        } else {
+            std::fs::copy(&path, dir.join(entry.file_name())).unwrap();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.ends_with("_test.grn") {
+                tests.push(name);
+            }
+        }
+    }
+    tests.sort();
+    assert_eq!(tests.len(), 9);
+    for test in &tests {
+        let out = Command::new(env!("CARGO_BIN_EXE_grenat"))
+            .args(["test", test])
+            .current_dir(&dir)
+            .env("NO_COLOR", "1")
+            .env_remove("ANTHROPIC_API_KEY")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        let err = text(&out.stderr);
+        assert_eq!(code(&out), 0, "{test}: {err}");
+        assert!(err.contains(", 0 failed"), "{test}: {err}");
+    }
+}
