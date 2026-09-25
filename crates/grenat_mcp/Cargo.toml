@@ -1,0 +1,23 @@
+[package]
+name = "grenat_mcp"
+description = "A Model Context Protocol client: the tools of MCP servers, over stdio or HTTP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+ureq.workspace = true
+
+[dev-dependencies]
+grenat_mcp = { path = ".", features = ["fake"] }
+
+[[test]]
+name = "client"
+harness = false
+
+[features]
+# A fake MCP server, for the tests of this crate and of its users.
+fake = []

@@ -713,6 +713,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "grenat_mcp"
+version = "0.1.0"
+dependencies = [
+ "grenat_mcp",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
 name = "grenat_package"
 version = "0.1.0"
 dependencies = [

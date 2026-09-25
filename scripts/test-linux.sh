@@ -24,7 +24,7 @@ docker run --rm $platform \
         (apt-get update -qq && apt-get install -y -qq clang >/dev/null 2>&1) || echo "no clang: release builds not tested"
         mkdir -p /work && cd /src && tar --exclude=./target -cf - . | (cd /work && tar -xf -)
         cd /work
-        cargo test -q --no-fail-fast 2>&1 | grep "test result" | awk "{p+=\$4; f+=\$6} END {print \"tests:\", p, \"passed,\", f, \"failed\"; exit f > 0}"
+        cargo test -q --no-fail-fast 2>&1 | grep "test result" | awk "{p+=\$4; f+=\$6} END {print \"tests:\", p+0, \"passed,\", f+0, \"failed\"; exit (f > 0 || p == 0)}"
         cargo build -q --release -p grenat_cli -p grenat_host -p grenat_standalone
         ./target/release/grenat build examples/objects.grn -o /tmp/hosted
         ./target/release/grenat build --native examples/objects.grn -o /tmp/native

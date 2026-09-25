@@ -28,6 +28,7 @@ grenat_package = { path = "crates/grenat_package" }
 grenat_lsp = { path = "crates/grenat_lsp" }
 grenat_macros = { path = "crates/grenat_macros" }
 grenat_db = { path = "crates/grenat_db" }
+grenat_mcp = { path = "crates/grenat_mcp" }
 serde_json = "1"
 ureq = { version = "3", features = ["json"] }
 
