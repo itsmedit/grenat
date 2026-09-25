@@ -147,6 +147,7 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
         "html" | "json" | "status" | "redirect" => response_helper(name, &args),
         "request" => test_request(interp, &args),
         "database" => interp.declare_database(&args),
+        "expose" => interp.declare_exposure(&args),
         "enqueue" => interp.enqueue(&args),
         "migration" => interp.declare_migration(&args),
         "every" => every(interp, &args),

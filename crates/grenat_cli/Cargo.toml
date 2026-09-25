@@ -24,4 +24,5 @@ grenat_codegen.workspace = true
 grenat_fmt.workspace = true
 
 [dev-dependencies]
+grenat_mcp.workspace = true
 serde_json.workspace = true

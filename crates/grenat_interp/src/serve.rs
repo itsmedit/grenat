@@ -27,11 +27,13 @@ pub fn serve(
         }
         let schedules = interp.schedules.borrow().len();
         let database = interp.app_db.borrow().is_some();
-        let webhooks = !interp.webhooks.borrow().is_empty() || !interp.routes.borrow().is_empty();
+        let webhooks = !interp.webhooks.borrow().is_empty()
+            || !interp.routes.borrow().is_empty()
+            || !interp.exposures.borrow().is_empty();
         if schedules == 0 && !webhooks && !database {
             return Err(RuntimeError {
                 ty: "ArgumentError".into(),
-                message: "nothing to serve: declare routes (`get \"/\" do … end`), `on_webhook` or `every`".into(),
+                message: "nothing to serve: declare routes (`get \"/\" do … end`), `expose`, `on_webhook` or `every`".into(),
                 span: None,
                 trace: Vec::new(),
             });

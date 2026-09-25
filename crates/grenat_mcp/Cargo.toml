@@ -1,6 +1,6 @@
 [package]
 name = "grenat_mcp"
-description = "A Model Context Protocol client: the tools of MCP servers, over stdio or HTTP"
+description = "The Model Context Protocol: a client of MCP servers (stdio or HTTP), and the server side"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

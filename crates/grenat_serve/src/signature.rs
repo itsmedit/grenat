@@ -1,4 +1,5 @@
-//! Webhook signatures: the body's HMAC-SHA256 with a shared secret.
+//! Who may call: webhook signatures (the body's HMAC-SHA256 with a shared
+//! secret) and bearer tokens, compared in constant time.
 
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
@@ -13,7 +14,17 @@ pub fn github(secret: &str, body: &[u8]) -> String {
 
 /// Whether `given` is the GitHub signature of `body`, compared in constant time.
 pub fn github_valid(secret: &str, body: &[u8], given: &str) -> bool {
-    let expected = github(secret, body);
+    same(&github(secret, body), given)
+}
+
+/// Whether an `Authorization` header carries `Bearer <token>`.
+pub fn bearer_valid(token: &str, authorization: Option<&str>) -> bool {
+    let given = authorization.and_then(|a| a.strip_prefix("Bearer ")).unwrap_or_default();
+    same(token, given.trim())
+}
+
+/// Equality whose time does not tell how much of a secret was guessed.
+fn same(expected: &str, given: &str) -> bool {
     expected.len() == given.len() && expected.bytes().zip(given.bytes()).fold(0, |acc, (a, b)| acc | (a ^ b)) == 0
 }
 
@@ -29,5 +40,13 @@ mod tests {
         assert!(github_valid("It's a Secret to Everybody", b"Hello, World!", &sig));
         assert!(!github_valid("wrong", b"Hello, World!", &sig));
         assert!(!github_valid("It's a Secret to Everybody", b"Hello, World!", "sha256=00"));
+    }
+
+    #[test]
+    fn bearer_tokens() {
+        assert!(bearer_valid("s3cret", Some("Bearer s3cret")));
+        assert!(!bearer_valid("s3cret", Some("Bearer s3cre")));
+        assert!(!bearer_valid("s3cret", Some("s3cret")));
+        assert!(!bearer_valid("s3cret", None));
     }
 }

@@ -504,6 +504,39 @@ fn serve_answers_routes() {
 }
 
 #[test]
+fn serve_exposes_tools_to_an_mcp_client() {
+    use std::io::{BufRead, BufReader};
+    let src = "## Adds two numbers.\ntool add(a: Int, b: Int) -> Int\n  a + b\nend\nexpose \"/mcp\", tools: [:add], token: \"t0ken\", name: \"maths\"\n";
+    let path = program("exposed.grn", src);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_grenat"))
+        .args(["serve", "--listen", "127.0.0.1:0", path.to_str().unwrap()])
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    BufReader::new(child.stderr.take().unwrap()).read_line(&mut line).unwrap();
+    let address = line.trim().strip_prefix("listening on http://").unwrap().to_string();
+    let url = format!("http://{address}/mcp");
+    let connect = |token: &str| {
+        let headers = [("Authorization".to_string(), format!("Bearer {token}"))];
+        let transport = grenat_mcp::Http::new(&url, &headers, std::time::Duration::from_secs(10));
+        grenat_mcp::Client::connect(Box::new(transport))
+    };
+    let refused = connect("guess").err();
+    let mut client = connect("t0ken").unwrap();
+    let tools = client.tools().unwrap();
+    let sum = client.call("add", serde_json::json!({"a": 2, "b": 40})).unwrap();
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(refused.is_some_and(|e| e.contains("401")));
+    assert_eq!(client.server, "maths");
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].description, "Adds two numbers.");
+    assert!(tools[0].read_only);
+    assert_eq!(sum, grenat_mcp::CallResult { text: "42".into(), is_error: false });
+}
+
+#[test]
 fn migrate_applies_pending_migrations() {
     let dir = project("migrate");
     let db = dir.join("app.db");

@@ -301,7 +301,7 @@ impl<'p> Checker<'p> {
             "deny_all" | "approve_all" => V::new(Ty::Sym),
             // test doubles and evals
             "mock" | "mock_http" | "mock_shell" | "mcp" | "mock_mcp" => V::new(Ty::Nil),
-            "database" => V::new(Ty::Nil),
+            "database" | "expose" => V::new(Ty::Nil),
             // a job: its arguments are written to the database
             "enqueue" => {
                 cx.add_effect(Eff { path: "db.write".into(), arg: None, origin: span });

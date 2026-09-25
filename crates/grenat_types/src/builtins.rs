@@ -291,6 +291,7 @@ pub const GLOBALS: &[&str] = &[
     "mock_mcp",
     "database",
     "enqueue",
+    "expose",
     "migration",
     "every",
     "get",

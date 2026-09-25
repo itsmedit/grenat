@@ -580,6 +580,37 @@ end
 
 In a job, a question to a human (`approve!`, `.approve(by: :human)`) no longer waits at a terminal: it is stored (`grenat_approvals`), and the job waits — status `waiting`, neither failed nor retried — until someone decides with `Approvals.approve(id)` or `Approvals.deny(id)` (a `human` effect), from a route today, from `grenat console` in phase 9. The decision queues the job again: it runs from the start, a workflow replays its journaled steps without running them — the model is not called again — and finds the answer where it stopped. A question is known by its job and its rank among the questions of a run, so the same question gets the same answer on every run; a denial fails the job at once (`ApprovalDenied`), without retries. `Approvals.pending` lists what waits. Outside jobs, and in tests under `with_human`, questions are answered as before.
 
+### Phase 8 status: agents served to other programs (`expose`)
+
+```ruby
+## Finds a ticket by its number.
+tool find_ticket(id: Int) -> String uses db.read
+  Ticket.find(id)&.subject || "no such ticket"
+end
+
+agent Triage
+  model :fast
+  ## Classifies a ticket.
+  on Classify(subject: String) -> ~String
+    run "Classify: #{subject}"
+  end
+end
+
+expose "/mcp", tools: [:find_ticket], agents: [Triage], token: Env.fetch("API_TOKEN"), name: "support"
+```
+
+`expose` serves tools and agents to programs in any language, next to the routes of `grenat serve`:
+
+- `POST /mcp` is an MCP server (streamable HTTP, stateless: a JSON response per message) — `initialize`, `ping`, `tools/list`, `tools/call` — so Claude, an IDE or another Grenat program (`mcp :support, url: …`) uses them as tools;
+- `POST /mcp/find_ticket` with `{"id": 42}` answers `{"result": …}` (422 with `{"error": …}` when the tool raises, 400 for arguments that are not a JSON object, 404 for an unknown tool);
+- `GET /mcp` lists the tools and their input schemas.
+
+A tool keeps its name, its `##` description and the schema of its parameters; it is announced read-only when its effects change nothing (`llm`, `db.read`, `fs.read`, `env`, `time`). Each handler of an exposed agent is a tool too (`triage_classify`), asked of one instance of the agent — one message at a time, as always. What a tool raises is a tool error for the caller, not a failure of the server.
+
+- **Who may call.** An exposure spends money: it requires `Authorization: Bearer <token>` (compared in constant time; 401 otherwise), unless it says `public: true` — one of the two must be written.
+- **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
+- **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
+
 ### Phase 7 plan: the ten use cases
 
 Ten realistic programs, one per kind of agent, are in `examples/usecases` (the first is `examples/support_desk.grn`): support, code review, research, data, documents, a scheduled digest, operations, a chat with memory, a team of agents, third-party tools. Each checks and passes its tests today, the model mocked, in 24 to 47 lines of logic (113 for the full support desk). Only two run for real: the others fake, between `STUBS` markers, the I/O the standard library lacks. Phase 7 is done when every stub is gone. In order:

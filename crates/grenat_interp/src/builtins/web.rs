@@ -269,9 +269,12 @@ pub(crate) fn answer_value<'p>(answer: HttpAnswer) -> Value<'p> {
 }
 
 impl<'p> Interp<'p> {
-    /// Answers a request: a webhook, else a route, else 404 (405 when the
-    /// path exists for another method).
+    /// Answers a request: exposed tools, else a webhook, else a route, else
+    /// 404 (405 when the path exists for another method).
     pub(crate) fn handle_request(&mut self, raw: RawRequest) -> Result<HttpAnswer, Ctrl<'p>> {
+        if let Some(answer) = self.handle_exposed(&raw) {
+            return answer;
+        }
         if self.webhooks.borrow().iter().any(|w| w.path == raw.path) {
             return self.handle_webhook(raw);
         }
