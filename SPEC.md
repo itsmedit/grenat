@@ -480,6 +480,18 @@ Installed layout:
 | **5** ✅ | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
 | **6** ✅ | LSP, LLVM release builds, macros, package manager (and programs of several files) | ecosystem |
 | **7** | What real agents need, measured by ten use cases (`examples/usecases`): an I/O library with effects (`Http` client and server, `Db`, email), MCP client, multimodal prompts and the Batch API, conversations and long-term memory, a sandbox for `shell` and per-tool timeouts, triggers (`every`, webhooks) | agents in production |
+| **8** | Agent applications, in the language and its toolchain (no framework on top): an HTTP server with routes, records and migrations on `Db`, jobs and triggers, a persisted approval queue (a workflow waits days for a human), agents served over HTTP and as MCP servers; `grenat new --app`, `grenat generate agent\|workflow\|record\|tool\|eval`, `grenat serve` | applications of agents |
+| **9** | `grenat console`: the operations console of an application, derived from the program and its runtime — approvals inbox, runs and their journals (replay, resume), costs per agent, evals over time, taint and capability refusals, MCP servers. It observes and operates; code stays the source of truth | agents operated from a browser |
+
+### Phases 8 and 9: applications, in Grenat itself
+
+What a web framework would add on top of a language, Grenat takes in, because the runtime already holds what an agent application is made of: budgets, approvals, workflow journals, evals, capabilities. Three layers, kept apart:
+
+1. **The language and its runtime** stay small and stable; nothing below changes their semantics.
+2. **The standard library** grows the batteries, each an effect: `Web` (an HTTP server: routes, requests, responses), `Record` (typed records and migrations over `Db`), `Jobs` (queued and scheduled work, webhooks), an approval queue in the database instead of the terminal.
+3. **The toolchain** carries the conventions — `grenat new --app` (a layout: `agents/`, `workflows/`, `records/`, `web/`, `tests/`, `evals/`), `grenat generate` (code and its tests, never hidden configuration), `grenat serve` (the server, the triggers and the workers of an application), `grenat console` — in crates of their own, in the one `grenat` binary.
+
+A program that wants none of it pays nothing: conventions live in generators, not in the language. Interoperability comes first: an application serves its agents over HTTP and as MCP servers, so that programs in other languages use them, and it uses agents written elsewhere through `Http` and `mcp`.
 
 ### Phase 7 plan: the ten use cases
 
