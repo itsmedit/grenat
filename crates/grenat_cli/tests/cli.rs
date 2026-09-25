@@ -590,3 +590,40 @@ fn serve_runs_queued_jobs() {
     child.wait().unwrap();
     assert!(count.ends_with("\r\n\r\n1"), "the job did not run: {count}");
 }
+
+#[test]
+fn a_generated_application_checks_passes_its_tests_and_migrates() {
+    let base = project("generated");
+    let new = grenat_in(&base, &["new", "--app", "desk"]);
+    assert_eq!(code(&new), 0, "{}", text(&new.stderr));
+    let app = base.join("desk");
+    let parts: [&[&str]; 6] = [
+        &["generate", "agent", "triage"],
+        &["generate", "workflow", "onboard"],
+        &["g", "record", "ticket", "subject:String", "priority:Int", "score:Float?", "done:Bool"],
+        &["g", "tool", "lookup"],
+        &["g", "eval", "triage"],
+        &["g", "record", "category", "name:String"],
+    ];
+    for args in parts {
+        let out = grenat_in(&app, args);
+        assert_eq!(code(&out), 0, "{args:?}: {}", text(&out.stderr));
+        assert!(text(&out.stderr).contains("  create  "), "{}", text(&out.stderr));
+    }
+    let check = grenat_in(&app, &["check"]);
+    assert_eq!(code(&check), 0, "{}", text(&check.stderr));
+    let eval = grenat_in(&app, &["check", "evals/triage_eval.grn"]);
+    assert_eq!(code(&eval), 0, "{}", text(&eval.stderr));
+    let test = grenat_in(&app, &["test"]);
+    assert_eq!(code(&test), 0, "{}", text(&test.stderr));
+    assert!(text(&test.stderr).contains("7 passed, 0 failed"), "{}", text(&test.stderr));
+    let fmt = grenat_in(&app, &["fmt", "--check", "src", "tests", "evals"]);
+    assert_eq!(code(&fmt), 0, "generated code is not in the canonical layout: {}", text(&fmt.stderr));
+    let migrate = grenat_in(&app, &["migrate"]);
+    assert_eq!(code(&migrate), 0, "{}", text(&migrate.stderr));
+    assert!(text(&migrate.stderr).contains("2 migration(s) applied"), "{}", text(&migrate.stderr));
+    // a part is never generated twice
+    let again = grenat_in(&app, &["g", "agent", "triage"]);
+    assert_eq!(code(&again), 1);
+    assert!(text(&again.stderr).contains("already exists"), "{}", text(&again.stderr));
+}

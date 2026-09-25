@@ -27,6 +27,17 @@ end
 
 ## Status
 
+**Phase 8 — applications of agents**, in the language and its toolchain, with no
+framework on top: routes, records and migrations (SQLite and PostgreSQL), jobs, approvals
+that wait days for a human in the database, tools and agents served to other programs over
+MCP and HTTP (`expose`), and generators — `grenat new --app`, then
+`grenat generate agent|workflow|record|tool|eval`, each part with its tests.
+
+**Phase 7 — agents in production**, measured by ten real use cases (`examples/usecases`):
+an HTTP client, databases, email, a sandboxed `Shell`, MCP servers, PDFs and images,
+conversations with long-term memory, the Batch API, schedules and webhooks
+(`grenat serve`), and facets — libraries installed by `setter` from a `Facetfile`.
+
 **Phase 6 — ecosystem**: programs of several files and packages (`grenat.toml`, path
 and git dependencies, `grenat.lock`), a language server (`grenat lsp`), compile-time
 macros, and release builds optimized by LLVM (`grenat build --release`).
@@ -62,6 +73,10 @@ export ANTHROPIC_API_KEY=sk-ant-…
 target/debug/grenat run --log examples/explorer.grn crates/grenat_parser        # a real agent
 target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl        # multi-agent + approval
 
+target/debug/grenat new --app desk && cd desk # an application: database, models, routes, tests
+grenat generate agent triage                 # a part and its tests (also workflow, record, tool, eval)
+grenat migrate && grenat test && grenat serve
+
 target/debug/grenat new hello && cd hello    # a package: grenat.toml, Facetfile, src/, tests/
 setter add http_tools                        # a facet (library) from an index, like a gem
 grenat run && grenat test                    # in a package, no file to name
@@ -70,7 +85,7 @@ target/debug/grenat check examples/*.grn     # names, types, effects, taint
 target/debug/grenat fmt examples             # canonical layout (--check: only report)
 target/debug/grenat test examples/triage.grn # `test` blocks: mocks and cassettes, never a real model
 target/debug/grenat eval examples/triage.grn # `eval` blocks: the real model, scored on a dataset
-cargo test                                   # ~250 tests: unit, integration, CLI, HTTP client, JIT, build
+cargo test                                   # ~410 tests: unit, integration, CLI, HTTP, MCP, JIT, build
 ```
 
 ## Editors
@@ -101,8 +116,9 @@ end })
 | `grenat_standalone` | static library linked into `grenat build --native` executables |
 | `grenat_report` | diagnostic rendering, in the file each error points into |
 | `grenat_db` | databases: SQLite (embedded) and PostgreSQL behind one interface |
-| `grenat_mcp` | a Model Context Protocol client (stdio and HTTP) |
+| `grenat_mcp` | the Model Context Protocol: a client (stdio and HTTP), and the server side of `expose` |
 | `grenat_serve` | triggers: cron schedules, webhook signatures, the HTTP server of `grenat serve` |
+| `grenat_generate` | `grenat new --app` and `grenat generate`: an application's parts, with their tests |
 | `grenat_setter` | `setter`: creates, adds, installs and publishes facets (libraries) |
 | `grenat_package` | `grenat.toml`, `require`, facets (`Facetfile`, versions, indexes), path and git dependencies |
 | `grenat_fmt` | the formatter |

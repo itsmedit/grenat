@@ -2,6 +2,7 @@
 
 mod build;
 mod fmt;
+mod generate;
 mod link;
 mod migrate;
 mod package;
@@ -20,6 +21,11 @@ grenat — an agentic programming language
 
 Usage:
   grenat new <name>              create a package: grenat.toml, src/, tests/
+  grenat new --app <name>        create an application: database, models, routes,
+                                 src/app.grn requiring its parts, tests/
+  grenat generate agent|workflow|record|tool|eval <name> [field:Type…]
+                                 add a part to the application, with its tests
+                                 (a record: its fields, and the migration of its table)
   grenat run [--log] [--unchecked] [--no-jit] [<file.grn>] [args…]
                                  check, then run the program (and `main`);
                                  without a file, the current package's
@@ -31,8 +37,9 @@ Usage:
                                  `mock`, or `cassette` recorded once); without a
                                  file, those of the package's src/ and tests/
   grenat serve [--listen host:port] [<file.grn>]
-                                 run the program's triggers: `every` schedules, and
-                                 `on_webhook` handlers (127.0.0.1:3000 by default)
+                                 serve the program: routes, `expose`d tools and agents,
+                                 `on_webhook` handlers (127.0.0.1:3000 by default),
+                                 `every` schedules, and job workers
   grenat migrate [<file.grn>]    apply the migrations the database has not seen yet
   grenat eval <file.grn> [name]  run the `eval` blocks (those whose name contains `name`)
   grenat check [<file.grn>...]   check names, types, effects and taint
@@ -64,7 +71,9 @@ fn main() -> ExitCode {
         Some("test") => testing::test(&args[1..]),
         Some("eval") if args.len() > 1 => testing::eval(&args[1..]),
         Some("build") => build::build(&args[1..]),
+        Some("new") if args.get(1).is_some_and(|a| a == "--app") && args.len() == 3 => generate::new_app(&args[2]),
         Some("new") => package::new(&args[1..]),
+        Some("generate" | "g") => generate::generate(&args[1..]),
         Some("serve") => serve::serve(&args[1..]),
         Some("migrate") => migrate::migrate(&args[1..]),
         Some("update") if args.len() == 1 => package::update(),

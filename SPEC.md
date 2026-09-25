@@ -480,7 +480,7 @@ Installed layout:
 | **5** ✅ | Durable workflows (`step` journal), cassettes, `mock`, `eval` | production-ready |
 | **6** ✅ | LSP, LLVM release builds, macros, package manager (and programs of several files) | ecosystem |
 | **7** ✅ | What real agents need, measured by ten use cases (`examples/usecases`): an I/O library with effects (`Http` client and server, `Db`, email), MCP client, multimodal prompts and the Batch API, conversations and long-term memory, a sandbox for `shell` and per-tool timeouts, triggers (`every`, webhooks) | agents in production |
-| **8** | Agent applications, in the language and its toolchain (no framework on top): an HTTP server with routes, records and migrations on `Db`, jobs and triggers, a persisted approval queue (a workflow waits days for a human), agents served over HTTP and as MCP servers; `grenat new --app`, `grenat generate agent\|workflow\|record\|tool\|eval`, `grenat serve` | applications of agents |
+| **8** ✅ | Agent applications, in the language and its toolchain (no framework on top): an HTTP server with routes, records and migrations on `Db`, jobs and triggers, a persisted approval queue (a workflow waits days for a human), agents served over HTTP and as MCP servers; `grenat new --app`, `grenat generate agent\|workflow\|record\|tool\|eval`, `grenat serve` | applications of agents |
 | **9** | `grenat console`: the operations console of an application, derived from the program and its runtime — approvals inbox, runs and their journals (replay, resume), costs per agent, evals over time, taint and capability refusals, MCP servers. It observes and operates; code stays the source of truth | agents operated from a browser |
 
 ### Phases 8 and 9: applications, in Grenat itself
@@ -610,6 +610,23 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Who may call.** An exposure spends money: it requires `Authorization: Bearer <token>` (compared in constant time; 401 otherwise), unless it says `public: true` — one of the two must be written.
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
+
+### Phase 8 status: generators
+
+```sh
+grenat new --app desk
+cd desk
+grenat generate agent triage                 # src/agents/triage.grn, tests/agents/triage_test.grn
+grenat generate workflow onboard             # a durable workflow, with an approval
+grenat generate record ticket subject:String priority:Int "score:Float?"
+grenat generate tool lookup
+grenat generate eval triage                  # evals/triage_eval.grn and its dataset
+grenat migrate && grenat test && grenat serve
+```
+
+`grenat new --app` lays out an application: `src/config.grn` (the database — SQLite by default, `DATABASE_URL` otherwise — and the models), `src/app.grn` (which requires the parts, then declares what is served), `tests/`, `db/`. `grenat generate` (or `g`) adds a part and its tests, and requires it from `src/app.grn`, after the last `require`: an agent answering a request, a workflow whose second step waits for a human, a tool, an eval asking an agent and scored by a judge, or a record — its fields (`String`, `Int`, `Float`, `Bool`, optional with `?`), the migration creating its table (named after the time, in SQL that SQLite and PostgreSQL both accept), and a test that saves one and finds it. What is generated is code, read and changed like the rest — no hidden configuration — and it passes `grenat check`, `grenat test` and `grenat fmt --check` as it comes. A generator never overwrites a file: when one exists, nothing is written.
+
+`grenat test` gives each test its own database and its own workflow journals, so that no test resumes a workflow another one ran.
 
 ### Phase 7 plan: the ten use cases
 

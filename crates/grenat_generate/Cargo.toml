@@ -1,0 +1,12 @@
+[package]
+name = "grenat_generate"
+description = "Grenat's generators: a new application, and its agents, workflows, records, tools and evals, each with its tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+grenat_package.workspace = true
+grenat_serve.workspace = true
