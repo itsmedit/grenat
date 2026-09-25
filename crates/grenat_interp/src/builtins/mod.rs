@@ -5,6 +5,7 @@ mod attachments;
 mod collections;
 mod db;
 mod globals;
+mod html;
 mod http;
 mod mail;
 mod methods;

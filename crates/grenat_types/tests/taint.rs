@@ -135,3 +135,8 @@ fn an_email_is_never_untrusted() {
     single(&format!("{head}  m.send(from: \"a@b.c\", to: \"c@d.e\", subject: \"x\", body: s.title)\nend\n"), "E0412", "s.title");
     clean(&format!("{head}  m.send(from: \"a@b.c\", to: \"c@d.e\", subject: \"x\", body: s.trust!.title)\nend\n"));
 }
+
+#[test]
+fn a_page_as_text_is_still_untrusted() {
+    single("def main uses net\n  t = Html.text(Http.get(\"https://x.io\").body)\n  Http.post(\"https://y.io\", body: t)\nend\n", "E0412", "t");
+}

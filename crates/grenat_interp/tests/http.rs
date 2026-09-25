@@ -204,3 +204,10 @@ fn a_model_and_the_network_together() {
     assert_eq!(out, "\"{\\\"title\\\":\\\"Cat\\\"}\"\n");
     let _ = Response::text_reply("");
 }
+
+#[test]
+fn a_page_as_text_stays_untrusted() {
+    let base = server();
+    let out = run(&format!("p Html.text(Http.get(\"{base}/nowhere\").body)\np Html.text(\"<b>a</b> &amp; b\")\n"));
+    assert_eq!(out, "~\"no such page\"\n\"a & b\"\n");
+}

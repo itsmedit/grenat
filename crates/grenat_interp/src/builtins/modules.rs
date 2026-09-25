@@ -15,6 +15,11 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         ("Shell", _) => call_shell(interp, name, args),
         ("Pdf" | "Image", _) => call_attachment(interp, ty, name, &args),
         ("Mail", _) => call_mail(interp, name, &args),
+        ("Html", "text") => {
+            let html = arg(&args, 0, name)?;
+            let text = Value::str(super::html::text(&html.to_display()));
+            Ok(if html.contains_taint() { text.taint() } else { text })
+        }
         ("Mcp", "call") => interp.mcp_call_value(&args),
         ("Mcp", "tools") => (|| {
             let Some(Value::Symbol(server)) = args.pos.first().map(Value::untainted) else {

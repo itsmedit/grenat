@@ -165,6 +165,7 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Pdf" | "Image", "read") => (User(ATTACHMENT.into()), Some("fs.read")),
         ("Pdf" | "Image", "url") => (User(ATTACHMENT.into()), None),
         ("Mail", "connect") => (User(MAILER.into()), None),
+        ("Html", "text") => (Str, None),
         ("Mail", "deliveries") => (Ty::array(Ty::Hash(Box::new(Str), Box::new(Unknown))), None),
         ("Mcp", "call") => (Str, Some("mcp")),
         ("Mcp", "tools") => (Ty::array(Str), Some("mcp")),
@@ -172,7 +173,7 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
     })
 }
 
-pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail"];
+pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html"];
 
 /// What `Mail.connect` returns.
 pub const MAILER: &str = "Mailer";

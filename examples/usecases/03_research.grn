@@ -31,8 +31,9 @@ module Web
     }
   end
 
+  ## A page as text: what the model reads, without markup.
   def self.fetch(url: String) -> ~String uses net
-    Http.get(url, timeout: 15).body
+    Html.text(Http.get(url, timeout: 15).body)
   end
 end
 

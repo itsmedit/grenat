@@ -4,7 +4,7 @@ use crate::prelude::*;
 
 /// Built-in modules and types usable as values.
 const BUILTIN_TYPES: &[&str] = &[
-    "File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Int", "Float", "String", "Bool", "Array", "Hash",
+    "File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Int", "Float", "String", "Bool", "Array", "Hash",
     "Symbol", "Nil", "Range", "Money", "Duration",
 ];
 
