@@ -1,0 +1,21 @@
+[package]
+name = "grenat_ssh"
+description = "SSH and SFTP for Grenat programs: host keys verified, remote commands quoted, a blocking API"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Pure Rust: `ring` rather than the default aws-lc-rs (no C toolchain, no system library).
+russh = { version = "0.63", default-features = false, features = ["ring", "rsa", "flate2"] }
+russh-sftp = "3"
+tokio = { version = "1", features = ["rt", "net", "time", "io-util", "fs"] }
+# Hashed known_hosts entries (`|1|salt|hash`): HMAC-SHA1 of the host name.
+hmac = "0.13"
+sha1 = "0.11"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync"] }
+rand = "0.10"
