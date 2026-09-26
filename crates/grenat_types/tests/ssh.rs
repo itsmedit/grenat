@@ -69,6 +69,11 @@ fn what_the_server_says_is_untrusted() {
         let d = single(&src, "E0412", "[\"echo\", x]");
         assert_eq!(&src[d.notes[0].0.range()], at);
     }
+    // once the listing is trusted, so are its entries' names
+    clean(&main(
+        "ssh, env, shell",
+        "  entries = server.sftp.list(\"/srv\").trust!\n  Shell.run([\"echo\", entries.first.name])\n  names = entries.map { |e| e.name }\n  Shell.run([\"echo\", names.first])\n",
+    ));
     // a status, a flag, a size: not text a server could inject through
     clean(&main(
         "ssh, env, shell",
@@ -86,6 +91,23 @@ fn a_secret_only_serves_to_connect() {
     assert!(d.message.contains("reaches an SSH server through `read`"), "{}", d.message);
     let src = main("ssh, env", "  t = Credentials.fetch(:db, :password)\n  server.run([t, t])\n");
     single(&src, "E0414", "[t, t]");
+    // among plain values, in a literal (nested or not), or where one may be nil
+    for (sink, at) in [
+        ("server.run([\"mysql\", \"-p\", t])", "[\"mysql\", \"-p\", t]"),
+        ("server.run([\"echo\", Credentials.dig(:a, :b)])", "[\"echo\", Credentials.dig(:a, :b)]"),
+        ("server.sftp.write(\"/srv/.env\", {user: \"app\", password: t})", "{user: \"app\", password: t}"),
+        ("server.sftp.write(\"/srv/x\", [\"a\", [\"b\", t]])", "[\"a\", [\"b\", t]]"),
+        ("server.sftp.write(\"/srv/x\", {\"a\" => [1, t]})", "{\"a\" => [1, t]}"),
+        ("server.run([\"echo\", \"pw: #{t}\"])", "[\"echo\", \"pw: #{t}\"]"),
+    ] {
+        let src = main("ssh, env", &format!("  t = Credentials.fetch(:db, :password)\n  {sink}\n"));
+        let d = single(&src, "E0414", at);
+        assert!(d.message.contains("reaches an SSH server"), "{sink}: {}", d.message);
+    }
+    clean(&main(
+        "ssh, env",
+        "  t = Credentials.fetch(:db, :password)\n  server.run([\"mysql\", \"-p\", \"x\", [1, 2]])\n",
+    ));
     single(
         &main("ssh, env", "  server.sftp.write(\"/srv/.env\", Credentials.fetch(:app, :env))\n"),
         "E0414",

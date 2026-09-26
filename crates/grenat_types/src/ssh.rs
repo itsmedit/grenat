@@ -27,20 +27,10 @@ impl<'p> Checker<'p> {
             if let Some(origin) = arg.v.taint {
                 self.taint_violation(arg.span, origin, name, effect);
             }
-            if holds_secret(&arg.v.ty) {
+            if self.holds_secret(&arg.v.ty, arg.span) {
                 self.secret_to_server(arg.span, name);
             }
         }
         V { ty, taint: builtins::untrusted_method(record, name).then_some(span) }
-    }
-}
-
-/// A secret, or a collection holding secrets.
-fn holds_secret(ty: &Ty) -> bool {
-    match ty.base() {
-        Ty::Secret => true,
-        Ty::Array(item) => holds_secret(item),
-        Ty::Hash(key, value) => holds_secret(key) || holds_secret(value),
-        _ => false,
     }
 }

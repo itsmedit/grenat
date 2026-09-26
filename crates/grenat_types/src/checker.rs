@@ -71,6 +71,9 @@ pub(crate) struct Checker<'p> {
     pub(crate) ivar_taint: HashMap<(String, String), Span>,
     /// Type of unannotated `@…` state, inferred from its initial value.
     pub(crate) ivar_types: HashMap<(String, String), Ty>,
+    /// Array and hash literals holding a secret among other values (the
+    /// join of their elements' types loses it).
+    pub(crate) secret_literals: HashSet<Span>,
 }
 
 impl<'p> Checker<'p> {
@@ -89,6 +92,7 @@ impl<'p> Checker<'p> {
             prev_effects: HashMap::new(),
             ivar_taint: HashMap::new(),
             ivar_types: HashMap::new(),
+            secret_literals: HashSet::new(),
         }
     }
 

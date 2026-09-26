@@ -95,24 +95,30 @@ impl<'p> Checker<'p> {
             ExprKind::Array(items) => {
                 let mut elem: Option<Ty> = None;
                 let mut taint = None;
+                let mut secret = false;
                 for item in items {
                     let v = self.expr(cx, item);
                     taint = taint.or(v.taint);
+                    secret |= self.holds_secret(&v.ty, item.span);
                     elem = Some(match elem {
                         None => v.ty,
                         Some(t) => join(&t, &v.ty),
                     });
                 }
+                self.note_secret_literal(e.span, secret);
                 V { ty: Ty::array(elem.unwrap_or(Ty::Unknown)), taint }
             }
             ExprKind::Hash(entries) => {
                 let (mut k, mut val, mut taint) = (None::<Ty>, None::<Ty>, None);
+                let mut secret = false;
                 for (key, value) in entries {
                     let (kv, vv) = (self.expr(cx, key), self.expr(cx, value));
                     taint = taint.or(kv.taint).or(vv.taint);
+                    secret |= self.holds_secret(&kv.ty, key.span) || self.holds_secret(&vv.ty, value.span);
                     k = Some(k.map_or(kv.ty.clone(), |t| join(&t, &kv.ty)));
                     val = Some(val.map_or(vv.ty.clone(), |t| join(&t, &vv.ty)));
                 }
+                self.note_secret_literal(e.span, secret);
                 V { ty: Ty::Hash(Box::new(k.unwrap_or(Ty::Unknown)), Box::new(val.unwrap_or(Ty::Unknown))), taint }
             }
             ExprKind::Range { lo, hi, .. } => {

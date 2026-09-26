@@ -51,8 +51,32 @@ impl<'p> Checker<'p> {
         }
         V::new(Ty::Secret)
     }
+
+    /// Whether the value of type `ty` given by the expression at `span`
+    /// holds a secret: a secret (maybe nil), a collection of secrets, or an
+    /// array or hash literal with one among its elements.
+    pub(crate) fn holds_secret(&self, ty: &Ty, span: Span) -> bool {
+        type_holds_secret(ty) || self.secret_literals.contains(&span)
+    }
+
+    /// Records that the literal at `span` holds a secret, when `secret`.
+    pub(crate) fn note_secret_literal(&mut self, span: Span, secret: bool) {
+        if secret {
+            self.secret_literals.insert(span);
+        }
+    }
 }
 
 pub(crate) fn is_secret(ty: &Ty) -> bool {
     matches!(ty.base(), Ty::Secret)
+}
+
+/// A secret, or a collection holding secrets.
+fn type_holds_secret(ty: &Ty) -> bool {
+    match ty.base() {
+        Ty::Secret => true,
+        Ty::Array(item) => type_holds_secret(item),
+        Ty::Hash(key, value) => type_holds_secret(key) || type_holds_secret(value),
+        _ => false,
+    }
 }
