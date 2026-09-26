@@ -3,6 +3,7 @@
 
 use std::time::{Duration, Instant};
 
+use grenat_ssh::fake::relay::Relay;
 use grenat_ssh::fake::socks::Socks;
 use grenat_ssh::fake::{self, PASSWORD, TempDir, TestServer, USER, fingerprint, key_text, new_key};
 use grenat_ssh::{Auth, ErrorKind, KnownHosts, Options, Session};
@@ -182,6 +183,21 @@ fn run_reports_stdout_stderr_and_status() {
     assert_eq!(session.run(&empty).unwrap_err().kind(), ErrorKind::Command);
     assert_eq!(session.run(&["echo", "a\0b"]).unwrap_err().kind(), ErrorKind::Command);
     assert_eq!(server.commands().len(), 2, "refused commands never reach the server");
+}
+
+#[test]
+fn a_connection_lost_during_a_command_is_an_error() {
+    let key = new_key();
+    let server = TestServer::start(key.public_key());
+    let relay = Relay::start(server.port);
+    let session = connect(Options { port: relay.port, ..options(&server, &key) });
+    assert!(session.run(&["true"]).unwrap().success());
+    relay.cut_after(Duration::from_millis(300));
+    let started = Instant::now();
+    let e = session.run(&["sh", "-c", "sleep 2; echo done"]).unwrap_err();
+    assert_eq!(e.kind(), ErrorKind::Connect, "{e}");
+    assert_eq!(e.message(), "the SSH server closed the connection while `sh -c 'sleep 2; echo done'` ran");
+    assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
 }
 
 #[test]

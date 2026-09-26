@@ -3,8 +3,10 @@
 //! logs in with the authorized key or the password `s3cret`. A command is
 //! recorded exactly as received, then run with `/bin/sh -c` in a scratch
 //! directory (the server's "home"), which is also the root of its SFTP
-//! subsystem. [`socks::Socks`] is a SOCKS5 proxy to reach it through.
+//! subsystem. [`socks::Socks`] is a SOCKS5 proxy to reach it through;
+//! [`relay::Relay`], a connection to it that a test can cut.
 
+pub mod relay;
 pub mod sftp;
 pub mod socks;
 
