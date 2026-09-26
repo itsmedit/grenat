@@ -655,7 +655,7 @@ As with Rails: `grenat credentials edit` opens the application's secrets — YAM
 - it is never journaled, queued as a job argument, nor written to a database;
 - compared to a string (`req.headers["x-token"] == secret`), in constant time; it has no other method (`to_s` keeps it a secret). A function that takes one says so: `def headers(token: Secret)`.
 
-In tests, `mock_credentials({"github" => {"token" => "t"}})` gives a test its credentials.
+In tests, `mock_credentials({"github" => {"token" => "t"}})` gives a test its credentials; without credentials (no file, or no key — a CI needs none), `Credentials.fetch(:github, :token)` is the stand-in secret `test-github-token`, so that declarations reading credentials (`on_webhook …, token: Credentials.fetch(…)`) load in tests too.
 
 ### Phase 9 status: `grenat console`
 

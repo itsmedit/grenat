@@ -4,7 +4,9 @@
 //! (HTTP URLs and headers, connections, webhook signatures).
 //!
 //! Credentials are read once, when first fetched: the encrypted file of the
-//! environment (`grenat_config`), or in tests those `mock_credentials` gives.
+//! environment (`grenat_config`), or in tests those `mock_credentials` gives
+//! — and when a test has none, `Credentials.fetch(:github, :token)` is the
+//! stand-in secret `test-github-token`.
 
 use serde_json::Value as Json;
 
@@ -35,7 +37,12 @@ impl<'p> Interp<'p> {
         if path.is_empty() {
             return raise("ArgumentError", "`Credentials.fetch` takes keys: `Credentials.fetch(:github, :token)`");
         }
-        let credentials = self.credentials_tree()?;
+        let credentials = match self.credentials_tree() {
+            Ok(credentials) => credentials,
+            // tests need no secrets: without credentials, each one stands for itself
+            Err(_) if self.offline => return Ok(Value::Secret(format!("test-{}", path.join("-")).into())),
+            Err(e) => return Err(e),
+        };
         let mut node = &credentials;
         for key in &path {
             node = match node.get(key) {

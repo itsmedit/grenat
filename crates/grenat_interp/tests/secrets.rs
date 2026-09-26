@@ -117,8 +117,8 @@ fn tests_give_their_own_credentials_one_test_at_a_time() {
   mock_credentials({\"api\" => {\"key\" => \"k\"}})
   assert Credentials.fetch(:api, :key) == \"k\"
 end
-test \"without\" do
-  assert_raises(CredentialsError) { Credentials.fetch(:api, :key) }
+test \"without, a stand-in\" do
+  assert Credentials.fetch(:api, :key) == \"test-api-key\"
 end
 ";
     for (name, error) in results(src) {
