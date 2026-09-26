@@ -21,8 +21,11 @@ pub fn init() -> Result<String, String> {
     if path.exists() {
         return Err(format!("{} already exists", path.display()));
     }
-    std::fs::write(&path, "# The facets this package uses (`setter add <name>`).\n# source \"https://github.com/<org>/facets\"\n")
-        .map_err(|e| e.to_string())?;
+    std::fs::write(
+        &path,
+        "# The facets this package uses (`setter add <name>`).\n# source \"https://github.com/<org>/facets\"\n",
+    )
+    .map_err(|e| e.to_string())?;
     Ok(format!("✓ created {}", path.display()))
 }
 

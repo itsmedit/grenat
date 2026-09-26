@@ -96,7 +96,14 @@ pub(crate) fn definitions(program: &Program) -> Vec<Definition<'_>> {
 }
 
 fn function(def: &FnDef, kind: u32, top_level: bool) -> Definition<'_> {
-    Definition { name: &def.name.name, name_span: def.name.span, span: def.span, doc: def.doc.as_deref(), kind, top_level }
+    Definition {
+        name: &def.name.name,
+        name_span: def.name.span,
+        span: def.span,
+        doc: def.doc.as_deref(),
+        kind,
+        top_level,
+    }
 }
 
 /// The name under `offset` in `text` (a single file): an identifier, a

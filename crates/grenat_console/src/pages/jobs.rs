@@ -15,7 +15,9 @@ pub(crate) fn list(ctx: &mut Ctx) -> Result {
         format!("<a href=\"{href}\"{current}>{label} <span class=\"muted\">{count}</span></a>")
     };
     let mut tabs = vec![tab("All", "/jobs".into(), counts.iter().map(|(_, n)| n).sum(), status.is_none())];
-    tabs.extend(counts.iter().map(|(s, n)| tab(s.as_str(), format!("/jobs?status={}", s.as_str()), *n, status == Some(*s))));
+    tabs.extend(
+        counts.iter().map(|(s, n)| tab(s.as_str(), format!("/jobs?status={}", s.as_str()), *n, status == Some(*s))),
+    );
     let rows: Vec<Vec<String>> = jobs::list(ctx.db, status, 200)?
         .iter()
         .map(|job| {
@@ -47,8 +49,10 @@ pub(crate) fn show(ctx: &mut Ctx, id_text: &str) -> Result {
     } else {
         String::new()
     };
-    let args: serde_json::Value = serde_json::from_str(&job.args).unwrap_or(serde_json::Value::String(job.args.clone()));
-    let error = job.error.as_deref().map(|e| format!("<h2>Last error</h2><pre>{}</pre>", escape(e))).unwrap_or_default();
+    let args: serde_json::Value =
+        serde_json::from_str(&job.args).unwrap_or(serde_json::Value::String(job.args.clone()));
+    let error =
+        job.error.as_deref().map(|e| format!("<h2>Last error</h2><pre>{}</pre>", escape(e))).unwrap_or_default();
     let spent = calls::of_job(ctx.db, job.id)?;
     let cost = spent.iter().map(|c| c.cost_usd).sum::<f64>();
     let asked: Vec<Vec<String>> = approvals::of_job(ctx.db, job.id)?
@@ -60,7 +64,10 @@ pub(crate) fn show(ctx: &mut Ctx, id_text: &str) -> Result {
          <dt>Queued</dt><dd>{created}</dd><dt>Updated</dt><dd>{updated}</dd><dt>Next run</dt><dd>{next}</dd>\
          <dt>Model calls</dt><dd>{calls} · {cost}</dd></dl>\
          <h2>Arguments</h2>{args}{error}{journal}<h2>Approvals</h2>{asked}",
-        notice = ctx.notice(&[("retried", "Queued again: a workflow resumes from its journal."), ("stale", "Only a failed job can be retried.")]),
+        notice = ctx.notice(&[
+            ("retried", "Queued again: a workflow resumes from its journal."),
+            ("stale", "Only a failed job can be retried.")
+        ]),
         name = escape(&job.name),
         status = status_badge(job.status),
         attempts = job.attempts,
@@ -85,7 +92,9 @@ fn journal_of(ctx: &Ctx, job: &Job, args: &serde_json::Value) -> String {
     let path = journal::path(ctx.journal_dir, &job.name, &args, &[]);
     let run = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     match journal::read(&path) {
-        Ok(read) if read.steps.is_empty() && read.result.is_none() => "<h2>Journal</h2><p class=\"empty\">No step journaled yet.</p>".into(),
+        Ok(read) if read.steps.is_empty() && read.result.is_none() => {
+            "<h2>Journal</h2><p class=\"empty\">No step journaled yet.</p>".into()
+        }
         Ok(read) => format!(
             "<h2>Journal</h2><p><a href=\"/journals/{}\">{} step(s){}</a></p>",
             escape(&run),

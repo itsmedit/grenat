@@ -31,7 +31,12 @@ impl<'p> Interp<'p> {
         for key in &args.pos {
             match key.untainted() {
                 Value::Symbol(s) | Value::Str(s) => path.push(s.to_string()),
-                other => return raise("TypeError", format!("`Credentials.fetch` takes keys (`:github, :token`), got {}", other.inspect())),
+                other => {
+                    return raise(
+                        "TypeError",
+                        format!("`Credentials.fetch` takes keys (`:github, :token`), got {}", other.inspect()),
+                    );
+                }
             }
         }
         if path.is_empty() {
@@ -91,7 +96,10 @@ impl<'p> Interp<'p> {
     pub(crate) fn mock_credentials(&mut self, args: &Args<'p>) -> R<'p> {
         let tree = crate::llm::value_to_json(&arg(args, 0, "mock_credentials")?);
         if !tree.is_object() {
-            return raise("TypeError", "`mock_credentials` takes a hash: `mock_credentials({\"github\" => {\"token\" => \"t\"}})`");
+            return raise(
+                "TypeError",
+                "`mock_credentials` takes a hash: `mock_credentials({\"github\" => {\"token\" => \"t\"}})`",
+            );
         }
         *self.credentials_double.borrow_mut() = Some(tree);
         Ok(Value::Nil)

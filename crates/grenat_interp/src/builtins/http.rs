@@ -47,8 +47,8 @@ pub(crate) fn call_http<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p>)
     interp.check_net(host, &url)?;
     let request = request(method, url.clone(), &args)?;
     // an error names the URL: one holding a secret is not named
-    let secret_url = args.pos[0].contains_secret()
-        || args.named.iter().any(|(n, v)| n == "query" && v.contains_secret());
+    let secret_url =
+        args.pos[0].contains_secret() || args.named.iter().any(|(n, v)| n == "query" && v.contains_secret());
     let reply = match interp.http(&request) {
         Err(Ctrl::Raise(e)) if secret_url => {
             return raise(&e.ty, e.message.replace(&request.url, &format!("{} [secret]", host)));

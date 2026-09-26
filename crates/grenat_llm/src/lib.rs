@@ -8,8 +8,8 @@
 
 mod anthropic;
 mod batch;
-pub mod catalog;
 mod cassette;
+pub mod catalog;
 mod mock;
 mod openai;
 mod openai_wire;
@@ -25,8 +25,8 @@ pub use cassette::Cassette;
 pub use mock::{Mock, MockReply};
 pub use openai::OpenAi;
 pub use openai_wire::chat_body;
-pub use responses_wire::responses_body;
 pub use pricing::{cost_at, cost_usd};
+pub use responses_wire::responses_body;
 pub use scripted::Scripted;
 pub use types::*;
 pub(crate) use wire::parse_response;
@@ -129,15 +129,23 @@ mod tests {
             output_schema,
         };
         let wrapped = json!({"type": "object", "properties": {"value": {"type": "integer"}}});
-        let final_tool = ToolSpec { name: "final_answer".into(), description: String::new(), input_schema: wrapped.clone(), strict: true };
-        let mock = Mock::new("`:fast`", [
-            MockReply::Answer(json!("plain")),
-            MockReply::Answer(json!(42)),
-            MockReply::Answer(json!({"title": "t"})),
-            MockReply::Tool { name: "search".into(), input: json!({"q": "x"}) },
-            MockReply::Answer(json!(7)),
-            MockReply::Error("overloaded".into()),
-        ]);
+        let final_tool = ToolSpec {
+            name: "final_answer".into(),
+            description: String::new(),
+            input_schema: wrapped.clone(),
+            strict: true,
+        };
+        let mock = Mock::new(
+            "`:fast`",
+            [
+                MockReply::Answer(json!("plain")),
+                MockReply::Answer(json!(42)),
+                MockReply::Answer(json!({"title": "t"})),
+                MockReply::Tool { name: "search".into(), input: json!({"q": "x"}) },
+                MockReply::Answer(json!(7)),
+                MockReply::Error("overloaded".into()),
+            ],
+        );
         assert_eq!(mock.complete(&request(vec![], None)).unwrap().text(), "plain");
         assert_eq!(mock.complete(&request(vec![], Some(wrapped.clone()))).unwrap().text(), r#"{"value":42}"#);
         let object = json!({"type": "object", "properties": {"title": {"type": "string"}}});

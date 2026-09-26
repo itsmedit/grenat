@@ -20,7 +20,9 @@ pub fn console(args: &[String]) -> ExitCode {
             ("--listen", Some(value)) => address = value.clone(),
             ("--token", Some(value)) => token = Some(value.clone()),
             _ => {
-                eprintln!("usage: grenat console [--listen host:port] [--token <token>] [<file.grn>]  ({TOKEN_VARIABLE}: the token)");
+                eprintln!(
+                    "usage: grenat console [--listen host:port] [--token <token>] [<file.grn>]  ({TOKEN_VARIABLE}: the token)"
+                );
                 return ExitCode::from(2);
             }
         }

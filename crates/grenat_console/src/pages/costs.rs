@@ -15,7 +15,10 @@ pub(crate) fn show(ctx: &mut Ctx) -> Result {
         .iter()
         .map(|p| {
             let current = if *p == days { " aria-current=\"page\"" } else { "" };
-            format!("<a href=\"/costs?days={p}\"{current}>{}</a>", if *p == 1 { "24 h".into() } else { format!("{p} days") })
+            format!(
+                "<a href=\"/costs?days={p}\"{current}>{}</a>",
+                if *p == 1 { "24 h".into() } else { format!("{p} days") }
+            )
         })
         .collect();
     let total: f64 = recorded.iter().map(|c| c.cost_usd).sum();
@@ -23,7 +26,14 @@ pub(crate) fn show(ctx: &mut Ctx) -> Result {
     let section = |title: &str, by: By, outside: &str| {
         let totals = calls::totals(&recorded, by);
         let most = totals.iter().map(|t| t.cost_usd).fold(0.0, f64::max);
-        format!("<h2>{title}</h2>{}", table(&[title, "Calls", "Tokens in", "Tokens out", "Cost", ""], &rows(&totals, most, outside), "No model call."))
+        format!(
+            "<h2>{title}</h2>{}",
+            table(
+                &[title, "Calls", "Tokens in", "Tokens out", "Cost", ""],
+                &rows(&totals, most, outside),
+                "No model call."
+            )
+        )
     };
     let body = format!(
         "<div class=\"tabs\">{tabs}</div><div class=\"cards\"><div class=\"card\"><b>{}</b><span>spent</span></div>\

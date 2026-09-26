@@ -10,19 +10,19 @@
 //! are detected.
 
 mod builtins;
+mod console;
 mod control;
 mod deadlines;
 mod eval;
 mod evals;
 mod http;
-mod mail;
 mod io;
 mod llm;
+mod mail;
 mod outcome;
-mod process;
 mod prelude;
+mod process;
 mod program;
-mod console;
 mod serve;
 mod stack;
 mod state;
@@ -32,14 +32,14 @@ mod value;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
+pub use console::console;
+pub use eval::records::migrate;
+pub use evals::{EvalReport, RowOutcome, run_evals};
 use grenat_ast::{Program, Span};
 pub use grenat_llm::{ModelConfig, Provider, Response, Scripted};
+pub use serve::serve;
 use value::Locked;
 pub use value::Value;
-pub use evals::{EvalReport, RowOutcome, run_evals};
-pub use eval::records::migrate;
-pub use console::console;
-pub use serve::serve;
 
 pub(crate) use control::*;
 pub(crate) use program::*;

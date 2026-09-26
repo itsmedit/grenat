@@ -8,9 +8,9 @@
 //! nothing here knows about the Grenat language.
 
 mod client;
-pub mod server;
 #[cfg(feature = "fake")]
 pub mod fake;
+pub mod server;
 mod transport;
 
 pub use client::{CallResult, Client, Tool};

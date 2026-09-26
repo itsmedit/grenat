@@ -95,14 +95,19 @@ impl<'p> Interp<'p> {
     pub(crate) fn apply_migrations(&mut self) -> Result<Vec<String>, Ctrl<'p>> {
         let database = self.database()?;
         let connection = self.connection_of(&database).expect("a database");
-        let setup = format!("CREATE TABLE IF NOT EXISTS {MIGRATIONS_TABLE} (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)");
+        let setup =
+            format!("CREATE TABLE IF NOT EXISTS {MIGRATIONS_TABLE} (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)");
         grenat_green::blocking(|| connection.lock().batch(&setup)).or_else(db_error)?;
-        let done = grenat_green::blocking(|| connection.lock().query(&format!("SELECT name FROM {MIGRATIONS_TABLE}"), &[]))
-            .or_else(db_error)?;
-        let done: Vec<String> = done.into_iter().filter_map(|row| match row.into_iter().next() {
-            Some((_, Cell::Text(name))) => Some(name),
-            _ => None,
-        }).collect();
+        let done =
+            grenat_green::blocking(|| connection.lock().query(&format!("SELECT name FROM {MIGRATIONS_TABLE}"), &[]))
+                .or_else(db_error)?;
+        let done: Vec<String> = done
+            .into_iter()
+            .filter_map(|row| match row.into_iter().next() {
+                Some((_, Cell::Text(name))) => Some(name),
+                _ => None,
+            })
+            .collect();
         let pending: Vec<(String, Value<'p>)> = self
             .migrations
             .borrow()
@@ -118,8 +123,10 @@ impl<'p> Interp<'p> {
                 let record = format!("INSERT INTO {MIGRATIONS_TABLE} (name, applied_at) VALUES (?, ?)");
                 let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
                 let at = grenat_serve::calendar::date(now.as_secs() as i64);
-                grenat_green::blocking(|| connection.lock().execute(&record, &[Cell::Text(name.clone()), Cell::Text(at)]))
-                    .or_else(db_error)
+                grenat_green::blocking(|| {
+                    connection.lock().execute(&record, &[Cell::Text(name.clone()), Cell::Text(at)])
+                })
+                .or_else(db_error)
             });
             match result {
                 Ok(_) => run("COMMIT")?,
@@ -171,7 +178,10 @@ impl<'p> Interp<'p> {
                 let record = self.construct(ty, Args { named: args.named.clone(), ..Args::default() })?;
                 self.save(ty, &table, &record)
             }
-            _ => raise("NoMethodError", format!("unknown method `{ty}.{name}`: a record has all, where, find, count, create")),
+            _ => raise(
+                "NoMethodError",
+                format!("unknown method `{ty}.{name}`: a record has all, where, find, count, create"),
+            ),
         })())
     }
 
@@ -219,7 +229,10 @@ impl<'p> Interp<'p> {
     fn save(&mut self, ty: &str, table: &str, record: &Value<'p>) -> R<'p> {
         self.check_effect("db.write")?;
         if record.contains_taint() {
-            return raise("TaintError", format!("an untrusted value reaches a `{ty}` written to the database: check it first"));
+            return raise(
+                "TaintError",
+                format!("an untrusted value reaches a `{ty}` written to the database: check it first"),
+            );
         }
         let Value::Record(r) = record.untainted() else { return raise("TypeError", "not a record") };
         let id = field(&r.fields, "id").cloned().unwrap_or(Value::Nil);
@@ -248,7 +261,8 @@ impl<'p> Interp<'p> {
         let sql = format!("INSERT INTO {table_q} ({}) VALUES ({marks}) RETURNING \"id\"", list.join(", "));
         let rows = grenat_green::blocking(|| connection.lock().query(&sql, &params)).or_else(db_error)?;
         let new_id = rows.first().and_then(|r| r.first()).map_or(Value::Nil, |(_, c)| cell_value(c.clone()));
-        let fields = r.fields.iter().map(|(k, v)| (k.clone(), if &**k == "id" { new_id.clone() } else { v.clone() })).collect();
+        let fields =
+            r.fields.iter().map(|(k, v)| (k.clone(), if &**k == "id" { new_id.clone() } else { v.clone() })).collect();
         Ok(Value::record(&r.ty, fields))
     }
 

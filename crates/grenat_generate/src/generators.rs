@@ -40,8 +40,9 @@ type File = (String, String);
 /// record's (`subject:String`), `now` (seconds since the epoch) dates a
 /// migration.
 pub fn generate(root: &Path, kind: Kind, name: &str, fields: &[String], now: i64) -> Result<Vec<Change>, String> {
-    let app = std::fs::read_to_string(root.join(APP_FILE))
-        .map_err(|_| format!("{} is not an application: it has no {APP_FILE} (`grenat new --app <name>`)", root.display()))?;
+    let app = std::fs::read_to_string(root.join(APP_FILE)).map_err(|_| {
+        format!("{} is not an application: it has no {APP_FILE} (`grenat new --app <name>`)", root.display())
+    })?;
     let names = Names::new(name)?;
     if kind != Kind::Record && !fields.is_empty() {
         return Err("only a record takes fields".into());
@@ -53,7 +54,10 @@ pub fn generate(root: &Path, kind: Kind, name: &str, fields: &[String], now: i64
         Kind::Record => record(&names, fields, now)?,
         Kind::Eval => {
             if !root.join(format!("src/agents/{}.grn", names.snake)).exists() {
-                return Err(format!("an eval asks an agent: there is no src/agents/{}.grn (`grenat generate agent {}`)", names.snake, names.snake));
+                return Err(format!(
+                    "an eval asks an agent: there is no src/agents/{}.grn (`grenat generate agent {}`)",
+                    names.snake, names.snake
+                ));
             }
             let files = vec![
                 (format!("evals/{}_eval.grn", names.snake), fill(templates::EVAL, &names)),

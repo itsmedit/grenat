@@ -3,7 +3,7 @@
 
 use crate::array::Arr;
 use crate::record::Record;
-use crate::shape::{RECORD, STR, ARRAY, Shape, Slot};
+use crate::shape::{ARRAY, RECORD, STR, Shape, Slot};
 use crate::string::Str;
 
 /// Adds a reference to the object at `bits`.

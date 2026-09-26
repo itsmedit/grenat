@@ -4,8 +4,8 @@ use cranelift_jit::{JITBuilder, JITModule};
 use grenat_ast::Program;
 
 use crate::eligibility::select;
-use crate::infer::Target;
 use crate::emit::{emit, isa};
+use crate::infer::Target;
 use crate::native::{Native, Report, Trampoline};
 use crate::runtime::symbols;
 use crate::structs::Structs;

@@ -45,13 +45,16 @@ impl<'p> Interp<'p> {
                     for arg in &directive.args {
                         match arg {
                             grenat_ast::Arg::Pos(Expr { kind: ExprKind::Var(name), .. }) => config.tools.push(name),
-                            grenat_ast::Arg::Pos(Expr { kind: ExprKind::Call { recv: None, name, args, .. }, .. })
-                                if name.name == "mcp" =>
-                            {
+                            grenat_ast::Arg::Pos(Expr {
+                                kind: ExprKind::Call { recv: None, name, args, .. }, ..
+                            }) if name.name == "mcp" => {
                                 config.mcp.push(self.mcp_directive(args)?);
                             }
                             _ => {
-                                return raise("TypeError", "`tools` expects tool names: `tools read, search, mcp(:linear)`");
+                                return raise(
+                                    "TypeError",
+                                    "`tools` expects tool names: `tools read, search, mcp(:linear)`",
+                                );
                             }
                         }
                     }
@@ -67,7 +70,9 @@ impl<'p> Interp<'p> {
                     }
                 }
                 "tool_timeout" => match first.map(|e| self.eval(e)).transpose()? {
-                    Some(Value::Int(n)) if n > 0 => config.tool_timeout = Some(std::time::Duration::from_secs(n as u64)),
+                    Some(Value::Int(n)) if n > 0 => {
+                        config.tool_timeout = Some(std::time::Duration::from_secs(n as u64))
+                    }
                     Some(Value::Float(s) | Value::Duration(s)) if s > 0.0 => {
                         config.tool_timeout = Some(std::time::Duration::from_secs_f64(s));
                     }
@@ -195,7 +200,12 @@ impl<'p> Interp<'p> {
             match arg {
                 grenat_ast::Arg::Pos(e) => match self.eval(e)? {
                     Value::Symbol(s) => server = Some(s.to_string()),
-                    other => return raise("TypeError", format!("`mcp` expects a server (`:linear`), got {}", other.inspect())),
+                    other => {
+                        return raise(
+                            "TypeError",
+                            format!("`mcp` expects a server (`:linear`), got {}", other.inspect()),
+                        );
+                    }
                 },
                 grenat_ast::Arg::Named { name, value: Some(e) } if name.name == "only" => match self.eval(e)? {
                     Value::Array(items) => only = Some(items.borrow().iter().map(Value::to_display).collect()),
@@ -204,7 +214,8 @@ impl<'p> Interp<'p> {
                 _ => return raise("ArgumentError", "`mcp` takes a server and `only: [...]`"),
             }
         }
-        let server = server.ok_or_else(|| Ctrl::Raise(Arc::new(ErrorVal::new("ArgumentError", "`mcp` expects a server"))))?;
+        let server =
+            server.ok_or_else(|| Ctrl::Raise(Arc::new(ErrorVal::new("ArgumentError", "`mcp` expects a server"))))?;
         Ok((server, only))
     }
 
@@ -217,10 +228,9 @@ impl<'p> Interp<'p> {
         let result = self.call_tool(tool_use);
         self.cancel.pop();
         match result {
-            Err(Ctrl::Raise(e)) if &*e.ty == "Cancelled" && expired.load(AtomicOrdering::Relaxed) => raise(
-                "TimeoutError",
-                format!("tool `{}` took more than {}s", tool_use.name, timeout.as_secs_f64()),
-            ),
+            Err(Ctrl::Raise(e)) if &*e.ty == "Cancelled" && expired.load(AtomicOrdering::Relaxed) => {
+                raise("TimeoutError", format!("tool `{}` took more than {}s", tool_use.name, timeout.as_secs_f64()))
+            }
             other => other,
         }
     }

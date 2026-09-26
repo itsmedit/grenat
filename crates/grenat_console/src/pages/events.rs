@@ -11,7 +11,13 @@ pub(crate) fn list(ctx: &mut Ctx) -> Result {
         .iter()
         .map(|e| {
             let tone = if e.is_refusal() { "warn" } else { "bad" };
-            vec![ago(e.at, ctx.now), escape(&e.source), escape(&e.subject), badge(&e.error, tone), clip(&e.message, 120)]
+            vec![
+                ago(e.at, ctx.now),
+                escape(&e.source),
+                escape(&e.subject),
+                badge(&e.error, tone),
+                clip(&e.message, 120),
+            ]
         })
         .collect();
     let tab = |href: &str, label: &str, current: bool| {
@@ -22,7 +28,11 @@ pub(crate) fn list(ctx: &mut Ctx) -> Result {
          (<code>TaintError</code>), an effect not granted (<code>CapabilityError</code>), a human's no, a budget spent.</p>{}",
         tab("/events", "All", !refusals),
         tab("/events?only=refusals", "Refusals", refusals),
-        table(&["When", "Source", "What", "Error", "Message"], &rows, if refusals { "No refusal." } else { "Nothing failed." })
+        table(
+            &["When", "Source", "What", "Error", "Message"],
+            &rows,
+            if refusals { "No refusal." } else { "Nothing failed." }
+        )
     );
     page("Events", "/events", body)
 }

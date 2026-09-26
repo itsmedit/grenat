@@ -87,7 +87,10 @@ test \"a read may filter on it\" do
 end
 "
     ));
-    assert!(results[0].1.as_deref().unwrap().starts_with("TaintError: an untrusted value reaches a `Ticket` written"), "{results:?}");
+    assert!(
+        results[0].1.as_deref().unwrap().starts_with("TaintError: an untrusted value reaches a `Ticket` written"),
+        "{results:?}"
+    );
     assert_eq!(results[1].1, None);
 }
 
@@ -104,7 +107,9 @@ fn migrations_are_applied_once() {
     assert_eq!(migrate(&parsed.program, options()).unwrap(), ["001_a", "002_b"]);
     assert!(migrate(&parsed.program, options()).unwrap().is_empty());
     // a failing migration leaves nothing behind
-    let bad = format!("{src}migration \"003_bad\" do |db|\n  db.migrate(\"CREATE TABLE c (z INTEGER)\")\n  raise \"oops\"\nend\n");
+    let bad = format!(
+        "{src}migration \"003_bad\" do |db|\n  db.migrate(\"CREATE TABLE c (z INTEGER)\")\n  raise \"oops\"\nend\n"
+    );
     let parsed = grenat_parser::parse(&bad);
     assert_eq!(migrate(&parsed.program, options()).unwrap_err().message, "oops");
     let parsed = grenat_parser::parse(&format!("{bad}\nnope\n").replace("  raise \"oops\"\n", ""));

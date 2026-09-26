@@ -26,7 +26,11 @@ pub fn encode(value: &Value) -> Result<Json, String> {
         Value::Type(s) => json!({"$type": &**s}),
         Value::Range(lo, hi, inclusive) => json!({"$range": [lo, hi, inclusive]}),
         Value::Hash(entries) => {
-            let pairs = entries.borrow().iter().map(|(k, v)| Ok(json!([encode(k)?, encode(v)?]))).collect::<Result<Vec<_>, String>>()?;
+            let pairs = entries
+                .borrow()
+                .iter()
+                .map(|(k, v)| Ok(json!([encode(k)?, encode(v)?])))
+                .collect::<Result<Vec<_>, String>>()?;
             json!({"$hash": pairs})
         }
         Value::Record(r) => json!({"$record": &*r.ty, "fields": encode_fields(&r.fields)?}),
@@ -67,7 +71,8 @@ pub fn decode<'p>(json: &Json) -> Result<Value<'p>, String> {
                 ),
                 "$hash" => {
                     let pairs = payload.as_array().ok_or("`$hash` expects pairs")?;
-                    let entries = pairs.iter().map(|p| Ok((decode(&p[0])?, decode(&p[1])?))).collect::<Result<_, String>>()?;
+                    let entries =
+                        pairs.iter().map(|p| Ok((decode(&p[0])?, decode(&p[1])?))).collect::<Result<_, String>>()?;
                     Value::Hash(Arc::new(Mutex::new(entries)))
                 }
                 "$record" => Value::record(&text()?, decode_fields(&o["fields"])?),

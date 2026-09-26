@@ -254,14 +254,20 @@ impl Translator<'_, '_> {
         self.release(array);
         let elem = elem_of(snapshot.ty);
         let s = snapshot.value;
-        self.counted_loop(call, block, None, move |t, i| {
-            let x = t.load_element(s, i, elem);
-            let mut params = vec![t.hold(x)];
-            if with_index {
-                params.push(Held::scalar(i, Ty::Int));
-            }
-            params
-        }, Some(s));
+        self.counted_loop(
+            call,
+            block,
+            None,
+            move |t, i| {
+                let x = t.load_element(s, i, elem);
+                let mut params = vec![t.hold(x)];
+                if with_index {
+                    params.push(Held::scalar(i, Ty::Int));
+                }
+                params
+            },
+            Some(s),
+        );
         self.release(snapshot);
     }
 

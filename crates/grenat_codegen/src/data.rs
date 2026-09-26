@@ -12,7 +12,10 @@ pub enum Data {
     Str(String),
     Array(Vec<Data>),
     /// A struct value, fields in declaration order.
-    Record { ty: String, fields: Vec<(String, Data)> },
+    Record {
+        ty: String,
+        fields: Vec<(String, Data)>,
+    },
     /// The very array given as argument number `n`: arrays are references,
     /// so an array passed twice, or returned, is the same object.
     Alias(usize),

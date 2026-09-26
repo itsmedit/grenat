@@ -52,10 +52,7 @@ end
 fn strings_are_built_and_compared_like_the_interpreter() {
     let (p, jit) = compile(STRINGS);
     assert_eq!(jit.report().interpreted, []);
-    assert_eq!(
-        call(p, &jit, "greet", &[string("Ada"), int(3)]),
-        Ok(string("hello Ada × 3, 1.5 true"))
-    );
+    assert_eq!(call(p, &jit, "greet", &[string("Ada"), int(3)]), Ok(string("hello Ada × 3, 1.5 true")));
     assert_eq!(call(p, &jit, "repeat", &[string("ab"), int(3)]), Ok(string("ababab")));
     assert_eq!(call(p, &jit, "twice", &[string("é")]), Ok(string("éé")));
     assert_eq!(call(p, &jit, "shout", &[string("  hey ")]), Ok(string("HEY!")));

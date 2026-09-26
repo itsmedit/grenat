@@ -8,7 +8,12 @@ pub(crate) fn list(ctx: &mut Ctx) -> Result {
         .app
         .mcp_servers
         .iter()
-        .map(|s| vec![format!("<a href=\"/mcp/{0}\">{0}</a>", escape(&s.name)), format!("<code>{}</code>", escape(&s.target))])
+        .map(|s| {
+            vec![
+                format!("<a href=\"/mcp/{0}\">{0}</a>", escape(&s.name)),
+                format!("<code>{}</code>", escape(&s.target)),
+            ]
+        })
         .collect();
     let exposed: Vec<Vec<String>> = ctx
         .app
@@ -40,7 +45,13 @@ pub(crate) fn tools(ctx: &mut Ctx, server: &str) -> Result {
             let rows: Vec<Vec<String>> = tools
                 .iter()
                 .map(|t| {
-                    let kind = if t.read_only { badge("read-only", "ok") } else if t.destructive { badge("may destroy", "bad") } else { badge("writes", "warn") };
+                    let kind = if t.read_only {
+                        badge("read-only", "ok")
+                    } else if t.destructive {
+                        badge("may destroy", "bad")
+                    } else {
+                        badge("writes", "warn")
+                    };
                     vec![format!("<code>{}</code>", escape(&t.name)), escape(&t.description), kind]
                 })
                 .collect();

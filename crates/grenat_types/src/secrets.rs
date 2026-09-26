@@ -34,9 +34,7 @@ impl<'p> Checker<'p> {
     pub(crate) fn secret_method(&mut self, span: Span, name: &str) -> V {
         if name != "to_s" {
             self.report(
-                Diagnostic::new(span, format!("a secret has no method `{name}`"))
-                    .with_code(E_SECRET)
-                    .with_help(HELP),
+                Diagnostic::new(span, format!("a secret has no method `{name}`")).with_code(E_SECRET).with_help(HELP),
             );
         }
         V::new(Ty::Secret)

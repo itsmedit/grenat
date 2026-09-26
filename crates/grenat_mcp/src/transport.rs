@@ -39,7 +39,9 @@ impl Stdio {
     }
 
     fn send(&mut self, message: &Json) -> Result<(), String> {
-        writeln!(self.input, "{message}").and_then(|()| self.input.flush()).map_err(|e| format!("the MCP server stopped: {e}"))
+        writeln!(self.input, "{message}")
+            .and_then(|()| self.input.flush())
+            .map_err(|e| format!("the MCP server stopped: {e}"))
     }
 }
 
@@ -84,7 +86,8 @@ pub struct Http {
 
 impl Http {
     pub fn new(url: &str, headers: &[(String, String)], timeout: Duration) -> Http {
-        let agent = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(timeout)).build().into();
+        let agent =
+            ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(timeout)).build().into();
         Http { url: url.to_string(), headers: headers.to_vec(), session: None, agent }
     }
 

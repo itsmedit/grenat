@@ -84,8 +84,13 @@ pub fn run_evals(
 impl<'p> Interp<'p> {
     fn run_eval(&mut self, eval: EvalDef<'p>) -> EvalReport {
         let started = Instant::now();
-        let mut report =
-            EvalReport { name: eval.name.clone(), threshold: eval.threshold, rows: Vec::new(), error: None, seconds: 0.0 };
+        let mut report = EvalReport {
+            name: eval.name.clone(),
+            threshold: eval.threshold,
+            rows: Vec::new(),
+            error: None,
+            seconds: 0.0,
+        };
         match self.dataset(&eval.dataset) {
             Ok(rows) => report.rows = self.score_rows(rows, &eval),
             Err(ctrl) => report.error = Some(self.runtime_error(ctrl)),

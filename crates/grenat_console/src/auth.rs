@@ -53,7 +53,9 @@ pub struct Guard {
 /// What [`Guard::admit`] decided.
 pub enum Admission {
     /// Let in; `signed_in` when by a session.
-    Allowed { signed_in: bool },
+    Allowed {
+        signed_in: bool,
+    },
     Refused(Response),
 }
 
@@ -78,7 +80,10 @@ impl Guard {
                 if hosts.iter().any(|h| h.eq_ignore_ascii_case(host)) {
                     Admission::Allowed { signed_in: false }
                 } else {
-                    Admission::Refused(Response::page(403, html::bare("Forbidden", "<p>This console answers requests addressed to this machine only.</p>")))
+                    Admission::Refused(Response::page(
+                        403,
+                        html::bare("Forbidden", "<p>This console answers requests addressed to this machine only.</p>"),
+                    ))
                 }
             }
             Access::Token { .. } => match session(request) {

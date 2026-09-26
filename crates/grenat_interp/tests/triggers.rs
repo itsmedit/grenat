@@ -91,7 +91,10 @@ test \"untrusted\" do
 end
 ",
     );
-    assert!(results[0].1.as_deref().unwrap().starts_with("TaintError: an untrusted value reaches `Shell.run`"), "{results:?}");
+    assert!(
+        results[0].1.as_deref().unwrap().starts_with("TaintError: an untrusted value reaches `Shell.run`"),
+        "{results:?}"
+    );
 }
 
 #[test]

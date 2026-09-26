@@ -18,7 +18,11 @@ pub enum FieldType {
 
 impl Field {
     pub fn parse(spec: &str) -> Result<Field, String> {
-        let usage = || format!("invalid field `{spec}`: write `name:Type`, Type being String, Int, Float or Bool (`Int?`: optional)");
+        let usage = || {
+            format!(
+                "invalid field `{spec}`: write `name:Type`, Type being String, Int, Float or Bool (`Int?`: optional)"
+            )
+        };
         let (name, ty) = spec.split_once(':').ok_or_else(usage)?;
         if !crate::names::valid(name) {
             return Err(usage());

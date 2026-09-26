@@ -55,7 +55,10 @@ fn manifests_are_parsed_and_checked() {
         m.dependency("http").unwrap().source,
         Source::Git { url: "https://x/http".into(), reference: Reference::Tag("v1".into()) }
     );
-    assert_eq!(m.dependency("latest").unwrap().source, Source::Git { url: "https://x/l".into(), reference: Reference::Default });
+    assert_eq!(
+        m.dependency("latest").unwrap().source,
+        Source::Git { url: "https://x/l".into(), reference: Reference::Default }
+    );
 
     let invalid = |text: &str| Manifest::parse(text).unwrap_err();
     assert_eq!(invalid("x = 1"), "missing the `[package]` table");
@@ -64,7 +67,10 @@ fn manifests_are_parsed_and_checked() {
     let dep = |spec: &str| invalid(&format!("[package]\nname = \"a\"\n[dependencies]\nd = {spec}"));
     assert_eq!(dep("\"1.0\""), "dependency `d`: expected `{ path = … }` or `{ git = … }`");
     assert_eq!(dep("{ path = \"x\", git = \"y\" }"), "dependency `d`: give either `path` or `git`");
-    assert_eq!(dep("{ git = \"y\", tag = \"a\", rev = \"b\" }"), "dependency `d`: give one of `branch`, `tag` or `rev`");
+    assert_eq!(
+        dep("{ git = \"y\", tag = \"a\", rev = \"b\" }"),
+        "dependency `d`: give one of `branch`, `tag` or `rev`"
+    );
     assert_eq!(dep("{ path = \"x\", version = \"1\" }"), "dependency `d`: unknown key `version`");
     assert_eq!(invalid("[package\nname = 1"), "unclosed table, expected `]`");
 }
@@ -99,10 +105,15 @@ fn require_errors_point_at_the_require() {
     assert!(e.ends_with("missing.grn)"), "{e}");
 
     write(&dir.join("dyn.grn"), "name = \"x\"\nrequire \"./#{name}\"\n");
-    assert!(error(load(&dir.join("dyn.grn"), false)).ends_with("`require` takes a literal path, without interpolation"));
+    assert!(
+        error(load(&dir.join("dyn.grn"), false)).ends_with("`require` takes a literal path, without interpolation")
+    );
     write(&dir.join("pkg.grn"), "require \"http\"\n");
     let e = error(load(&dir.join("pkg.grn"), false));
-    assert!(e.ends_with("`require \"http\"` needs a dependency named `http` in a grenat.toml, or a path: `./http`"), "{e}");
+    assert!(
+        e.ends_with("`require \"http\"` needs a dependency named `http` in a grenat.toml, or a path: `./http`"),
+        "{e}"
+    );
     write(&dir.join("broken.grn"), "require \"./syntax\"\n");
     write(&dir.join("syntax.grn"), "def f(\n");
     let e = error(load(&dir.join("broken.grn"), false));
@@ -190,7 +201,10 @@ fn git_dependencies_are_fetched_and_locked() {
     write(&dir.join("app/grenat.toml"), &manifest("app", &format!("greet = {{ git = \"{url}\", tag = \"v1\" }}\n")));
     assert!(load(&main, false).unwrap().sources.text.contains("\"v1\""));
     let lock = Lock::load(&dir.join("app")).unwrap();
-    assert_eq!((lock.entries["greet"].reference.as_str(), lock.entries["greet"].commit.as_str()), ("tag=v1", v1.as_str()));
+    assert_eq!(
+        (lock.entries["greet"].reference.as_str(), lock.entries["greet"].commit.as_str()),
+        ("tag=v1", v1.as_str())
+    );
 
     // a repository that does not exist
     write(&dir.join("app/grenat.toml"), &manifest("app", "greet = { git = \"/nowhere/at/all\" }\n"));
@@ -214,7 +228,10 @@ fn a_new_package_loads() {
     assert_eq!(files(&bundle), ["lib.grn", "main.grn"]);
     assert_eq!(bundle.package.unwrap().manifest.name, "hello");
     assert!(load(&dir.join("hello/tests/lib_test.grn"), false).is_ok());
-    assert_eq!(create(&dir.join("hello"), "hello").unwrap_err(), format!("{} already exists", dir.join("hello").display()));
+    assert_eq!(
+        create(&dir.join("hello"), "hello").unwrap_err(),
+        format!("{} already exists", dir.join("hello").display())
+    );
     assert!(create(&dir.join("x"), "Bad").unwrap_err().starts_with("invalid package name"));
 }
 

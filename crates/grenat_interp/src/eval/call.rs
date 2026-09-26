@@ -285,7 +285,9 @@ impl<'p> Interp<'p> {
                     "to_s" => Ok(receiver),
                     _ => raise(
                         "SecretError",
-                        format!("a secret has no method `{name}`: pass it where it serves (a header, a URL, a connection)"),
+                        format!(
+                            "a secret has no method `{name}`: pass it where it serves (a header, a URL, a connection)"
+                        ),
                     ),
                 };
             }

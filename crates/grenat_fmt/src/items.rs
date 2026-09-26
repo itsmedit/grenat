@@ -1,7 +1,8 @@
 //! Declarations: functions, types and their members, models.
 
 use grenat_ast::{
-    Directive, Effect, Field, FnDef, FnKind, Handler, Item, MacroDef, Member, ModelDecl, Program, Span, TypeDef, TypeKind, Variant,
+    Directive, Effect, Field, FnDef, FnKind, Handler, Item, MacroDef, Member, ModelDecl, Program, Span, TypeDef,
+    TypeKind, Variant,
 };
 
 use crate::printer::Printer;

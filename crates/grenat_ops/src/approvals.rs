@@ -72,7 +72,10 @@ pub fn ensure(db: &mut dyn Connection) -> Result<()> {
 /// The decision on question `rank` of job `job`, if it was asked.
 pub fn decision(db: &mut dyn Connection, job: i64, rank: i64) -> Result<Option<Decision>> {
     ensure(db)?;
-    let rows = db.query(&format!("SELECT status FROM {TABLE} WHERE job_id = ? AND rank = ?"), &[Cell::Int(job), Cell::Int(rank)])?;
+    let rows = db.query(
+        &format!("SELECT status FROM {TABLE} WHERE job_id = ? AND rank = ?"),
+        &[Cell::Int(job), Cell::Int(rank)],
+    )?;
     Ok(rows.first().map(|r| Decision::parse(&text(r, 0))))
 }
 
@@ -93,7 +96,8 @@ pub fn pending(db: &mut dyn Connection) -> Result<Vec<Approval>> {
 /// The latest decisions, newest first.
 pub fn decided(db: &mut dyn Connection, limit: usize) -> Result<Vec<Approval>> {
     ensure(db)?;
-    let sql = format!("SELECT {COLUMNS} FROM {TABLE} WHERE status <> 'pending' ORDER BY decided_at DESC, id DESC LIMIT ?");
+    let sql =
+        format!("SELECT {COLUMNS} FROM {TABLE} WHERE status <> 'pending' ORDER BY decided_at DESC, id DESC LIMIT ?");
     Ok(db.query(&sql, &[Cell::Int(limit.min(10_000) as i64)])?.iter().map(approval).collect())
 }
 

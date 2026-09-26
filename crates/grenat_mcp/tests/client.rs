@@ -31,13 +31,20 @@ fn main() {
     exercise(Client::connect(Box::new(stdio)).unwrap());
     println!("stdio ... ok");
 
-    let http = Http::new(&fake::serve_http(), &[("Authorization".into(), "Bearer t".into())], std::time::Duration::from_secs(5));
+    let http = Http::new(
+        &fake::serve_http(),
+        &[("Authorization".into(), "Bearer t".into())],
+        std::time::Duration::from_secs(5),
+    );
     exercise(Client::connect(Box::new(http)).unwrap());
     println!("http ... ok");
 
     let missing = Stdio::spawn(&["no-such-mcp-server".into()], &[]).err().unwrap();
     assert!(missing.starts_with("cannot start the MCP server `no-such-mcp-server`"), "{missing}");
-    let refused = Client::connect(Box::new(Http::new("http://127.0.0.1:1/mcp", &[], std::time::Duration::from_secs(2)))).err().unwrap();
+    let refused =
+        Client::connect(Box::new(Http::new("http://127.0.0.1:1/mcp", &[], std::time::Duration::from_secs(2))))
+            .err()
+            .unwrap();
     assert!(refused.contains("127.0.0.1:1"), "{refused}");
     println!("errors ... ok");
 }

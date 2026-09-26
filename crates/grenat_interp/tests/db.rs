@@ -100,14 +100,24 @@ purge(db)
 fn sql_is_never_untrusted_and_untrusted_values_are_never_written() {
     let head = format!("{SUMMARY}{}s = summarize(\"x\")\n", sqlite(""));
     let e = run_err(&format!("{head}db.query(s.title)\n"), vec![summary_reply()]);
-    assert_eq!((e.ty.as_str(), e.message.as_str()), ("TaintError", "an untrusted value is SQL text in `query`: pass values as parameters"));
+    assert_eq!(
+        (e.ty.as_str(), e.message.as_str()),
+        ("TaintError", "an untrusted value is SQL text in `query`: pass values as parameters")
+    );
     // an untrusted value may filter a read…
-    let out = run_with(&format!("{head}p db.query(\"SELECT id FROM orders WHERE customer = ?\", [s.title])\n"), vec![summary_reply()], &[]);
+    let out = run_with(
+        &format!("{head}p db.query(\"SELECT id FROM orders WHERE customer = ?\", [s.title])\n"),
+        vec![summary_reply()],
+        &[],
+    );
     assert_eq!(out.ok(), "[]\n");
     // …never be written, unless checked
-    let e = run_err(&format!("{head}db.execute(\"UPDATE orders SET customer = ?\", [s.title])\n"), vec![summary_reply()]);
+    let e =
+        run_err(&format!("{head}db.execute(\"UPDATE orders SET customer = ?\", [s.title])\n"), vec![summary_reply()]);
     assert_eq!(e.ty, "TaintError");
-    let checked = format!("{head}t = s.title.check {{ |t| t.size < 50 }}?\np db.execute(\"UPDATE orders SET customer = ?\", [t])\n");
+    let checked = format!(
+        "{head}t = s.title.check {{ |t| t.size < 50 }}?\np db.execute(\"UPDATE orders SET customer = ?\", [t])\n"
+    );
     assert_eq!(run_with(&checked, vec![summary_reply()], &[]).ok(), "2\n");
 }
 

@@ -19,7 +19,8 @@ pub(crate) fn run(client: &Anthropic, requests: &[Request]) -> Result<Vec<Result
         .map(|(i, r)| json!({"custom_id": format!("r{i}"), "params": request_body(r)}))
         .collect();
     let base = client.base_url();
-    let created = expect_json(client.call("POST", &format!("{base}/v1/messages/batches"), Some(&json!({"requests": items}))))?;
+    let created =
+        expect_json(client.call("POST", &format!("{base}/v1/messages/batches"), Some(&json!({"requests": items}))))?;
     let id = created["id"].as_str().ok_or_else(|| LlmError::new("the batch has no id"))?.to_string();
     let mut batch = created;
     while batch["processing_status"] != "ended" {
@@ -35,7 +36,9 @@ pub(crate) fn run(client: &Anthropic, requests: &[Request]) -> Result<Vec<Result
         (0..requests.len()).map(|_| Err(LlmError::new("no result for this request in the batch"))).collect();
     for line in lines.lines().filter(|l| !l.trim().is_empty()) {
         let item: Json = serde_json::from_str(line).map_err(|e| LlmError::new(format!("invalid batch result: {e}")))?;
-        let Some(i) = item["custom_id"].as_str().and_then(|c| c.strip_prefix('r')).and_then(|n| n.parse::<usize>().ok()) else {
+        let Some(i) =
+            item["custom_id"].as_str().and_then(|c| c.strip_prefix('r')).and_then(|n| n.parse::<usize>().ok())
+        else {
             continue;
         };
         if i >= results.len() {
@@ -44,7 +47,9 @@ pub(crate) fn run(client: &Anthropic, requests: &[Request]) -> Result<Vec<Result
         let result = &item["result"];
         results[i] = match result["type"].as_str() {
             Some("succeeded") => parse_response(&result["message"]),
-            Some("errored") => Err(LlmError::new(result["error"]["error"]["message"].as_str().unwrap_or("error").to_string())),
+            Some("errored") => {
+                Err(LlmError::new(result["error"]["error"]["message"].as_str().unwrap_or("error").to_string()))
+            }
             Some(other) => Err(LlmError::new(format!("the request was {other}"))),
             None => Err(LlmError::new("invalid batch result")),
         };

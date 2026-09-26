@@ -9,7 +9,9 @@ pub(crate) struct Postgres(postgres::Client);
 
 impl Postgres {
     pub(crate) fn connect(url: &str) -> Result<Postgres, String> {
-        postgres::Client::connect(url, postgres::NoTls).map(Postgres).map_err(|e| format!("cannot connect: {}", message(e)))
+        postgres::Client::connect(url, postgres::NoTls)
+            .map(Postgres)
+            .map_err(|e| format!("cannot connect: {}", message(e)))
     }
 }
 
@@ -23,9 +25,14 @@ fn message(e: postgres::Error) -> String {
 
 /// Each cell as the type PostgreSQL expects for its parameter.
 fn params(cells: &[Cell], types: &[Type]) -> Result<Vec<Box<dyn ToSql + Sync>>, String> {
-    cells.iter().zip(types).enumerate().map(|(i, (cell, ty))| param(cell, ty).ok_or_else(|| {
-        format!("parameter {} ({cell:?}) cannot be a `{ty}`", i + 1)
-    })).collect()
+    cells
+        .iter()
+        .zip(types)
+        .enumerate()
+        .map(|(i, (cell, ty))| {
+            param(cell, ty).ok_or_else(|| format!("parameter {} ({cell:?}) cannot be a `{ty}`", i + 1))
+        })
+        .collect()
 }
 
 fn param(cell: &Cell, ty: &Type) -> Option<Box<dyn ToSql + Sync>> {
@@ -84,9 +91,7 @@ impl Connection for Postgres {
         let refs: Vec<&(dyn ToSql + Sync)> = owned.iter().map(|p| p.as_ref()).collect();
         let rows = self.0.query(&statement, &refs).map_err(message)?;
         rows.iter()
-            .map(|row| {
-                (0..row.len()).map(|i| Ok((row.columns()[i].name().to_string(), cell(row, i)?))).collect()
-            })
+            .map(|row| (0..row.len()).map(|i| Ok((row.columns()[i].name().to_string(), cell(row, i)?))).collect())
             .collect()
     }
 

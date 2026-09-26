@@ -11,9 +11,9 @@ use grenat_llm::{Anthropic, Cassette, Mock, MockReply, ModelConfig, Provider};
 
 use crate::builtins::json_to_untyped;
 use crate::http::{HttpReply, HttpRequest};
-use crate::process::{ProcessReply, ProcessRequest};
 use crate::llm::value_to_json;
 use crate::prelude::*;
+use crate::process::{ProcessReply, ProcessRequest};
 
 impl<'p> Interp<'p> {
     // ── mock ──────────────────────────────────────────────────
@@ -68,7 +68,9 @@ impl<'p> Interp<'p> {
                 ("headers", Value::Hash(h)) => {
                     reply.headers.extend(h.borrow().iter().map(|(k, v)| (k.to_display(), v.to_display())));
                 }
-                (option, v) => return raise("ArgumentError", format!("invalid `mock_http` option `{option}: {}`", v.inspect())),
+                (option, v) => {
+                    return raise("ArgumentError", format!("invalid `mock_http` option `{option}: {}`", v.inspect()));
+                }
             }
         }
         self.http_stubs.borrow_mut().push(HttpStub { method, url, reply });
@@ -87,9 +89,8 @@ impl<'p> Interp<'p> {
                 format!("no network in tests: `{} {}` is not stubbed with `mock_http`", request.method, request.url),
             );
         }
-        grenat_green::blocking(|| crate::http::send(request)).or_else(|e| {
-            raise("HttpError", format!("{} {}: {e}", request.method, request.url))
-        })
+        grenat_green::blocking(|| crate::http::send(request))
+            .or_else(|e| raise("HttpError", format!("{} {}: {e}", request.method, request.url)))
     }
 
     // ── mock_shell ────────────────────────────────────────────

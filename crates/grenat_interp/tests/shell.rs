@@ -10,14 +10,12 @@ use serde_json::json;
 
 #[test]
 fn programs_run_as_argument_vectors() {
-    let out = run(
-        "\
+    let out = run("\
 r = Shell.run([\"echo\", \"$HOME; rm -rf nothing\"])
 p r.status, r.ok?, r.stdout
 f = Shell.run([\"sh\", \"-c\", \"echo oops >&2; exit 3\"])
 p f.status, f.ok?, f.stderr
-",
-    );
+");
     // no shell interprets the arguments; the outputs are untrusted
     assert_eq!(out, "0\ntrue\n~\"$HOME; rm -rf nothing\\n\"\n3\nfalse\n~\"oops\\n\"\n");
 }
@@ -58,7 +56,10 @@ sneaky
     let r = run_with(src, Vec::new(), &[]);
     assert_eq!(r.output, "true\n");
     let e = r.err();
-    assert_eq!((e.ty.as_str(), e.message.as_str()), ("CapabilityError", "running `echo` is not allowed by `sneaky` (uses shell(\"git\"))"));
+    assert_eq!(
+        (e.ty.as_str(), e.message.as_str()),
+        ("CapabilityError", "running `echo` is not allowed by `sneaky` (uses shell(\"git\"))")
+    );
 }
 
 #[test]
@@ -67,7 +68,10 @@ fn nothing_untrusted_goes_in() {
     assert_eq!(e.ty, "TaintError");
     let e = run_err("out = Shell.run([\"echo\", \"a\"]).stdout\nShell.run([\"echo\", out])\n", Vec::new());
     assert_eq!(e.ty, "TaintError");
-    assert_eq!(run("out = Shell.run([\"echo\", \"a\"]).stdout.check { |o| o.size < 5 }?\np Shell.run([\"echo\", out]).ok?\n"), "true\n");
+    assert_eq!(
+        run("out = Shell.run([\"echo\", \"a\"]).stdout.check { |o| o.size < 5 }?\np Shell.run([\"echo\", out]).ok?\n"),
+        "true\n"
+    );
 }
 
 #[test]
@@ -81,7 +85,11 @@ fn the_network_can_be_cut_off() {
         }
     });
     let curl = |network: bool| {
-        run_with(&format!("p Shell.run([\"curl\", \"-s\", \"-m\", \"3\", \"{url}\"], network: {network}).stdout.trust!\n"), Vec::new(), &[])
+        run_with(
+            &format!("p Shell.run([\"curl\", \"-s\", \"-m\", \"3\", \"{url}\"], network: {network}).stdout.trust!\n"),
+            Vec::new(),
+            &[],
+        )
     };
     assert_eq!(curl(true).ok(), "\"ok\"\n");
     match curl(false).result {

@@ -78,7 +78,8 @@ impl Location {
 
     /// The decrypted text.
     pub fn read(&self) -> Result<String, String> {
-        let data = std::fs::read_to_string(&self.file).map_err(|e| format!("cannot read {}: {e}", self.file.display()))?;
+        let data =
+            std::fs::read_to_string(&self.file).map_err(|e| format!("cannot read {}: {e}", self.file.display()))?;
         decrypt(&self.key()?, data.trim()).map_err(|e| format!("{}: {e}", self.file.display()))
     }
 
@@ -91,7 +92,8 @@ impl Location {
     pub fn write(&self, text: &str) -> Result<(), String> {
         crate::yaml::parse(text)?;
         let key = self.key()?;
-        std::fs::write(&self.file, encrypt(&key, text) + "\n").map_err(|e| format!("cannot write {}: {e}", self.file.display()))
+        std::fs::write(&self.file, encrypt(&key, text) + "\n")
+            .map_err(|e| format!("cannot write {}: {e}", self.file.display()))
     }
 
     /// A new key file and credentials holding [`TEMPLATE`]; fails if either
@@ -107,7 +109,8 @@ impl Location {
         }
         write_private(&self.key, &(new_key() + "\n"))?;
         let key = self.key()?;
-        std::fs::write(&self.file, encrypt(&key, TEMPLATE) + "\n").map_err(|e| format!("cannot write {}: {e}", self.file.display()))
+        std::fs::write(&self.file, encrypt(&key, TEMPLATE) + "\n")
+            .map_err(|e| format!("cannot write {}: {e}", self.file.display()))
     }
 }
 

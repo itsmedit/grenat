@@ -83,10 +83,14 @@ impl<'p> Interp<'p> {
                         exposure.entries.extend(self.exposed_agent(item)?);
                     }
                 }
-                ("token", Value::Str(token) | Value::Secret(token)) if !token.is_empty() => exposure.token = Some(token.to_string()),
+                ("token", Value::Str(token) | Value::Secret(token)) if !token.is_empty() => {
+                    exposure.token = Some(token.to_string())
+                }
                 ("public", Value::Bool(b)) => public = *b,
                 ("name", Value::Str(name)) => exposure.name = name.to_string(),
-                (option, v) => return raise("ArgumentError", format!("invalid `expose` option `{option}: {}`", v.inspect())),
+                (option, v) => {
+                    return raise("ArgumentError", format!("invalid `expose` option `{option}: {}`", v.inspect()));
+                }
             }
         }
         if exposure.token.is_none() && !public {
@@ -136,7 +140,8 @@ impl<'p> Interp<'p> {
         handlers.sort_by_key(|h| h.span.start);
         let mut entries = Vec::new();
         for handler in handlers {
-            let fields = handler.params.iter().map(|p| (p.name.name.as_str(), p.ty.as_ref(), None, p.default.is_some()));
+            let fields =
+                handler.params.iter().map(|p| (p.name.name.as_str(), p.ty.as_ref(), None, p.default.is_some()));
             let input_schema = self.object_schema(fields, 0).or_else(type_error)?;
             let spec = Tool {
                 name: format!("{}_{}", snake_case(&agent.ty), snake_case(&handler.message.name)),
@@ -161,7 +166,8 @@ impl<'p> Interp<'p> {
             .iter()
             .find(|e| raw.path == e.path || raw.path.strip_prefix(&e.path).is_some_and(|rest| rest.starts_with('/')))
             .cloned()?;
-        let header = |name: &str| raw.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str());
+        let header =
+            |name: &str| raw.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str());
         if let Some(token) = &exposure.token
             && !grenat_serve::signature::bearer_valid(token, header("Authorization"))
         {
@@ -224,7 +230,8 @@ impl<'p> Interp<'p> {
     fn call_exposed(&mut self, entry: &Exposed<'p>, arguments: &Json) -> Result<Outcome, Ctrl<'p>> {
         let result = match &entry.target {
             Target::Tool(def) => {
-                let call = grenat_llm::ToolUse { id: "exposed".into(), name: def.name.name.clone(), input: arguments.clone() };
+                let call =
+                    grenat_llm::ToolUse { id: "exposed".into(), name: def.name.name.clone(), input: arguments.clone() };
                 self.call_tool(&call)
             }
             Target::Handler { agent, handler } => match self.exposed_message(handler, arguments) {
@@ -259,7 +266,10 @@ impl<'p> Interp<'p> {
                 continue;
             }
             let Some(ty) = &param.ty else {
-                return raise("TypeError", format!("field `{}` of `{}` has no type", param.name.name, handler.message.name));
+                return raise(
+                    "TypeError",
+                    format!("field `{}` of `{}` has no type", param.name.name, handler.message.name),
+                );
             };
             let ty = self.ty(ty).or_else(type_error)?;
             let value = self

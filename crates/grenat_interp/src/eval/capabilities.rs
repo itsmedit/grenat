@@ -67,7 +67,8 @@ impl<'p> Interp<'p> {
     /// stack that declares its effects: `net`, or `net("<host>")`.
     pub(crate) fn check_net(&self, host: &str, url: &str) -> Result<(), Ctrl<'p>> {
         for (owner, caps) in &self.capabilities {
-            let allowed = caps.iter().any(|(declared, arg)| declared == "net" && arg.as_deref().is_none_or(|h| h == host));
+            let allowed =
+                caps.iter().any(|(declared, arg)| declared == "net" && arg.as_deref().is_none_or(|h| h == host));
             if !allowed {
                 let declared: Vec<String> =
                     caps.iter().map(|(p, a)| a.as_ref().map_or(p.clone(), |a| format!("{p}(\"{a}\")"))).collect();

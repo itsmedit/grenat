@@ -41,7 +41,11 @@ pub fn handle_body(host: &mut dyn Host, body: &[u8]) -> Option<Json> {
 /// The response to `message`; `None` for a notification.
 pub fn handle(host: &mut dyn Host, message: &Json) -> Option<Json> {
     let Some(method) = message.get("method").and_then(Json::as_str) else {
-        return Some(error(message.get("id").cloned().unwrap_or(Json::Null), INVALID_REQUEST, "not a JSON-RPC request"));
+        return Some(error(
+            message.get("id").cloned().unwrap_or(Json::Null),
+            INVALID_REQUEST,
+            "not a JSON-RPC request",
+        ));
     };
     // a notification (no id) gets no response
     let id = message.get("id")?.clone();
@@ -160,7 +164,10 @@ mod tests {
     #[test]
     fn notifications_get_no_response_and_mistakes_get_errors() {
         assert_eq!(ask(json!({"jsonrpc": "2.0", "method": "notifications/initialized"})), None);
-        assert_eq!(ask(json!({"jsonrpc": "2.0", "id": 1, "method": "resources/list"})).unwrap()["error"]["code"], METHOD_NOT_FOUND);
+        assert_eq!(
+            ask(json!({"jsonrpc": "2.0", "id": 1, "method": "resources/list"})).unwrap()["error"]["code"],
+            METHOD_NOT_FOUND
+        );
         assert_eq!(ask(json!({"id": 1})).unwrap()["error"]["code"], INVALID_REQUEST);
         assert_eq!(handle_body(&mut Echo, b"{oops").unwrap()["error"]["code"], PARSE_ERROR);
     }

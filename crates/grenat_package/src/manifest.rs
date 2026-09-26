@@ -36,7 +36,10 @@ pub struct Dependency {
 pub enum Source {
     /// Relative to the package that declares it.
     Path(PathBuf),
-    Git { url: String, reference: Reference },
+    Git {
+        url: String,
+        reference: Reference,
+    },
 }
 
 /// What to check out of a git repository.
@@ -108,7 +111,8 @@ fn dependency(name: &str, spec: &Value) -> Result<Dependency, String> {
     if !valid_name(name) {
         return Err(format!("invalid dependency name `{name}`"));
     }
-    let spec = spec.as_table().ok_or_else(|| format!("dependency `{name}`: expected `{{ path = … }}` or `{{ git = … }}`"))?;
+    let spec =
+        spec.as_table().ok_or_else(|| format!("dependency `{name}`: expected `{{ path = … }}` or `{{ git = … }}`"))?;
     let string = |key: &str| spec.get(key).and_then(Value::as_str).map(str::to_string);
     for key in spec.keys() {
         if !["path", "git", "branch", "tag", "rev"].contains(&key.as_str()) {

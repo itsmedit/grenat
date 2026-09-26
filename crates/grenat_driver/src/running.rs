@@ -26,7 +26,13 @@ pub fn options_for(path: &str) -> grenat_interp::Options {
         Some(Ok(Some(package))) => Some(package.root),
         _ => package.map(Path::to_path_buf),
     };
-    grenat_interp::Options { dir, credentials_root, record: record_from_env(), log: log_from_env(), ..Default::default() }
+    grenat_interp::Options {
+        dir,
+        credentials_root,
+        record: record_from_env(),
+        log: log_from_env(),
+        ..Default::default()
+    }
 }
 
 /// Runs `program` (its top-level code, then `main`): prints the LLM usage,

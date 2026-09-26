@@ -18,7 +18,6 @@ pub fn civil(t: i64) -> (i64, u32, u32, u32, u32, u32) {
     (year, month, day, (seconds / 3600) as u32, (seconds % 3600 / 60) as u32, weekday)
 }
 
-
 /// `YYYY-MM-DD` of `t` seconds since the epoch, UTC.
 pub fn date(t: i64) -> String {
     let (year, month, day, ..) = civil(t);

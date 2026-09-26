@@ -30,7 +30,10 @@ pub fn console(
             return Err(interp.runtime_error(ctrl));
         }
         let Some(database) = interp.app_db.borrow().clone() else {
-            return Err(failure("ArgumentError", "the console reads the application's database: declare one (`database Env.fetch(\"DATABASE_URL\")`)"));
+            return Err(failure(
+                "ArgumentError",
+                "the console reads the application's database: declare one (`database Env.fetch(\"DATABASE_URL\")`)",
+            ));
         };
         let connection = interp.connection_of(&database).expect("a database");
         let server = grenat_serve::Server::bind(address).map_err(|e| failure("IoError", e))?;
@@ -69,25 +72,38 @@ fn application(interp: &Interp, name: &str) -> Application {
         .map(|info| {
             let mut handlers: Vec<_> = info.handlers.values().collect();
             handlers.sort_by_key(|h| h.span.start);
-            Agent { name: info.def.name.name.clone(), handlers: handlers.iter().map(|h| h.message.name.clone()).collect() }
+            Agent {
+                name: info.def.name.name.clone(),
+                handlers: handlers.iter().map(|h| h.message.name.clone()).collect(),
+            }
         })
         .collect();
     agents.sort_by(|a, b| a.name.cmp(&b.name));
     let functions = |kind| {
-        let mut names: Vec<String> = interp.fns.values().filter(|d| d.kind == kind).map(|d| d.name.name.clone()).collect();
+        let mut names: Vec<String> =
+            interp.fns.values().filter(|d| d.kind == kind).map(|d| d.name.name.clone()).collect();
         names.sort();
         names
     };
-    let mut routes: Vec<String> = interp.routes.borrow().iter().map(|r| format!("{} /{}", r.method, r.pattern.join("/"))).collect();
+    let mut routes: Vec<String> =
+        interp.routes.borrow().iter().map(|r| format!("{} /{}", r.method, r.pattern.join("/"))).collect();
     routes.extend(interp.webhooks.borrow().iter().map(|w| format!("POST {} (webhook)", w.path)));
-    let mut mcp_servers: Vec<McpServer> =
-        interp.mcp_servers.borrow().iter().map(|(name, server)| McpServer { name: name.clone(), target: server.target() }).collect();
+    let mut mcp_servers: Vec<McpServer> = interp
+        .mcp_servers
+        .borrow()
+        .iter()
+        .map(|(name, server)| McpServer { name: name.clone(), target: server.target() })
+        .collect();
     mcp_servers.sort_by(|a, b| a.name.cmp(&b.name));
     let exposures = interp
         .exposures
         .borrow()
         .iter()
-        .map(|e| Exposure { path: e.path.clone(), tools: e.entries.iter().map(|x| x.spec.name.clone()).collect(), public: e.token.is_none() })
+        .map(|e| Exposure {
+            path: e.path.clone(),
+            tools: e.entries.iter().map(|x| x.spec.name.clone()).collect(),
+            public: e.token.is_none(),
+        })
         .collect();
     Application {
         name: name.to_string(),

@@ -76,7 +76,8 @@ impl Resolver {
     /// The package of a file, loaded once.
     pub(crate) fn package_of(&mut self, file: &Path) -> Result<Option<Package>, String> {
         let dir = file.parent().unwrap_or(Path::new("."));
-        if let Some(known) = self.packages.values().filter(|p| dir.starts_with(&p.root)).max_by_key(|p| p.root.as_os_str().len())
+        if let Some(known) =
+            self.packages.values().filter(|p| dir.starts_with(&p.root)).max_by_key(|p| p.root.as_os_str().len())
             && !has_nearer_manifest(dir, &known.root)
         {
             return Ok(Some(known.clone()));
@@ -93,7 +94,8 @@ impl Resolver {
         let root = match &dep.source {
             Source::Path(path) => {
                 let root = package.root.join(path);
-                root.canonicalize().map_err(|e| format!("dependency `{}`: cannot find {}: {e}", dep.name, root.display()))?
+                root.canonicalize()
+                    .map_err(|e| format!("dependency `{}`: cannot find {}: {e}", dep.name, root.display()))?
             }
             Source::Git { url, reference } => self.git(dep, url, reference)?,
         };
@@ -121,7 +123,8 @@ impl Resolver {
         };
         let dir = root.join(".grenat").join("deps").join(&dep.name);
         let described = reference.describe();
-        let locked = self.lock.entries.get(&dep.name).filter(|l| !self.update && l.url == url && l.reference == described);
+        let locked =
+            self.lock.entries.get(&dep.name).filter(|l| !self.update && l.url == url && l.reference == described);
         let commit = match locked {
             Some(l) if dir.is_dir() && git::head(&dir).is_ok_and(|head| head == l.commit) => l.commit.clone(),
             Some(l) => git::fetch(url, reference, Some(&l.commit), &dir)?,

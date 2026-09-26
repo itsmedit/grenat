@@ -34,7 +34,8 @@ pub struct Installed {
 /// Installs the facets of the package in `root`; `update` ignores the lock
 /// (the latest versions allowed). Returns them, sorted by name.
 pub fn install(root: &Path, update: bool) -> Result<Vec<Installed>, String> {
-    let file = Facetfile::load(root)?.ok_or_else(|| format!("no {} in {}", crate::facetfile::FACETFILE, root.display()))?;
+    let file =
+        Facetfile::load(root)?.ok_or_else(|| format!("no {} in {}", crate::facetfile::FACETFILE, root.display()))?;
     let locked: HashMap<String, Installed> =
         if update { HashMap::new() } else { installed(root)?.into_iter().map(|i| (i.name.clone(), i)).collect() };
     let mut queue: Vec<(FacetDecl, PathBuf, Vec<String>)> =
@@ -144,8 +145,10 @@ fn fetch(
         }
         Origin::Index => {
             let url = index_entry(root, name, sources)?;
-            let tags: Vec<(Version, String, String)> =
-                git::tags(&url)?.into_iter().filter_map(|(tag, commit)| Some((Version::parse(&tag)?, tag, commit))).collect();
+            let tags: Vec<(Version, String, String)> = git::tags(&url)?
+                .into_iter()
+                .filter_map(|(tag, commit)| Some((Version::parse(&tag)?, tag, commit)))
+                .collect();
             let preferred = locked.and_then(|l| l.version).filter(|v| requirements.iter().all(|r| r.matches(v)));
             let version = match preferred.filter(|v| tags.iter().any(|(t, ..)| t == v)) {
                 Some(v) => v,
@@ -191,7 +194,8 @@ fn index_entry(root: &Path, name: &str, sources: &[String]) -> Result<String, St
         git::sync(source, &dir)?;
         let entry = dir.join("facets").join(format!("{name}.toml"));
         if let Ok(text) = std::fs::read_to_string(&entry) {
-            let table: Table = text.parse().map_err(|e: toml::de::Error| format!("{}: {}", entry.display(), e.message()))?;
+            let table: Table =
+                text.parse().map_err(|e: toml::de::Error| format!("{}: {}", entry.display(), e.message()))?;
             if let Some(url) = table.get("git").and_then(Value::as_str) {
                 return Ok(url.to_string());
             }

@@ -13,11 +13,17 @@ pub(crate) fn show(ctx: &mut Ctx) -> Result {
     let day = calls::since(ctx.db, ctx.now - 86_400.0)?.iter().map(|c| c.cost_usd).sum::<f64>();
     let week = calls::since(ctx.db, ctx.now - 7.0 * 86_400.0)?.iter().map(|c| c.cost_usd).sum::<f64>();
     let refusals = events::latest(ctx.db, true, 1000)?.iter().filter(|e| e.at >= ctx.now - 7.0 * 86_400.0).count();
-    let card = |href: &str, value: String, label: &str| format!("<a class=\"card\" href=\"{href}\"><b>{value}</b><span>{label}</span></a>");
+    let card = |href: &str, value: String, label: &str| {
+        format!("<a class=\"card\" href=\"{href}\"><b>{value}</b><span>{label}</span></a>")
+    };
     let cards = [
         card("/approvals", pending.to_string(), "approvals waiting"),
         card("/jobs?status=failed", count(Status::Failed).to_string(), "failed jobs"),
-        card("/jobs?status=queued", (count(Status::Queued) + count(Status::Running)).to_string(), "jobs queued or running"),
+        card(
+            "/jobs?status=queued",
+            (count(Status::Queued) + count(Status::Running)).to_string(),
+            "jobs queued or running",
+        ),
         card("/jobs?status=waiting", count(Status::Waiting).to_string(), "jobs waiting for a human"),
         card("/costs?days=1", money(day), "spent in 24 h"),
         card("/costs?days=7", money(week), "spent in 7 days"),

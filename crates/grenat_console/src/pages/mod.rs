@@ -40,7 +40,11 @@ impl Ctx<'_> {
 }
 
 pub(crate) enum Outcome {
-    Page { title: String, section: &'static str, body: String },
+    Page {
+        title: String,
+        section: &'static str,
+        body: String,
+    },
     /// After an action: the page to show.
     Redirect(String),
     NotFound,
@@ -56,7 +60,9 @@ pub(crate) fn route(ctx: &mut Ctx, method: &str, segments: &[&str]) -> Result {
     match (method, segments) {
         ("GET", []) => overview::show(ctx),
         ("GET", ["approvals"]) => approvals::list(ctx),
-        ("POST", ["approvals", id, decision @ ("approve" | "deny")]) => approvals::decide(ctx, id, *decision == "approve"),
+        ("POST", ["approvals", id, decision @ ("approve" | "deny")]) => {
+            approvals::decide(ctx, id, *decision == "approve")
+        }
         ("GET", ["jobs"]) => jobs::list(ctx),
         ("GET", ["jobs", id]) => jobs::show(ctx, id),
         ("POST", ["jobs", id, "retry"]) => jobs::retry(ctx, id),

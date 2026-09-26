@@ -63,7 +63,10 @@ pub fn create_facet(dir: &Path, name: &str) -> Result<(), String> {
         (crate::MANIFEST.to_string(), format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n")),
         (crate::facetfile::FACETFILE.to_string(), FACETFILE_TEMPLATE.to_string()),
         (".gitignore".into(), ".grenat/\n".into()),
-        ("README.md".into(), format!("# {name}\n\nA Grenat facet.\n\n```ruby\n# Facetfile\nfacet \"{name}\", \"~> 0.1\"\n```\n")),
+        (
+            "README.md".into(),
+            format!("# {name}\n\nA Grenat facet.\n\n```ruby\n# Facetfile\nfacet \"{name}\", \"~> 0.1\"\n```\n"),
+        ),
         ("src/lib.grn".into(), LIB.into()),
         ("tests/lib_test.grn".into(), TEST.into()),
     ];

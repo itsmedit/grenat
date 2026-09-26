@@ -51,7 +51,10 @@ Jobs.perform
     run_full(&src, replies, &[], &[]).ok();
     let recorded = calls::since(open(&url).as_mut(), 0.0).unwrap();
     let whom: Vec<_> = recorded.iter().map(|c| (c.agent.as_deref(), c.workflow.as_deref(), c.job_id)).collect();
-    assert_eq!(whom, [(None, None, None), (Some("Helper"), None, None), (None, Some("flow"), None), (None, Some("flow"), Some(1))]);
+    assert_eq!(
+        whom,
+        [(None, None, None), (Some("Helper"), None, None), (None, Some("flow"), None), (None, Some("flow"), Some(1))]
+    );
     // the scripted model has no price: the model asked for is billed
     assert!(recorded.iter().all(|c| c.model == "claude-haiku-4-5" && c.cost_usd > 0.0 && c.input_tokens == 100));
 }
@@ -77,7 +80,11 @@ Jobs.perform
     let all = events::latest(db.as_mut(), false, 100).unwrap();
     // three runs of each job before it is given up
     assert_eq!(all.len(), 6);
-    assert!(all.iter().any(|e| (e.source.as_str(), e.subject.as_str(), e.error.as_str()) == ("job", "job 1 (boom)", "ArgumentError")));
+    assert!(
+        all.iter()
+            .any(|e| (e.source.as_str(), e.subject.as_str(), e.error.as_str())
+                == ("job", "job 1 (boom)", "ArgumentError"))
+    );
     let refusals = events::latest(db.as_mut(), true, 100).unwrap();
     assert_eq!(refusals.len(), 3);
     assert!(refusals.iter().all(|e| e.error == "CapabilityError" && e.subject == "job 2 (peek)"), "{refusals:?}");

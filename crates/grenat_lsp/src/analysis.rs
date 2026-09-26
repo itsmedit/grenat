@@ -31,7 +31,11 @@ impl Analysis {
             Err(LoadError::Message(message)) => {
                 let text = overlay.get(path).cloned().unwrap_or_default();
                 let sources = Sources::single(&path.to_string_lossy(), &text);
-                return Analysis { sources, program: None, diagnostics: vec![Diagnostic::new(Span::default(), message)] };
+                return Analysis {
+                    sources,
+                    program: None,
+                    diagnostics: vec![Diagnostic::new(Span::default(), message)],
+                };
             }
         };
         let mut parsed = grenat_parser::parse(&bundle.sources.text);

@@ -1,12 +1,12 @@
 //! Objects, counts and releases, driven the way compiled code drives them.
 
+use crate::array::Arr;
 use crate::array::*;
 use crate::live::live_objects;
 use crate::record::*;
 use crate::release::*;
 use crate::shape::{ARRAY, RECORD, Shape, Slot};
 use crate::string::*;
-use crate::array::Arr;
 
 fn text(s: *const Str) -> String {
     unsafe { Str::text(s) }.to_string()

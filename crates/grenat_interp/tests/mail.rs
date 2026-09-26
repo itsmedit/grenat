@@ -54,6 +54,9 @@ fn the_server_is_a_capability_and_nothing_untrusted_is_sent() {
     let e = run_err("Mail.connect(\"smtp.acme.com\")\n", Vec::new());
     assert_eq!(e.ty, "ArgumentError");
     // a real send to a server that is not there fails cleanly
-    let e = run_err("Mail.connect(\"smtp://127.0.0.1:1\").send(from: \"a@b.c\", to: \"c@d.e\", subject: \"x\", body: \"y\")\n", Vec::new());
+    let e = run_err(
+        "Mail.connect(\"smtp://127.0.0.1:1\").send(from: \"a@b.c\", to: \"c@d.e\", subject: \"x\", body: \"y\")\n",
+        Vec::new(),
+    );
     assert_eq!(e.ty, "MailError");
 }

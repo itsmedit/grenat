@@ -78,14 +78,16 @@ const COLUMNS: &str = "at, model, agent, workflow, job_id, input_tokens, output_
 /// The calls made since `since`, oldest first.
 pub fn since(db: &mut dyn Connection, since: f64) -> Result<Vec<Call>> {
     ensure(db)?;
-    let rows = db.query(&format!("SELECT {COLUMNS} FROM {TABLE} WHERE at >= ? ORDER BY at, id"), &[Cell::Float(since)])?;
+    let rows =
+        db.query(&format!("SELECT {COLUMNS} FROM {TABLE} WHERE at >= ? ORDER BY at, id"), &[Cell::Float(since)])?;
     Ok(rows.iter().map(call).collect())
 }
 
 /// The calls job `job` made, oldest first.
 pub fn of_job(db: &mut dyn Connection, job: i64) -> Result<Vec<Call>> {
     ensure(db)?;
-    let rows = db.query(&format!("SELECT {COLUMNS} FROM {TABLE} WHERE job_id = ? ORDER BY at, id"), &[Cell::Int(job)])?;
+    let rows =
+        db.query(&format!("SELECT {COLUMNS} FROM {TABLE} WHERE job_id = ? ORDER BY at, id"), &[Cell::Int(job)])?;
     Ok(rows.iter().map(call).collect())
 }
 

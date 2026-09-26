@@ -182,7 +182,28 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
     })
 }
 
-pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Credentials", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Conversation", "Jobs", "Approvals"];
+pub const MODULES: &[&str] = &[
+    "File",
+    "Dir",
+    "Math",
+    "Env",
+    "Credentials",
+    "Json",
+    "Runtime",
+    "Cli",
+    "Time",
+    "Http",
+    "Db",
+    "Shell",
+    "Mcp",
+    "Pdf",
+    "Image",
+    "Mail",
+    "Html",
+    "Conversation",
+    "Jobs",
+    "Approvals",
+];
 
 /// What `Conversation.new` returns.
 pub const CONVERSATION: &str = "Conversation";

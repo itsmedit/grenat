@@ -59,9 +59,15 @@ fn an_environment_uses_its_own_credentials_when_it_has_them() {
 fn keys_are_kept_out_of_git() {
     let root = app("gitignore");
     assert!(grenat_config::credentials::ignore_keys(&root).unwrap());
-    assert_eq!(std::fs::read_to_string(root.join(".gitignore")).unwrap(), "config/master.key\nconfig/credentials/*.key\n");
+    assert_eq!(
+        std::fs::read_to_string(root.join(".gitignore")).unwrap(),
+        "config/master.key\nconfig/credentials/*.key\n"
+    );
     assert!(!grenat_config::credentials::ignore_keys(&root).unwrap(), "once");
     std::fs::write(root.join(".gitignore"), ".grenat/\nconfig/master.key").unwrap();
     assert!(grenat_config::credentials::ignore_keys(&root).unwrap());
-    assert_eq!(std::fs::read_to_string(root.join(".gitignore")).unwrap(), ".grenat/\nconfig/master.key\nconfig/credentials/*.key\n");
+    assert_eq!(
+        std::fs::read_to_string(root.join(".gitignore")).unwrap(),
+        ".grenat/\nconfig/master.key\nconfig/credentials/*.key\n"
+    );
 }

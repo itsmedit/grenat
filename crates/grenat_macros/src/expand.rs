@@ -52,9 +52,16 @@ pub fn expand(program: &mut Program, text: &str) -> Vec<Diagnostic> {
             for member in members {
                 match member {
                     Member::Directive(d) if expander.macros.contains_key(&d.name.name) => {
-                        let invocation =
-                            Invocation { name: d.name.name, args: d.args, span: d.span, context: Context::Members(def.kind) };
-                        match expander.expand(&invocation, text, 1).and_then(|code| parse_members(&code, &invocation, def.kind)) {
+                        let invocation = Invocation {
+                            name: d.name.name,
+                            args: d.args,
+                            span: d.span,
+                            context: Context::Members(def.kind),
+                        };
+                        match expander
+                            .expand(&invocation, text, 1)
+                            .and_then(|code| parse_members(&code, &invocation, def.kind))
+                        {
                             Ok(members) => def.members.extend(members),
                             Err(diagnostic) => diagnostics.push(diagnostic),
                         }
@@ -84,7 +91,12 @@ impl Expander {
     fn invocation(&self, expr: &Expr) -> Option<Invocation> {
         match &expr.kind {
             ExprKind::Call { recv: None, name, args, block: None, .. } if self.macros.contains_key(&name.name) => {
-                Some(Invocation { name: name.name.clone(), args: args.clone(), span: expr.span, context: Context::TopLevel })
+                Some(Invocation {
+                    name: name.name.clone(),
+                    args: args.clone(),
+                    span: expr.span,
+                    context: Context::TopLevel,
+                })
             }
             _ => None,
         }
@@ -225,10 +237,16 @@ fn keyword(kind: TypeKind) -> &'static str {
 fn parse_items(code: &str, invocation: &Invocation) -> Result<Vec<Item>, Diagnostic> {
     let parsed = grenat_parser::parse_expansion(code, invocation.span);
     if let Some(first) = parsed.diagnostics.into_iter().next() {
-        return Err(Diagnostic { message: format!("in the expansion of `{}`: {}", invocation.name, first.message), ..first });
+        return Err(Diagnostic {
+            message: format!("in the expansion of `{}`: {}", invocation.name, first.message),
+            ..first
+        });
     }
     if parsed.program.items.iter().any(|i| matches!(i, Item::Macro(_))) {
-        return Err(Diagnostic::new(invocation.span, format!("macro `{}` defines a macro: not supported", invocation.name)));
+        return Err(Diagnostic::new(
+            invocation.span,
+            format!("macro `{}` defines a macro: not supported", invocation.name),
+        ));
     }
     Ok(parsed.program.items)
 }

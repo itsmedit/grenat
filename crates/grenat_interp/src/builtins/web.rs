@@ -128,7 +128,9 @@ fn query_params(query: &str) -> Vec<(String, String)> {
 /// The `Request` record: its headers, body and parameters untrusted.
 pub(crate) fn request_value<'p>(raw: &RawRequest, path_params: Vec<(String, String)>) -> Value<'p> {
     let untrusted = |pairs: Vec<(String, String)>| {
-        Value::Hash(Arc::new(Mutex::new(pairs.into_iter().map(|(k, v)| (Value::str(k), Value::str(v).taint())).collect())))
+        Value::Hash(Arc::new(Mutex::new(
+            pairs.into_iter().map(|(k, v)| (Value::str(k), Value::str(v).taint())).collect(),
+        )))
     };
     let mut params = query_params(&raw.query);
     params.extend(path_params);
@@ -153,7 +155,8 @@ pub(crate) fn answer_of<'p>(value: &Value<'p>) -> HttpAnswer {
         Value::Int(status) => HttpAnswer::text(u16::try_from(*status).unwrap_or(500), ""),
         Value::Str(text) => HttpAnswer::text(200, text),
         Value::Record(r) if &*r.ty == RESPONSE_RECORD => {
-            let field = |n: &str| r.fields.iter().find(|(k, _)| &**k == n).map(|(_, v)| v.clone()).unwrap_or(Value::Nil);
+            let field =
+                |n: &str| r.fields.iter().find(|(k, _)| &**k == n).map(|(_, v)| v.clone()).unwrap_or(Value::Nil);
             let headers = match field("headers") {
                 Value::Hash(h) => h.borrow().iter().map(|(k, v)| (k.to_display(), v.to_display())).collect(),
                 _ => Vec::new(),
@@ -211,13 +214,22 @@ pub(crate) fn response_helper<'p>(name: &str, args: &Args<'p>) -> R<'p> {
             if to.contains_taint() {
                 return raise("TaintError", "an untrusted value is the URL of `redirect`: check it first");
             }
-            Ok(response(302, "text/plain; charset=utf-8", vec![(Value::str("Location"), Value::str(to.to_display()))], String::new()))
+            Ok(response(
+                302,
+                "text/plain; charset=utf-8",
+                vec![(Value::str("Location"), Value::str(to.to_display()))],
+                String::new(),
+            ))
         }
         "status" => {
             let code = int_arg(args, 0, name)?;
             match args.pos.get(1).map(Value::untainted) {
                 Some(Value::Record(r)) if &*r.ty == RESPONSE_RECORD => {
-                    let fields = r.fields.iter().map(|(k, v)| (k.clone(), if &**k == "status" { Value::Int(code) } else { v.clone() })).collect();
+                    let fields = r
+                        .fields
+                        .iter()
+                        .map(|(k, v)| (k.clone(), if &**k == "status" { Value::Int(code) } else { v.clone() }))
+                        .collect();
                     Ok(Value::record(RESPONSE_RECORD, fields))
                 }
                 Some(other) => {
@@ -248,8 +260,12 @@ pub(crate) fn test_request<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p
                 raw.headers.push(("Content-Type".into(), "application/json".into()));
             }
             ("body", v) => raw.body = v.to_display().into_bytes(),
-            ("headers", Value::Hash(h)) => raw.headers.extend(h.borrow().iter().map(|(k, v)| (k.to_display(), v.to_display()))),
-            (option, v) => return raise("ArgumentError", format!("invalid `request` option `{option}: {}`", v.inspect())),
+            ("headers", Value::Hash(h)) => {
+                raw.headers.extend(h.borrow().iter().map(|(k, v)| (k.to_display(), v.to_display())))
+            }
+            (option, v) => {
+                return raise("ArgumentError", format!("invalid `request` option `{option}: {}`", v.inspect()));
+            }
         }
     }
     let answer = interp.handle_request(raw)?;
@@ -311,6 +327,9 @@ mod tests {
         assert_eq!(matches(&pattern, "/users/42"), None);
         assert_eq!(decode("a%20b+c%2F"), "a b c/");
         assert_eq!(decode("100%"), "100%");
-        assert_eq!(query_params("q=rust+lang&n=5&flag"), [("q".into(), "rust lang".into()), ("n".into(), "5".into()), ("flag".into(), String::new())]);
+        assert_eq!(
+            query_params("q=rust+lang&n=5&flag"),
+            [("q".into(), "rust lang".into()), ("n".into(), "5".into()), ("flag".into(), String::new())]
+        );
     }
 }

@@ -23,7 +23,11 @@ fn json(yaml: &Yaml) -> Result<Json, String> {
         Yaml::Null => Json::Null,
         Yaml::Boolean(b) => Json::Bool(*b),
         Yaml::Integer(n) => Json::from(*n),
-        Yaml::Real(text) => text.parse::<f64>().ok().and_then(serde_json::Number::from_f64).map_or(Json::String(text.clone()), Json::Number),
+        Yaml::Real(text) => text
+            .parse::<f64>()
+            .ok()
+            .and_then(serde_json::Number::from_f64)
+            .map_or(Json::String(text.clone()), Json::Number),
         Yaml::String(s) => Json::String(s.clone()),
         Yaml::Array(items) => Json::Array(items.iter().map(json).collect::<Result<_, _>>()?),
         Yaml::Hash(pairs) => {
@@ -51,7 +55,10 @@ mod tests {
     #[test]
     fn documents() {
         let doc = parse("# comment\nfast:\n  provider: anthropic\n  temperature: 0.2\n  max_tokens: 800\n  tags: [a, b]\n  batch: true\nempty:\n").unwrap();
-        assert_eq!(doc, json!({"fast": {"provider": "anthropic", "temperature": 0.2, "max_tokens": 800, "tags": ["a", "b"], "batch": true}, "empty": null}));
+        assert_eq!(
+            doc,
+            json!({"fast": {"provider": "anthropic", "temperature": 0.2, "max_tokens": 800, "tags": ["a", "b"], "batch": true}, "empty": null})
+        );
         assert_eq!(parse("").unwrap(), json!({}));
         assert_eq!(parse("# only comments\n").unwrap(), json!({}));
         assert!(parse("a: [").unwrap_err().starts_with("invalid YAML"));

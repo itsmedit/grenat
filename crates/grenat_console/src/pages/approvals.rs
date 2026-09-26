@@ -25,11 +25,22 @@ pub(crate) fn list(ctx: &mut Ctx) -> Result {
         .collect();
     let history: Vec<Vec<String>> = decided
         .iter()
-        .map(|a| vec![clip(&a.message, 90), format!("<a href=\"/jobs/{0}\">job {0}</a>", a.job_id), decision(a.decision), ago(a.decided_at.unwrap_or(0.0), ctx.now)])
+        .map(|a| {
+            vec![
+                clip(&a.message, 90),
+                format!("<a href=\"/jobs/{0}\">job {0}</a>", a.job_id),
+                decision(a.decision),
+                ago(a.decided_at.unwrap_or(0.0), ctx.now),
+            ]
+        })
         .collect();
     let body = format!(
         "{}<p class=\"muted\">A job waits for each of these. Deciding queues it again: it resumes where it stopped.</p>{}<h2>Decided</h2>{}",
-        ctx.notice(&[("approved", "Approved: the job runs again."), ("denied", "Denied: the job runs again, and fails."), ("stale", "This approval was already decided.")]),
+        ctx.notice(&[
+            ("approved", "Approved: the job runs again."),
+            ("denied", "Denied: the job runs again, and fails."),
+            ("stale", "This approval was already decided.")
+        ]),
         table(&["Question", "Job", "Asked", ""], &rows, "Nothing waits for a human."),
         table(&["Question", "Job", "Decision", "When"], &history, "No decision yet."),
     );

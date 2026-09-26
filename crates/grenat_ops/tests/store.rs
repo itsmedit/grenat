@@ -36,7 +36,11 @@ fn a_job_is_queued_claimed_once_and_finished() {
         assert_eq!((job.status, job.attempts, job.created_at, job.updated_at), (Status::Done, 1, 90.0, 201.0));
         assert_eq!(jobs::queued(db).unwrap().iter().map(|j| j.id).collect::<Vec<_>>(), [later]);
         let counts = jobs::counts(db).unwrap();
-        assert!(counts.contains(&(Status::Done, 1)) && counts.contains(&(Status::Queued, 1)) && counts.contains(&(Status::Failed, 0)));
+        assert!(
+            counts.contains(&(Status::Done, 1))
+                && counts.contains(&(Status::Queued, 1))
+                && counts.contains(&(Status::Failed, 0))
+        );
         assert_eq!(jobs::list(db, None, 10).unwrap()[0].id, later, "newest first");
         assert!(jobs::get(db, 999).unwrap().is_none());
     });
@@ -168,7 +172,11 @@ fn journals_are_written_read_and_listed() {
     journal::append_step(&path, "draft", 0, &json!("A draft")).unwrap();
     journal::append_step(&path, "draft", 1, &json!("Another")).unwrap();
     // a line cut by a crash
-    std::fs::OpenOptions::new().append(true).open(&path).and_then(|mut f| std::io::Write::write_all(&mut f, b"{\"step\": \"rev")).unwrap();
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .and_then(|mut f| std::io::Write::write_all(&mut f, b"{\"step\": \"rev"))
+        .unwrap();
     let read = journal::read(&path).unwrap();
     assert_eq!(read.steps.len(), 2);
     assert_eq!((read.steps[1].name.as_str(), read.steps[1].n), ("draft", 1));

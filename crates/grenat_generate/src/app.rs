@@ -16,9 +16,11 @@ pub fn create_app(dir: &Path, name: &str) -> Result<Vec<Change>, String> {
         return Err(format!("{} already exists", dir.display()));
     }
     let mut writer = Writer::new(dir);
-    let manifest = format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nmain = \"{APP_FILE}\"\n\n[dependencies]\n");
+    let manifest =
+        format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nmain = \"{APP_FILE}\"\n\n[dependencies]\n");
     writer.create(grenat_package::MANIFEST, &manifest)?;
-    writer.create(grenat_package::facetfile::FACETFILE, "# The facets this application uses (`setter add <name>`).\n")?;
+    writer
+        .create(grenat_package::facetfile::FACETFILE, "# The facets this application uses (`setter add <name>`).\n")?;
     writer.create(".gitignore", &format!(".grenat/\ndb/*.db\n{}\n", grenat_config::credentials::IGNORED.join("\n")))?;
     writer.create("README.md", &templates::fill(templates::README, &names))?;
     writer.create("config/models.yml", templates::MODELS)?;

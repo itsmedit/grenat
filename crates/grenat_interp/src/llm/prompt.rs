@@ -88,7 +88,8 @@ fn merge_messages(parts: Vec<(&'static str, Vec<Json>)>) -> Vec<Json> {
     merged
         .into_iter()
         .map(|(role, blocks)| {
-            let texts: Vec<&str> = blocks.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str()).collect();
+            let texts: Vec<&str> =
+                blocks.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str()).collect();
             let text = texts.join("\n\n");
             let attachments: Vec<Json> = blocks.iter().filter(|b| b["type"] != "text").cloned().collect();
             if attachments.is_empty() {

@@ -33,7 +33,12 @@ pub struct Catalogued {
     pub max_tokens_field: &'static str,
 }
 
-const fn openai_like(name: &'static str, base_url: &'static str, key_variable: &'static str, strict_schemas: bool) -> Catalogued {
+const fn openai_like(
+    name: &'static str,
+    base_url: &'static str,
+    key_variable: &'static str,
+    strict_schemas: bool,
+) -> Catalogued {
     Catalogued {
         name,
         protocol: Protocol::OpenAi,

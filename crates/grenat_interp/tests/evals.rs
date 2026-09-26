@@ -43,7 +43,11 @@ fn cat_judge() -> Scripted {
 #[test]
 fn an_eval_scores_every_row_with_a_judge() {
     let dir = temp_dir("judge");
-    dataset(&dir, "rows.jsonl", &[json!({"text": "a cat"}), json!({"text": "a dog"}), json!({"text": "cats!"}), json!({"text": "boom"})]);
+    dataset(
+        &dir,
+        "rows.jsonl",
+        &[json!({"text": "a cat"}), json!({"text": "a dog"}), json!({"text": "cats!"}), json!({"text": "boom"})],
+    );
     let src = format!(
         "{MODEL}\
 eval \"about cats\", dataset: \"rows.jsonl\", threshold: 0.5 do |row|

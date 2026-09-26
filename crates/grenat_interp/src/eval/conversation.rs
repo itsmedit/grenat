@@ -48,7 +48,10 @@ impl<'p> Interp<'p> {
                 ("system", v) => state.system = v.to_display(),
                 ("keep", Value::Int(n)) if *n >= 2 => state.keep = *n as usize,
                 (option, v) => {
-                    return raise("ArgumentError", format!("invalid `Conversation` option `{option}: {}`", v.inspect()));
+                    return raise(
+                        "ArgumentError",
+                        format!("invalid `Conversation` option `{option}: {}`", v.inspect()),
+                    );
                 }
             }
         }
@@ -67,7 +70,12 @@ impl<'p> Interp<'p> {
                             .map(|turns| {
                                 turns
                                     .iter()
-                                    .map(|t| (t["role"].as_str().unwrap_or("user").to_string(), t["text"].as_str().unwrap_or_default().to_string()))
+                                    .map(|t| {
+                                        (
+                                            t["role"].as_str().unwrap_or("user").to_string(),
+                                            t["text"].as_str().unwrap_or_default().to_string(),
+                                        )
+                                    })
                                     .collect()
                             })
                             .unwrap_or_default();
@@ -111,9 +119,11 @@ impl<'p> Interp<'p> {
             "save" => {
                 let path = str_arg(args, 0, name)?.to_string();
                 self.check_fs("fs.write", &path)?;
-                let turns: Vec<Json> = state.turns.iter().map(|(role, text)| json!({"role": role, "text": text})).collect();
+                let turns: Vec<Json> =
+                    state.turns.iter().map(|(role, text)| json!({"role": role, "text": text})).collect();
                 let saved = json!({"summary": state.summary, "turns": turns});
-                std::fs::write(&path, saved.to_string()).or_else(|e| raise("IoError", format!("writing `{path}`: {e}")))?;
+                std::fs::write(&path, saved.to_string())
+                    .or_else(|e| raise("IoError", format!("writing `{path}`: {e}")))?;
                 Ok(Value::Nil)
             }
             _ => raise("NoMethodError", format!("unknown method `{name}` for a conversation")),

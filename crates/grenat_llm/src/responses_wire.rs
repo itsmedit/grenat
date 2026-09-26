@@ -82,14 +82,22 @@ fn translate(message: &Json, provider: &Catalogued, out: &mut Vec<Json>) -> Resu
 
 fn part(block: &Json, provider: &Catalogued) -> Result<Json, LlmError> {
     let source = &block["source"];
-    let data_url = || format!("data:{};base64,{}", source["media_type"].as_str().unwrap_or_default(), source["data"].as_str().unwrap_or_default());
+    let data_url = || {
+        format!(
+            "data:{};base64,{}",
+            source["media_type"].as_str().unwrap_or_default(),
+            source["data"].as_str().unwrap_or_default()
+        )
+    };
     Ok(match (block["type"].as_str(), source["type"].as_str()) {
         (Some("text"), _) => json!({"type": "input_text", "text": block["text"]}),
         (Some("image"), Some("url")) => json!({"type": "input_image", "image_url": source["url"]}),
         (Some("image"), _) => json!({"type": "input_image", "image_url": data_url()}),
         (Some("document"), Some("url")) => json!({"type": "input_file", "file_url": source["url"]}),
         (Some("document"), _) => json!({"type": "input_file", "filename": "document.pdf", "file_data": data_url()}),
-        (other, _) => return Err(LlmError::new(format!("unsupported content {other:?} for the provider `{}`", provider.name))),
+        (other, _) => {
+            return Err(LlmError::new(format!("unsupported content {other:?} for the provider `{}`", provider.name)));
+        }
     })
 }
 

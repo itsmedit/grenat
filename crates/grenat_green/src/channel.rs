@@ -25,7 +25,8 @@ pub struct Receiver<T> {
 }
 
 pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
-    let shared = Arc::new(std::sync::Mutex::new(State { items: VecDeque::new(), senders: 1, open: true, receiver: None }));
+    let shared =
+        Arc::new(std::sync::Mutex::new(State { items: VecDeque::new(), senders: 1, open: true, receiver: None }));
     (Sender { shared: shared.clone() }, Receiver { shared })
 }
 

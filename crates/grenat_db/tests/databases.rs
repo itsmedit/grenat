@@ -14,17 +14,30 @@ fn exercise(db: &mut dyn Connection, temp: &str) {
     ))
     .unwrap();
     let insert = "INSERT INTO orders (id, customer, total, paid) VALUES (?, ?, ?, ?)";
-    assert_eq!(db.execute(insert, &[Cell::Int(1), Cell::Text("Ada".into()), Cell::Float(9.5), Cell::Bool(true)]).unwrap(), 1);
-    db.execute(insert, &[Cell::Int(2), Cell::Text("O'Brien; DROP TABLE orders".into()), Cell::Null, Cell::Bool(false)]).unwrap();
+    assert_eq!(
+        db.execute(insert, &[Cell::Int(1), Cell::Text("Ada".into()), Cell::Float(9.5), Cell::Bool(true)]).unwrap(),
+        1
+    );
+    db.execute(insert, &[Cell::Int(2), Cell::Text("O'Brien; DROP TABLE orders".into()), Cell::Null, Cell::Bool(false)])
+        .unwrap();
 
     let rows = db.query("SELECT id, customer, total FROM orders WHERE id >= ? ORDER BY id", &[Cell::Int(1)]).unwrap();
     assert_eq!(rows.len(), 2);
-    assert_eq!(rows[0], vec![("id".into(), Cell::Int(1)), ("customer".into(), Cell::Text("Ada".into())), ("total".into(), Cell::Float(9.5))]);
+    assert_eq!(
+        rows[0],
+        vec![
+            ("id".into(), Cell::Int(1)),
+            ("customer".into(), Cell::Text("Ada".into())),
+            ("total".into(), Cell::Float(9.5))
+        ]
+    );
     // a value is never SQL: the "injection" is stored as it is
     assert_eq!(rows[1][1].1, Cell::Text("O'Brien; DROP TABLE orders".into()));
     assert_eq!(rows[1][2].1, Cell::Null);
     // a `?` in a literal is not a placeholder
-    let rows = db.query("SELECT '?' AS mark, count(*) AS n FROM orders WHERE customer = ?", &[Cell::Text("Ada".into())]).unwrap();
+    let rows = db
+        .query("SELECT '?' AS mark, count(*) AS n FROM orders WHERE customer = ?", &[Cell::Text("Ada".into())])
+        .unwrap();
     assert_eq!(rows[0][0].1, Cell::Text("?".into()));
     assert_eq!(rows[0][1].1, Cell::Int(1));
     assert!(db.query("SELECT nope FROM orders", &[]).unwrap_err().contains("nope"));

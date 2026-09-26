@@ -38,13 +38,15 @@ impl OpenAi {
     }
 
     fn send(&self, path: &str, body: &Json) -> crate::retry::Attempt {
-        let mut request = self.agent.post(format!("{}{path}", self.base_url)).header("content-type", "application/json");
+        let mut request =
+            self.agent.post(format!("{}{path}", self.base_url)).header("content-type", "application/json");
         if let Some(key) = &self.api_key {
             request = request.header("authorization", &format!("Bearer {key}"));
         }
         let mut response = request.send_json(body).map_err(|e| format!("connection failed: {e}"))?;
         let status = response.status().as_u16();
-        let retry_after = response.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok());
+        let retry_after =
+            response.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok());
         let text = response.body_mut().read_to_string().map_err(|e| format!("unreadable response: {e}"))?;
         let json = serde_json::from_str(&text).unwrap_or(Json::String(text));
         Ok((status, retry_after, json))

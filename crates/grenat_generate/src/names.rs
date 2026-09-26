@@ -11,7 +11,9 @@ pub struct Names {
 impl Names {
     pub fn new(name: &str) -> Result<Names, String> {
         if !valid(name) {
-            return Err(format!("invalid name `{name}`: use lowercase letters, digits and `_`, starting with a letter"));
+            return Err(format!(
+                "invalid name `{name}`: use lowercase letters, digits and `_`, starting with a letter"
+            ));
         }
         Ok(Names { snake: name.to_string(), camel: camel(name), plural: plural(name) })
     }

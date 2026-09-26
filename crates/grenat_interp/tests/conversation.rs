@@ -38,7 +38,9 @@ p chat.say(\"And what do I like?\")
     assert_eq!(requests[1]["messages"].as_array().unwrap().len(), 3);
     assert_eq!(requests[1]["system"], "Be brief.");
     // after 3 exchanges (keep: 2), the oldest one is compacted
-    assert!(requests[3]["messages"][0]["content"].as_str().unwrap().contains("user: I am Ada\nassistant: re: I am Ada\n"));
+    assert!(
+        requests[3]["messages"][0]["content"].as_str().unwrap().contains("user: I am Ada\nassistant: re: I am Ada\n")
+    );
     // then the summary goes with the system prompt, and the old turns do not
     assert_eq!(requests[4]["system"], "Be brief.\n\nEarlier in this conversation:\nThe user is Ada.");
     assert_eq!(requests[4]["messages"].as_array().unwrap().len(), 5);

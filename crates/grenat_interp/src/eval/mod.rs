@@ -23,9 +23,9 @@ pub(crate) mod mcp;
 mod native;
 mod ops;
 mod pattern;
+pub(crate) mod records;
 pub(crate) mod secrets;
 pub(crate) mod store;
-pub(crate) mod records;
 pub(crate) mod workflow;
 
 pub(crate) use assign::set_field;

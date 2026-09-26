@@ -67,7 +67,9 @@ impl Printer<'_> {
     pub(crate) fn stmt(&mut self, e: &Expr) {
         let text = self.source(e.span);
         match &e.kind {
-            ExprKind::If { cond, then, else_: None } if then.len() == 1 && !starts_with_word(text, &["if", "unless"]) => {
+            ExprKind::If { cond, then, else_: None }
+                if then.len() == 1 && !starts_with_word(text, &["if", "unless"]) =>
+            {
                 self.stmt(&then[0]);
                 let keyword = self.keyword_between(then[0].span.end, cond.span.start, &["unless", "if"]);
                 self.condition(keyword, cond);
@@ -105,7 +107,11 @@ impl Printer<'_> {
     /// Which of `keywords` the source has between `from` and `to`.
     fn keyword_between<'k>(&self, from: u32, to: u32, keywords: &[&'k str]) -> &'k str {
         let text = &self.src[from as usize..to as usize];
-        keywords.iter().copied().find(|k| text.split_whitespace().any(|w| w == *k)).unwrap_or(keywords[keywords.len() - 1])
+        keywords
+            .iter()
+            .copied()
+            .find(|k| text.split_whitespace().any(|w| w == *k))
+            .unwrap_or(keywords[keywords.len() - 1])
     }
 
     // ── Control flow ─────────────────────────────────────────
@@ -116,7 +122,10 @@ impl Printer<'_> {
             ExprKind::If { cond, then, else_: Some(otherwise) }
                 if then.len() == 1
                     && otherwise.len() == 1
-                    && !starts_with_word(self.source(e.span).trim_start_matches(['(', ' ', '\n']), &["if", "unless"]) =>
+                    && !starts_with_word(
+                        self.source(e.span).trim_start_matches(['(', ' ', '\n']),
+                        &["if", "unless"],
+                    ) =>
             {
                 self.expr(cond);
                 self.write(" ? ");
@@ -309,7 +318,8 @@ impl Printer<'_> {
             }
         }
         if let Some(guard) = &arm.guard {
-            let unless = self.source(arm.span).contains(" unless ") && matches!(guard.kind, ExprKind::Unary { op: UnOp::Not, .. });
+            let unless = self.source(arm.span).contains(" unless ")
+                && matches!(guard.kind, ExprKind::Unary { op: UnOp::Not, .. });
             self.write(if unless { " unless " } else { " if " });
             match (&guard.kind, unless) {
                 (ExprKind::Unary { op: UnOp::Not, expr }, true) => self.expr(expr),
@@ -439,5 +449,7 @@ impl Printer<'_> {
 
 /// `text` begins with one of `words`, as a whole word.
 pub(crate) fn starts_with_word(text: &str, words: &[&str]) -> bool {
-    words.iter().any(|w| text.strip_prefix(w).is_some_and(|rest| !rest.starts_with(|c: char| c.is_alphanumeric() || c == '_')))
+    words
+        .iter()
+        .any(|w| text.strip_prefix(w).is_some_and(|rest| !rest.starts_with(|c: char| c.is_alphanumeric() || c == '_')))
 }

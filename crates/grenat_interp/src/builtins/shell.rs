@@ -18,7 +18,6 @@ use std::time::Duration;
 use crate::prelude::*;
 use crate::process::{ProcessReply, ProcessRequest};
 
-
 /// The record `Shell.run` returns.
 pub(crate) const SHELL_RESULT: &str = "ShellResult";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -31,10 +30,18 @@ pub(crate) fn call_shell<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p>
         return raise("TaintError", "an untrusted value reaches `Shell.run` (effect `shell`) without validation");
     }
     let argv: Vec<String> = match args.pos.first() {
-        Some(Value::Array(items)) if !items.borrow().is_empty() => items.borrow().iter().map(Value::to_display).collect(),
-        _ => return raise("ArgumentError", "`Shell.run` expects a program and its arguments: `Shell.run([\"git\", \"status\"])`"),
+        Some(Value::Array(items)) if !items.borrow().is_empty() => {
+            items.borrow().iter().map(Value::to_display).collect()
+        }
+        _ => {
+            return raise(
+                "ArgumentError",
+                "`Shell.run` expects a program and its arguments: `Shell.run([\"git\", \"status\"])`",
+            );
+        }
     };
-    let program = std::path::Path::new(&argv[0]).file_name().map_or(argv[0].clone(), |n| n.to_string_lossy().into_owned());
+    let program =
+        std::path::Path::new(&argv[0]).file_name().map_or(argv[0].clone(), |n| n.to_string_lossy().into_owned());
     interp.check_program(&program)?;
     let mut request = ProcessRequest { argv, cwd: None, env: Vec::new(), timeout: DEFAULT_TIMEOUT, network: true };
     for (option, value) in &args.named {

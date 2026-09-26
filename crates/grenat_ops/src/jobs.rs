@@ -87,7 +87,8 @@ pub fn enqueue(db: &mut dyn Connection, name: &str, args: &str, run_at: f64, now
         "INSERT INTO {TABLE} (name, args, status, attempts, run_at, created_at, updated_at) \
          VALUES (?, ?, 'queued', 0, ?, ?, ?) RETURNING id"
     );
-    let params = [Cell::Text(name.into()), Cell::Text(args.into()), Cell::Float(run_at), Cell::Float(now), Cell::Float(now)];
+    let params =
+        [Cell::Text(name.into()), Cell::Text(args.into()), Cell::Float(run_at), Cell::Float(now), Cell::Float(now)];
     let rows = db.query(&sql, &params)?;
     Ok(rows.first().map_or(0, |r| int(r, 0)))
 }
@@ -133,7 +134,8 @@ pub fn counts(db: &mut dyn Connection) -> Result<Vec<(Status, i64)>> {
 /// The next queued job due by `due`, not claimed yet.
 pub fn next_due(db: &mut dyn Connection, due: f64) -> Result<Option<Job>> {
     ensure(db)?;
-    let sql = format!("SELECT {COLUMNS} FROM {TABLE} WHERE status = 'queued' AND run_at <= ? ORDER BY run_at, id LIMIT 1");
+    let sql =
+        format!("SELECT {COLUMNS} FROM {TABLE} WHERE status = 'queued' AND run_at <= ? ORDER BY run_at, id LIMIT 1");
     Ok(db.query(&sql, &[Cell::Float(due)])?.first().map(job))
 }
 
@@ -162,7 +164,9 @@ pub fn fail(db: &mut dyn Connection, id: i64, attempts: i64, error: &str, now: f
 
 /// Job `id` failed, and runs again at `run_at`.
 pub fn retry_later(db: &mut dyn Connection, id: i64, attempts: i64, run_at: f64, error: &str, now: f64) -> Result<()> {
-    let sql = format!("UPDATE {TABLE} SET status = 'queued', attempts = ?, run_at = ?, error = ?, updated_at = ? WHERE id = ?");
+    let sql = format!(
+        "UPDATE {TABLE} SET status = 'queued', attempts = ?, run_at = ?, error = ?, updated_at = ? WHERE id = ?"
+    );
     let params = [Cell::Int(attempts), Cell::Float(run_at), Cell::Text(error.into()), Cell::Float(now), Cell::Int(id)];
     db.execute(&sql, &params).map(drop)
 }
@@ -171,7 +175,9 @@ pub fn retry_later(db: &mut dyn Connection, id: i64, attempts: i64, run_at: f64,
 /// resumes from its journal): whether there was such a job.
 pub fn retry(db: &mut dyn Connection, id: i64, now: f64) -> Result<bool> {
     ensure(db)?;
-    let sql = format!("UPDATE {TABLE} SET status = 'queued', attempts = 0, run_at = ?, updated_at = ? WHERE id = ? AND status = 'failed'");
+    let sql = format!(
+        "UPDATE {TABLE} SET status = 'queued', attempts = 0, run_at = ?, updated_at = ? WHERE id = ? AND status = 'failed'"
+    );
     Ok(db.execute(&sql, &[Cell::Float(now), Cell::Float(now), Cell::Int(id)])? == 1)
 }
 

@@ -13,7 +13,9 @@ pub fn handle(message: &Json) -> Option<Json> {
     let id = message.get("id")?.clone();
     let params = &message["params"];
     let result = match message["method"].as_str()? {
-        "initialize" => json!({"protocolVersion": crate::PROTOCOL_VERSION, "capabilities": {"tools": {}}, "serverInfo": {"name": "fake"}}),
+        "initialize" => {
+            json!({"protocolVersion": crate::PROTOCOL_VERSION, "capabilities": {"tools": {}}, "serverInfo": {"name": "fake"}})
+        }
         "tools/list" if params.get("cursor").is_none() => json!({
             "tools": [
                 {"name": "echo", "description": "Echoes a text.", "annotations": {"readOnlyHint": true},
@@ -39,7 +41,11 @@ pub fn handle(message: &Json) -> Option<Json> {
                 _ => json!({"content": [{"type": "text", "text": "no such tool"}], "isError": true}),
             }
         }
-        other => return Some(json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32601, "message": format!("unknown method {other}")}})),
+        other => {
+            return Some(
+                json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32601, "message": format!("unknown method {other}")}}),
+            );
+        }
     };
     Some(json!({"jsonrpc": "2.0", "id": id, "result": result}))
 }

@@ -75,5 +75,7 @@ fn models_are_declared_once_from_a_known_provider() {
     assert!(d.message.contains("declared twice"), "{}", d.message);
     let d = single("model :x, provider: :opanai, name: \"gpt-5\"\n", "E0500", ":opanai");
     assert_eq!(d.help.as_deref(), Some("did you mean `openai`?"));
-    clean("model :x, provider: :ollama, name: \"llama3.3\", base_url: \"http://gpu:11434/v1\", price: {input: 0, output: 0}\n");
+    clean(
+        "model :x, provider: :ollama, name: \"llama3.3\", base_url: \"http://gpu:11434/v1\", price: {input: 0, output: 0}\n",
+    );
 }

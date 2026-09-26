@@ -88,9 +88,10 @@ impl<'p> Interp<'p> {
         }
         let api_key = self.api_key(catalogued)?;
         let client: Arc<dyn grenat_llm::Provider> = match catalogued.protocol {
-            Protocol::Anthropic => {
-                Arc::new(Anthropic::new(api_key.unwrap_or_default(), base_url.as_deref().unwrap_or(catalogued.base_url)))
-            }
+            Protocol::Anthropic => Arc::new(Anthropic::new(
+                api_key.unwrap_or_default(),
+                base_url.as_deref().unwrap_or(catalogued.base_url),
+            )),
             Protocol::OpenAi | Protocol::Responses => Arc::new(OpenAi::new(*catalogued, api_key, base_url.as_deref())),
         };
         // several tasks may create the client at the same time: the first one wins
@@ -101,7 +102,8 @@ impl<'p> Interp<'p> {
     /// environment variable (`OPENAI_API_KEY`…).
     fn api_key(&mut self, provider: &catalog::Catalogued) -> Result<Option<String>, Ctrl<'p>> {
         let credentials = self.credentials_tree();
-        let from_credentials = credentials.as_ref().ok().and_then(|c| c[provider.name]["api_key"].as_str()).map(String::from);
+        let from_credentials =
+            credentials.as_ref().ok().and_then(|c| c[provider.name]["api_key"].as_str()).map(String::from);
         let key = from_credentials.or_else(|| std::env::var(provider.key_variable).ok()).filter(|k| !k.is_empty());
         if key.is_none() && provider.key_required {
             let mut message = format!(

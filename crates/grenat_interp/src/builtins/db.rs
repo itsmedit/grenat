@@ -60,7 +60,10 @@ pub(crate) fn database_method<'p>(interp: &mut Interp<'p>, fields: &Fields<'p>, 
     let sql = |args: &Args<'p>| -> Result<String, Ctrl<'p>> {
         let text = arg(args, 0, name)?;
         if text.contains_taint() {
-            return raise("TaintError", format!("an untrusted value is SQL text in `{name}`: pass values as parameters"));
+            return raise(
+                "TaintError",
+                format!("an untrusted value is SQL text in `{name}`: pass values as parameters"),
+            );
         }
         Ok(text.to_display())
     };
@@ -71,7 +74,9 @@ pub(crate) fn database_method<'p>(interp: &mut Interp<'p>, fields: &Fields<'p>, 
             let rows = grenat_green::blocking(|| connection.lock().query(&sql, &params)).or_else(db_error)?;
             let record = match args.named.iter().find(|(n, _)| n == "as") {
                 Some((_, Value::Type(ty))) => Some(ty.clone()),
-                Some((_, other)) => return raise("TypeError", format!("`as:` expects a type, got {}", other.inspect())),
+                Some((_, other)) => {
+                    return raise("TypeError", format!("`as:` expects a type, got {}", other.inspect()));
+                }
                 None => None,
             };
             let take = if name == "first" { 1 } else { rows.len() };
@@ -124,7 +129,10 @@ pub(crate) fn db_error<'p, T>(message: String) -> Result<T, Ctrl<'p>> {
 fn params<'p>(args: &Args<'p>, write: bool) -> Result<Vec<Cell>, Ctrl<'p>> {
     let Some(list) = args.pos.get(1) else { return Ok(Vec::new()) };
     if write && list.contains_taint() {
-        return raise("TaintError", "an untrusted value reaches a database write (effect `db.write`) without validation");
+        return raise(
+            "TaintError",
+            "an untrusted value reaches a database write (effect `db.write`) without validation",
+        );
     }
     let Value::Array(items) = list.untainted() else {
         return raise("TypeError", format!("parameters are an array, got {}", list.inspect()));
@@ -134,7 +142,9 @@ fn params<'p>(args: &Args<'p>, write: bool) -> Result<Vec<Cell>, Ctrl<'p>> {
 
 pub(crate) fn cell<'p>(value: &Value<'p>) -> Result<Cell, Ctrl<'p>> {
     Ok(match value.untainted() {
-        Value::Secret(_) => return raise("SecretError", "a secret is never written to a database: it stays in the credentials"),
+        Value::Secret(_) => {
+            return raise("SecretError", "a secret is never written to a database: it stays in the credentials");
+        }
         Value::Nil => Cell::Null,
         Value::Bool(b) => Cell::Bool(*b),
         Value::Int(n) => Cell::Int(*n),
@@ -157,7 +167,9 @@ pub(crate) fn cell_value<'p>(cell: Cell) -> Value<'p> {
 /// A row as a hash (column → value), or as a record of type `record`.
 fn row_value<'p>(interp: &mut Interp<'p>, row: grenat_db::Row, record: Option<&str>) -> R<'p> {
     match record {
-        None => Ok(Value::Hash(Arc::new(Mutex::new(row.into_iter().map(|(k, c)| (Value::str(k), cell_value(c))).collect())))),
+        None => Ok(Value::Hash(Arc::new(Mutex::new(
+            row.into_iter().map(|(k, c)| (Value::str(k), cell_value(c))).collect(),
+        )))),
         Some(ty) => {
             let named = row.into_iter().map(|(k, c)| (k, cell_value(c))).collect();
             interp.construct(ty, Args { named, ..Args::default() })

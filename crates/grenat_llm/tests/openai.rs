@@ -112,7 +112,10 @@ fn client(url: &str, provider: Catalogued, key: Option<&str>) -> OpenAi {
 fn a_conversation_with_tools_is_translated_both_ways() {
     let (url, received) = serve(vec![(
         200,
-        answer(json!({"role": "assistant", "content": null, "tool_calls": [{"id": "call_2", "type": "function", "function": {"name": "search", "arguments": "{\"q\":\"rust\"}"}}]}), "tool_calls"),
+        answer(
+            json!({"role": "assistant", "content": null, "tool_calls": [{"id": "call_2", "type": "function", "function": {"name": "search", "arguments": "{\"q\":\"rust\"}"}}]}),
+            "tool_calls",
+        ),
     )]);
     let mut model = ModelConfig::new("openai", "gpt-5");
     model.temperature = Some(0.2);
@@ -125,8 +128,14 @@ fn a_conversation_with_tools_is_translated_both_ways() {
     let response = client(&url, chat(), Some("sk-test")).complete(&request(&model, history)).unwrap();
     assert_eq!(response.stop_reason, "tool_use");
     let uses = response.tool_uses();
-    assert_eq!((uses[0].id.as_str(), uses[0].name.as_str(), &uses[0].input), ("call_2", "search", &json!({"q": "rust"})));
-    assert_eq!((response.usage.input_tokens, response.usage.cache_read_input_tokens, response.usage.output_tokens), (100, 20, 7));
+    assert_eq!(
+        (uses[0].id.as_str(), uses[0].name.as_str(), &uses[0].input),
+        ("call_2", "search", &json!({"q": "rust"}))
+    );
+    assert_eq!(
+        (response.usage.input_tokens, response.usage.cache_read_input_tokens, response.usage.output_tokens),
+        (100, 20, 7)
+    );
     assert_eq!(response.model, "gpt-5-2026-08-01");
 
     let received = received.lock().unwrap();
@@ -137,11 +146,17 @@ fn a_conversation_with_tools_is_translated_both_ways() {
     assert_eq!(body["model"], "gpt-5");
     assert_eq!(body["max_completion_tokens"], 16_000);
     assert_eq!((body["temperature"].clone(), body["reasoning_effort"].clone()), (json!(0.2), json!("low")));
-    assert_eq!(body["tools"][0], json!({"type": "function", "function": {"name": "search", "description": "Searches", "parameters": request(&model, vec![]).tools[0].input_schema, "strict": true}}));
+    assert_eq!(
+        body["tools"][0],
+        json!({"type": "function", "function": {"name": "search", "description": "Searches", "parameters": request(&model, vec![]).tools[0].input_schema, "strict": true}})
+    );
     let messages = body["messages"].as_array().unwrap();
     assert_eq!(messages[0], json!({"role": "system", "content": "be brief"}));
     assert_eq!(messages[1], json!({"role": "user", "content": "Find it"}));
-    assert_eq!(messages[2], json!({"role": "assistant", "content": "Looking.", "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "search", "arguments": "{\"q\":\"grenat\"}"}}]}));
+    assert_eq!(
+        messages[2],
+        json!({"role": "assistant", "content": "Looking.", "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "search", "arguments": "{\"q\":\"grenat\"}"}}]})
+    );
     assert_eq!(messages[3], json!({"role": "tool", "tool_call_id": "call_1", "content": "Error: nothing"}));
 }
 
@@ -152,7 +167,10 @@ fn structured_output_strict_or_in_json_mode() {
     let mut strict = request(&model, vec![json!({"role": "user", "content": "Summarize"})]);
     strict.output_schema = Some(schema.clone());
     let body = chat_body(&strict, &chat()).unwrap();
-    assert_eq!(body["response_format"], json!({"type": "json_schema", "json_schema": {"name": "answer", "schema": schema, "strict": true}}));
+    assert_eq!(
+        body["response_format"],
+        json!({"type": "json_schema", "json_schema": {"name": "answer", "schema": schema, "strict": true}})
+    );
     // a provider without strict schemas: JSON mode, the schema in the instructions, tools not strict
     let body = chat_body(&strict, &provider("groq")).unwrap();
     assert_eq!(body["response_format"], json!({"type": "json_object"}));
@@ -175,9 +193,13 @@ fn images_and_documents() {
     let parts = &body["messages"][1]["content"];
     assert_eq!(parts[0], json!({"type": "image_url", "image_url": {"url": "data:image/png;base64,AAA"}}));
     assert_eq!(parts[1], json!({"type": "image_url", "image_url": {"url": "https://x/y.png"}}));
-    assert_eq!(parts[2], json!({"type": "file", "file": {"filename": "document.pdf", "file_data": "data:application/pdf;base64,JVBE"}}));
+    assert_eq!(
+        parts[2],
+        json!({"type": "file", "file": {"filename": "document.pdf", "file_data": "data:application/pdf;base64,JVBE"}})
+    );
     assert_eq!(parts[3], json!({"type": "text", "text": "Read"}));
-    let e = chat_body(&request(&model, vec![json!({"role": "user", "content": content})]), &provider("ollama")).unwrap_err();
+    let e = chat_body(&request(&model, vec![json!({"role": "user", "content": content})]), &provider("ollama"))
+        .unwrap_err();
     assert_eq!(e.message, "the provider `ollama` does not read PDF documents");
 }
 
@@ -287,7 +309,10 @@ fn responses_structured_output_media_refusals_and_truncation() {
     let mut asked = request(&model, vec![json!({"role": "user", "content": content})]);
     asked.output_schema = Some(schema.clone());
     let body = grenat_llm::responses_body(&asked, &provider("openai")).unwrap();
-    assert_eq!(body["text"]["format"], json!({"type": "json_schema", "name": "answer", "schema": schema, "strict": true}));
+    assert_eq!(
+        body["text"]["format"],
+        json!({"type": "json_schema", "name": "answer", "schema": schema, "strict": true})
+    );
     assert_eq!(
         body["input"][0]["content"],
         json!([
@@ -300,7 +325,10 @@ fn responses_structured_output_media_refusals_and_truncation() {
     let (url, _) = serve(vec![
         (200, message(json!([{"type": "output_text", "text": "{\"title\":\"x\"}"}]))),
         (200, message(json!([{"type": "refusal", "refusal": "no"}]))),
-        (200, json!({"model": "m", "status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}, "output": [], "usage": {}})),
+        (
+            200,
+            json!({"model": "m", "status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}, "output": [], "usage": {}}),
+        ),
     ]);
     let c = client(&url, provider("openai"), Some("k"));
     let answer = c.complete(&asked).unwrap();

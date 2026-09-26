@@ -112,7 +112,8 @@ fn library_path(name: &str) -> Result<PathBuf, String> {
     let exe = env::current_exe().map_err(|e| e.to_string())?;
     let real = fs::canonicalize(&exe).unwrap_or_else(|_| exe.clone());
     let installed = |exe: &Path| exe.parent().and_then(Path::parent).map(|prefix| prefix.join("lib/grenat").join(name));
-    let candidates = [installed(&exe), installed(&real), Some(exe.with_file_name(name)), Some(real.with_file_name(name))];
+    let candidates =
+        [installed(&exe), installed(&real), Some(exe.with_file_name(name)), Some(real.with_file_name(name))];
     candidates
         .into_iter()
         .flatten()

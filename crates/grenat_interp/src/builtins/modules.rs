@@ -25,7 +25,13 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         ("Html", "escape") => {
             // escaping is what makes a value safe on a page
             let text = arg(&args, 0, name)?.to_display();
-            Ok(Value::str(text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")))
+            Ok(Value::str(
+                text.replace('&', "&amp;")
+                    .replace('<', "&lt;")
+                    .replace('>', "&gt;")
+                    .replace('"', "&quot;")
+                    .replace('\'', "&#39;"),
+            ))
         }
         ("Html", "text") => {
             let html = arg(&args, 0, name)?;

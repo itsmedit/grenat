@@ -36,7 +36,11 @@ impl<'d> Names<'d> {
 
     /// Namespace 0: functions, 1: data (as `cranelift_module` declares them).
     pub(crate) fn user(&self, name: &UserExternalName) -> String {
-        if name.namespace == 0 { self.function(FuncId::from_u32(name.index)) } else { self.data(DataId::from_u32(name.index)) }
+        if name.namespace == 0 {
+            self.function(FuncId::from_u32(name.index))
+        } else {
+            self.data(DataId::from_u32(name.index))
+        }
     }
 }
 

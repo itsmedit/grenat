@@ -38,7 +38,9 @@ enum Op {
     Le,
     /// `~>`: this version or later, below the next release of its
     /// next-to-last part (`~> 1.2` < 2.0, `~> 1.2.3` < 1.3).
-    Pessimistic { parts: usize },
+    Pessimistic {
+        parts: usize,
+    },
 }
 
 /// Every condition must hold.
@@ -58,7 +60,8 @@ impl Requirement {
                 .find_map(|op| part.strip_prefix(op).map(|rest| (*op, rest.trim())))
                 .unwrap_or(("=", part));
             // in a requirement, `2` is 2.0.0
-            let whole = rest.trim_start_matches('v').parse::<u64>().ok().map(|major| Version { major, minor: 0, patch: 0 });
+            let whole =
+                rest.trim_start_matches('v').parse::<u64>().ok().map(|major| Version { major, minor: 0, patch: 0 });
             let version =
                 Version::parse(rest).or(whole).ok_or_else(|| format!("`{part}`: expected a version such as 1.2.3"))?;
             let op = match op {

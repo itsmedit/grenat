@@ -43,8 +43,7 @@ pub struct Parsed {
 /// so that what goes wrong in expanded code is shown where it was invoked.
 pub fn parse_expansion(src: &str, span: grenat_ast::Span) -> Parsed {
     let mut lexed = lex(src);
-    let mut diagnostics: Vec<Diagnostic> =
-        lexed.errors.into_iter().map(|e| Diagnostic::new(span, e.message)).collect();
+    let mut diagnostics: Vec<Diagnostic> = lexed.errors.into_iter().map(|e| Diagnostic::new(span, e.message)).collect();
     relocate(&mut lexed.tokens, span);
     let docs = DocTable::new("", &[]);
     let mut parser = Parser::new(lexed.tokens, &docs);

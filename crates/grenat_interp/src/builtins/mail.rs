@@ -21,7 +21,11 @@ pub(crate) fn call_mail<'p>(interp: &mut Interp<'p>, name: &str, args: &Args<'p>
     match name {
         "connect" => {
             let url = text_arg(args, 0, name)?;
-            let Some(host) = url.split("://").nth(1).and_then(|rest| rest.rsplit('@').next()).and_then(|a| a.split([':', '/']).next())
+            let Some(host) = url
+                .split("://")
+                .nth(1)
+                .and_then(|rest| rest.rsplit('@').next())
+                .and_then(|a| a.split([':', '/']).next())
             else {
                 return raise("ArgumentError", format!("`Mail.connect` expects smtp://… or smtps://…, got {url:?}"));
             };
@@ -40,7 +44,9 @@ pub(crate) fn call_mail<'p>(interp: &mut Interp<'p>, name: &str, args: &Args<'p>
 
 /// `mailer.send(from:, to:, subject:, body:)`.
 pub(crate) fn mailer_send<'p>(interp: &mut Interp<'p>, fields: &Fields<'p>, args: &Args<'p>) -> R<'p> {
-    let Some(Value::Int(id)) = fields.first().map(|(_, v)| v.clone()) else { return raise("MailError", "not a mailer") };
+    let Some(Value::Int(id)) = fields.first().map(|(_, v)| v.clone()) else {
+        return raise("MailError", "not a mailer");
+    };
     let (url, host) = interp.mailers.borrow()[id as usize].clone();
     if args.named.iter().any(|(_, v)| v.contains_taint()) {
         return raise("TaintError", "an untrusted value reaches `send` (an email, effect `net`) without validation");

@@ -63,7 +63,13 @@ impl Setup {
         let (path, query) = target.split_once('?').unwrap_or((target, ""));
         let mut all = vec![("Host".to_string(), HOST.to_string())];
         all.extend(headers.iter().map(|(k, v)| (k.to_string(), v.to_string())));
-        let request = Request { method: method.into(), path: path.into(), query: query.into(), headers: all, body: body.as_bytes().to_vec() };
+        let request = Request {
+            method: method.into(),
+            path: path.into(),
+            query: query.into(),
+            headers: all,
+            body: body.as_bytes().to_vec(),
+        };
         self.console.handle(&request, self.db.as_mut(), &mut FakeMcp, NOW)
     }
 
@@ -100,7 +106,19 @@ fn waiting(db: &mut dyn Connection, message: &str) -> (i64, i64) {
 #[test]
 fn every_page_answers_with_the_security_headers() {
     let mut s = local("pages");
-    for page in ["/", "/approvals", "/jobs", "/jobs?status=failed", "/journals", "/costs", "/costs?days=30", "/evals", "/events", "/events?only=refusals", "/mcp"] {
+    for page in [
+        "/",
+        "/approvals",
+        "/jobs",
+        "/jobs?status=failed",
+        "/journals",
+        "/costs",
+        "/costs?days=30",
+        "/evals",
+        "/events",
+        "/events?only=refusals",
+        "/mcp",
+    ] {
         let response = s.get(page);
         assert_eq!(response.status, 200, "{page}: {}", response.body);
         assert!(response.body.contains("<title>"), "{page}");
@@ -153,7 +171,13 @@ fn a_form_from_elsewhere_changes_nothing() {
 #[test]
 fn a_local_console_answers_this_machine_only() {
     let mut s = local("rebinding");
-    let request = |host: &str| Request { method: "GET".into(), path: "/".into(), query: String::new(), headers: vec![("Host".into(), host.into())], body: Vec::new() };
+    let request = |host: &str| Request {
+        method: "GET".into(),
+        path: "/".into(),
+        query: String::new(),
+        headers: vec![("Host".into(), host.into())],
+        body: Vec::new(),
+    };
     assert_eq!(s.console.handle(&request("evil.example:4000"), s.db.as_mut(), &mut FakeMcp, NOW).status, 403);
     assert_eq!(s.console.handle(&request("localhost:4000"), s.db.as_mut(), &mut FakeMcp, NOW).status, 200);
     assert_eq!(s.console.handle(&request("127.0.0.1:4001"), s.db.as_mut(), &mut FakeMcp, NOW).status, 403);
@@ -193,7 +217,13 @@ fn a_failed_job_its_journal_and_its_retry() {
     let job = jobs::enqueue(s.db.as_mut(), "publish", "[7]", 0.0, NOW - 60.0).unwrap();
     jobs::claim(s.db.as_mut(), job, NOW - 50.0).unwrap();
     jobs::fail(s.db.as_mut(), job, 3, "IoError: <down>", NOW - 40.0).unwrap();
-    let call = calls::Call { at: NOW - 45.0, model: "claude-haiku-4-5".into(), job_id: Some(job), cost_usd: 0.25, ..calls::Call::default() };
+    let call = calls::Call {
+        at: NOW - 45.0,
+        model: "claude-haiku-4-5".into(),
+        job_id: Some(job),
+        cost_usd: 0.25,
+        ..calls::Call::default()
+    };
     calls::record(s.db.as_mut(), &call).unwrap();
     let path = journal::path(&s.journals, "publish", &[json!(7)], &[]);
     journal::append_step(&path, "draft", 0, &json!({"title": "<i>Rust</i>"})).unwrap();
@@ -236,13 +266,29 @@ fn costs_evals_refusals_and_mcp() {
     assert!(s.get("/costs?days=30").body.contains("$102.50"));
     assert!(s.get("/").body.contains("$2.50"));
 
-    let run = |at: f64, score: f64| evals::Run { at, name: "triage".into(), score, threshold: 0.8, passed: score >= 0.8, rows: 10, ..evals::Run::default() };
+    let run = |at: f64, score: f64| evals::Run {
+        at,
+        name: "triage".into(),
+        score,
+        threshold: 0.8,
+        passed: score >= 0.8,
+        rows: 10,
+        ..evals::Run::default()
+    };
     evals::record(s.db.as_mut(), &run(NOW - 7200.0, 0.7)).unwrap();
     evals::record(s.db.as_mut(), &run(NOW - 3600.0, 0.9)).unwrap();
     let page = s.get("/evals").body;
     assert!(page.contains("90%") && page.contains("<polyline") && page.contains("passed"), "{page}");
 
-    events::record(s.db.as_mut(), NOW - 60.0, "request", "GET /page", "TaintError", "an untrusted value reaches `html`").unwrap();
+    events::record(
+        s.db.as_mut(),
+        NOW - 60.0,
+        "request",
+        "GET /page",
+        "TaintError",
+        "an untrusted value reaches `html`",
+    )
+    .unwrap();
     events::record(s.db.as_mut(), NOW - 30.0, "job", "job 3 (fetch)", "IoError", "down").unwrap();
     let refusals = s.get("/events?only=refusals").body;
     assert!(refusals.contains("GET /page") && !refusals.contains("job 3 (fetch)"));

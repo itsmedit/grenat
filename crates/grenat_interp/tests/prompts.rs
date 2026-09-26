@@ -72,7 +72,8 @@ a(\"x\")
 a(\"y\")
 b(\"z\")
 ";
-    let replies = vec![Response::text_reply("1"), Response::text_reply("2"), Response::text_reply("3").with_usage(1_000_000, 0)];
+    let replies =
+        vec![Response::text_reply("1"), Response::text_reply("2"), Response::text_reply("3").with_usage(1_000_000, 0)];
     let run = run_full(src, replies, &[], &[]);
     let summary = run.result.as_ref().unwrap().clone();
     assert_eq!(run.output.matches("the price of `gpt-5` is unknown").count(), 1, "{}", run.output);

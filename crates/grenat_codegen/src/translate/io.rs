@@ -28,7 +28,8 @@ pub(crate) fn describe(ty: Ty, structs: &Structs) -> String {
         Ty::Array(elem) => format!("A{}", describe(elem.ty().expect("known after inference"), structs)),
         Ty::Struct(id) => {
             let def = structs.get(id);
-            let fields: Vec<String> = def.fields.iter().map(|(n, t)| format!("{n}:{}", describe(*t, structs))).collect();
+            let fields: Vec<String> =
+                def.fields.iter().map(|(n, t)| format!("{n}:{}", describe(*t, structs))).collect();
             format!("R{}({})", def.name, fields.join(","))
         }
     }
@@ -40,7 +41,10 @@ pub(crate) fn descriptors(def: &FnDef, typed: &Typed, structs: &Structs) -> Vec<
     for stmt in &def.body.stmts {
         walk::each(stmt, &mut |e| {
             if let ExprKind::Call { args, .. } = &e.kind
-                && matches!(typed.methods.get(&(e as *const Expr)), Some(Method::Puts | Method::Print | Method::Inspect))
+                && matches!(
+                    typed.methods.get(&(e as *const Expr)),
+                    Some(Method::Puts | Method::Print | Method::Inspect)
+                )
             {
                 for arg in args {
                     if let grenat_ast::Arg::Pos(arg) = arg {

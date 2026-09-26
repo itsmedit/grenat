@@ -83,7 +83,13 @@ pub(crate) fn on_webhook<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> 
 /// response, as a hash (`status`, `body`).
 pub(crate) fn deliver_webhook<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
     let path = str_arg(args, 0, "deliver_webhook")?.to_string();
-    let mut raw = RawRequest { method: "POST".into(), path: path.clone(), query: String::new(), headers: Vec::new(), body: Vec::new() };
+    let mut raw = RawRequest {
+        method: "POST".into(),
+        path: path.clone(),
+        query: String::new(),
+        headers: Vec::new(),
+        body: Vec::new(),
+    };
     for (option, value) in &args.named {
         match (option.as_str(), value.untainted()) {
             ("json", v) => {
@@ -91,8 +97,12 @@ pub(crate) fn deliver_webhook<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R
                 raw.headers.push(("Content-Type".into(), "application/json".into()));
             }
             ("body", v) => raw.body = v.to_display().into_bytes(),
-            ("headers", Value::Hash(h)) => raw.headers.extend(h.borrow().iter().map(|(k, v)| (k.to_display(), v.to_display()))),
-            (option, v) => return raise("ArgumentError", format!("invalid `deliver_webhook` option `{option}: {}`", v.inspect())),
+            ("headers", Value::Hash(h)) => {
+                raw.headers.extend(h.borrow().iter().map(|(k, v)| (k.to_display(), v.to_display())))
+            }
+            (option, v) => {
+                return raise("ArgumentError", format!("invalid `deliver_webhook` option `{option}: {}`", v.inspect()));
+            }
         }
     }
     // signed as the sender would sign it, unless the test gives its own
@@ -103,7 +113,9 @@ pub(crate) fn deliver_webhook<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R
             let signature = grenat_serve::signature::github(&secret, &raw.body);
             raw.headers.push(("X-Hub-Signature-256".into(), signature));
         }
-        Some(Proof::Token(token)) if !given("Authorization") => raw.headers.push(("Authorization".into(), format!("Bearer {token}"))),
+        Some(Proof::Token(token)) if !given("Authorization") => {
+            raw.headers.push(("Authorization".into(), format!("Bearer {token}")))
+        }
         _ => {}
     }
     let answer = interp.handle_webhook(raw)?;
@@ -114,17 +126,18 @@ impl<'p> Interp<'p> {
     /// Answers a webhook request. A request that does not prove where it
     /// comes from never reaches its handler.
     pub(crate) fn handle_webhook(&mut self, raw: RawRequest) -> Result<HttpAnswer, Ctrl<'p>> {
-        let found = self.webhooks.borrow().iter().find(|w| w.path == raw.path).map(|w| (w.proof.clone(), w.block.clone()));
+        let found =
+            self.webhooks.borrow().iter().find(|w| w.path == raw.path).map(|w| (w.proof.clone(), w.block.clone()));
         let Some((proof, handler)) = found else { return Ok(HttpAnswer::text(404, "no such webhook")) };
         if raw.method != "POST" {
             return Ok(HttpAnswer::text(405, "webhooks are POST requests"));
         }
-        let header = |name: &str| raw.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.clone());
+        let header =
+            |name: &str| raw.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.clone());
         let proven = match &proof {
             Proof::None => true,
-            Proof::Github(secret) => {
-                header("X-Hub-Signature-256").is_some_and(|given| grenat_serve::signature::github_valid(secret, &raw.body, &given))
-            }
+            Proof::Github(secret) => header("X-Hub-Signature-256")
+                .is_some_and(|given| grenat_serve::signature::github_valid(secret, &raw.body, &given)),
             Proof::Token(token) => header("Authorization").is_some_and(|given| given == format!("Bearer {token}")),
         };
         if !proven {

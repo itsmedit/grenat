@@ -90,7 +90,12 @@ impl Response {
 
     /// See other: after a form, the page to show.
     fn redirect(to: &str) -> Response {
-        Response { status: 303, content_type: "text/plain; charset=utf-8".into(), headers: vec![("Location".into(), to.into())], body: String::new() }
+        Response {
+            status: 303,
+            content_type: "text/plain; charset=utf-8".into(),
+            headers: vec![("Location".into(), to.into())],
+            body: String::new(),
+        }
     }
 
     fn with_cookie(mut self, cookie: String) -> Response {
@@ -102,7 +107,10 @@ impl Response {
 /// Headers every answer carries: no script runs, no other site frames the
 /// console, nothing is cached.
 const SECURITY_HEADERS: [(&str, &str); 5] = [
-    ("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"),
+    (
+        "Content-Security-Policy",
+        "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    ),
     ("X-Content-Type-Options", "nosniff"),
     ("X-Frame-Options", "DENY"),
     // not `no-referrer`: browsers would then send `Origin: null` with the
@@ -149,7 +157,13 @@ impl Console {
             Admission::Refused(response) => return response,
         };
         if post && !self.guard.form_is_ours(request, &fields) {
-            return Response::page(403, html::bare("Forbidden", "<p>This form did not come from the console: reload the page and try again.</p>"));
+            return Response::page(
+                403,
+                html::bare(
+                    "Forbidden",
+                    "<p>This form did not come from the console: reload the page and try again.</p>",
+                ),
+            );
         }
         if post && request.path == "/logout" {
             return Response::redirect("/login").with_cookie(self.guard.sign_out(request));
@@ -168,11 +182,18 @@ impl Console {
         let pending = grenat_ops::approvals::pending(ctx.db).map(|p| p.len()).unwrap_or(0);
         let frame = |section| html::Frame { app: &self.app.name, section, pending, signed_in, csrf: self.guard.csrf() };
         match outcome {
-            Ok(pages::Outcome::Page { title, section, body }) => Response::page(200, html::layout(&frame(section), &title, &body)),
+            Ok(pages::Outcome::Page { title, section, body }) => {
+                Response::page(200, html::layout(&frame(section), &title, &body))
+            }
             Ok(pages::Outcome::Redirect(to)) => Response::redirect(&to),
-            Ok(pages::Outcome::NotFound) => Response::page(404, html::layout(&frame(""), "Not found", "<p>Nothing here.</p>")),
+            Ok(pages::Outcome::NotFound) => {
+                Response::page(404, html::layout(&frame(""), "Not found", "<p>Nothing here.</p>"))
+            }
             Err(error) => {
-                let body = format!("<p>The console could not read the application's data:</p><pre>{}</pre>", html::escape(&error));
+                let body = format!(
+                    "<p>The console could not read the application's data:</p><pre>{}</pre>",
+                    html::escape(&error)
+                );
                 Response::page(500, html::layout(&frame(""), "Error", &body))
             }
         }

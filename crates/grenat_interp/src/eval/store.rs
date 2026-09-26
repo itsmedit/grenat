@@ -21,7 +21,10 @@ impl<'p> Interp<'p> {
             self.fresh_test_database()?;
         }
         let Some(database) = self.app_db.borrow().clone() else {
-            return raise("DbError", format!("{what} need a database: declare one (`database Env.fetch(\"DATABASE_URL\")`)"));
+            return raise(
+                "DbError",
+                format!("{what} need a database: declare one (`database Env.fetch(\"DATABASE_URL\")`)"),
+            );
         };
         let connection = self.connection_of(&database).expect("a database");
         grenat_green::blocking(|| f(&mut **connection.lock())).or_else(db_error)

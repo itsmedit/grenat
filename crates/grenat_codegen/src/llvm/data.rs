@@ -5,7 +5,12 @@ use cranelift_module::{DataDeclaration, DataDescription, DataId, Init, ModuleRel
 
 use super::names::{Names, linkage};
 
-pub(crate) fn global(names: &Names, id: DataId, decl: &DataDeclaration, data: &DataDescription) -> Result<String, String> {
+pub(crate) fn global(
+    names: &Names,
+    id: DataId,
+    decl: &DataDeclaration,
+    data: &DataDescription,
+) -> Result<String, String> {
     let bytes: Vec<u8> = match &data.init {
         Init::Bytes { contents } => contents.to_vec(),
         Init::Zeros { size } => vec![0; *size],

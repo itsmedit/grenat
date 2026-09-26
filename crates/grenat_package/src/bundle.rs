@@ -20,7 +20,10 @@ pub struct Bundle {
 #[derive(Debug)]
 pub enum LoadError {
     /// Errors in one file (syntax, a `require` that cannot be resolved).
-    Diagnostics { sources: Sources, diagnostics: Vec<Diagnostic> },
+    Diagnostics {
+        sources: Sources,
+        diagnostics: Vec<Diagnostic>,
+    },
     Message(String),
 }
 
@@ -48,7 +51,8 @@ pub fn load_with(entry: &Path, update: bool, overlay: &HashMap<PathBuf, String>)
         let file = root.join(grenat_config::models::FILE);
         if let Ok(yaml) = std::fs::read_to_string(&file) {
             let shown = file.to_string_lossy().into_owned();
-            let declarations = grenat_config::models::declarations(&yaml).map_err(|e| LoadError::Message(format!("{shown}: {e}")))?;
+            let declarations =
+                grenat_config::models::declarations(&yaml).map_err(|e| LoadError::Message(format!("{shown}: {e}")))?;
             loader.files.insert(0, (shown, declarations));
         }
     }
@@ -120,7 +124,10 @@ impl Loader<'_> {
     fn package_file(&mut self, file: &Path, target: &str) -> Result<PathBuf, String> {
         let (name, rest) = target.split_once('/').map_or((target, None), |(n, r)| (n, Some(r)));
         let package = self.resolver.package_of(file)?.ok_or_else(|| {
-            format!("`require \"{target}\"` needs a dependency named `{name}` in a {}, or a path: `./{target}`", crate::MANIFEST)
+            format!(
+                "`require \"{target}\"` needs a dependency named `{name}` in a {}, or a path: `./{target}`",
+                crate::MANIFEST
+            )
         })?;
         let owner = if name == package.manifest.name {
             package

@@ -7,9 +7,9 @@
 use grenat_ops::calls::Call;
 use grenat_ops::{calls, evals, events};
 
+use crate::RuntimeError;
 use crate::eval::store::now;
 use crate::evals::EvalReport;
-use crate::RuntimeError;
 use crate::prelude::*;
 
 impl<'p> Interp<'p> {
@@ -30,7 +30,8 @@ impl<'p> Interp<'p> {
             agent: self.agents.last().map(|frame| frame.agent.ty.to_string()),
             workflow: self.workflows.last().map(|run| run.name().to_string()),
             job_id: self.current_job,
-            input_tokens: (usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens) as i64,
+            input_tokens: (usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens)
+                as i64,
             output_tokens: usage.output_tokens as i64,
             cost_usd,
         };

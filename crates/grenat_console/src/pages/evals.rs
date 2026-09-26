@@ -42,7 +42,11 @@ pub(crate) fn show(ctx: &mut Ctx) -> Result {
         .collect();
     let body = format!(
         "<p class=\"muted\">Each <code>grenat eval</code> is kept: quality over time, next to what it cost.</p>{}<h2>Latest runs</h2>{}",
-        table(&["Eval", "Score", "Threshold", "Last run", "Over time", "Runs", "When"], &summary, "No eval has run: grenat eval <file>."),
+        table(
+            &["Eval", "Score", "Threshold", "Last run", "Over time", "Runs", "When"],
+            &summary,
+            "No eval has run: grenat eval <file>."
+        ),
         table(&["Eval", "Score", "Rows", "Cost", "Time", "When"], &latest, "No run."),
     );
     page("Evals", "/evals", body)
@@ -54,7 +58,8 @@ fn sparkline(runs: &[Run]) -> String {
     const H: f64 = 28.0;
     let y = |score: f64| H - score.clamp(0.0, 1.0) * (H - 4.0) - 2.0;
     let step = if runs.len() > 1 { W / (runs.len() - 1) as f64 } else { 0.0 };
-    let points: Vec<String> = runs.iter().enumerate().map(|(i, r)| format!("{:.1},{:.1}", i as f64 * step, y(r.score))).collect();
+    let points: Vec<String> =
+        runs.iter().enumerate().map(|(i, r)| format!("{:.1},{:.1}", i as f64 * step, y(r.score))).collect();
     let threshold = y(runs.last().map_or(0.0, |r| r.threshold));
     format!(
         "<svg width=\"{W}\" height=\"{H}\" viewBox=\"0 0 {W} {H}\" role=\"img\" aria-label=\"scores over time\">\

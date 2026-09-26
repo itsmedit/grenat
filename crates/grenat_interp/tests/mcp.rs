@@ -32,10 +32,7 @@ fn final_answer(text: &str) -> Response {
 
 #[test]
 fn an_agent_uses_a_server_s_tools() {
-    let replies = vec![
-        Response::tool_call("t1", "fake__echo", json!({"text": "hi"})),
-        final_answer("done"),
-    ];
+    let replies = vec![Response::tool_call("t1", "fake__echo", json!({"text": "hi"})), final_answer("done")];
     let r = run_with(&agent("mcp(:fake)", ""), replies, &[]);
     let requests = r.requests.clone();
     assert_eq!(r.ok(), "done\n");

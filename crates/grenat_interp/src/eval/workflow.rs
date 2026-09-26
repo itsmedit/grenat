@@ -54,7 +54,10 @@ impl<'p> Interp<'p> {
             match codec::encode(value) {
                 Ok(json) => key.push(json),
                 Err(why) => {
-                    return raise("TypeError", format!("the arguments of workflow `{}` must be data: {why}", def.name.name));
+                    return raise(
+                        "TypeError",
+                        format!("the arguments of workflow `{}` must be data: {why}", def.name.name),
+                    );
                 }
             }
         }
@@ -84,9 +87,8 @@ impl<'p> Interp<'p> {
             Ok(v) | Err(Ctrl::Return(v)) => v,
             Err(other) => return Err(other),
         };
-        let json = codec::encode(&value).or_else(|why| {
-            raise("TypeError", format!("the result of workflow `{}` must be data: {why}", run.name))
-        })?;
+        let json = codec::encode(&value)
+            .or_else(|why| raise("TypeError", format!("the result of workflow `{}` must be data: {why}", run.name)))?;
         journal::append_result(&run.path, &json).or_else(|e| raise("JournalError", e))?;
         Ok(value)
     }
@@ -109,9 +111,8 @@ impl<'p> Interp<'p> {
             return codec::decode(json).or_else(|e| raise("JournalError", e));
         }
         let value = self.call_block(block, Vec::new())?;
-        let json = codec::encode(&value).or_else(|why| {
-            raise("TypeError", format!("step :{name} must return data to be journaled: {why}"))
-        })?;
+        let json = codec::encode(&value)
+            .or_else(|why| raise("TypeError", format!("step :{name} must return data to be journaled: {why}")))?;
         journal::append_step(&run.path, name, n, &json).or_else(|e| raise("JournalError", e))?;
         Ok(value)
     }

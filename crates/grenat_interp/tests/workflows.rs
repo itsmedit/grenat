@@ -86,7 +86,8 @@ end
     let first = run_mode(src, Scripted::new([]), &[], &[], mode.clone());
     // the second run replays every step from the journal
     let second = run_mode(src, Scripted::new([]), &[], &[], mode);
-    let expected = "[\"6.0\", \"Point(x: 1.5, y: -2.0)\", \"Circle(radius: 0.5)\", \"{\\\"k\\\" => [1, :sym, nil]}\"]\n";
+    let expected =
+        "[\"6.0\", \"Point(x: 1.5, y: -2.0)\", \"Circle(radius: 0.5)\", \"{\\\"k\\\" => [1, :sym, nil]}\"]\n";
     assert_eq!(first.ok(), expected);
     assert_eq!(second.ok(), expected);
 }

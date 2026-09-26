@@ -6,7 +6,8 @@ use grenat_codegen::aot;
 fn an_object_file_holds_the_compiled_functions() {
     let src = "def double(n: Int) -> Int = n * 2\ndef greet(s: String) -> String = \"hi #{s}\"\ndef other(x) = x\n";
     let program = grenat_parser::parse(src).program;
-    let object = aot::object(&program, src, "0 test.grn\n", grenat_codegen::Backend::Cranelift).expect("an object file");
+    let object =
+        aot::object(&program, src, "0 test.grn\n", grenat_codegen::Backend::Cranelift).expect("an object file");
     assert_eq!(object.report.compiled, ["double", "greet"]);
     // Mach-O (64-bit) or ELF
     let magic = &object.bytes[..4];

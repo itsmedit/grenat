@@ -61,8 +61,10 @@ pub(crate) type McpStub = HashMap<String, String>;
 
 /// The name under which a server's tool is handed to a model.
 pub(crate) fn exposed(server: &str, tool: &str) -> String {
-    let name: String =
-        format!("{server}__{tool}").chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
+    let name: String = format!("{server}__{tool}")
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' })
+        .collect();
     name.chars().take(64).collect()
 }
 
@@ -78,7 +80,8 @@ impl<'p> Interp<'p> {
                 _ => Vec::new(),
             }
         };
-        let (mut url, mut argv, mut headers, mut env, mut approve) = (None, None::<Vec<String>>, Vec::new(), Vec::new(), true);
+        let (mut url, mut argv, mut headers, mut env, mut approve) =
+            (None, None::<Vec<String>>, Vec::new(), Vec::new(), true);
         for (option, value) in &args.named {
             if value.contains_taint() {
                 return raise("TaintError", format!("an untrusted value configures the MCP server `{name}`"));
@@ -89,7 +92,9 @@ impl<'p> Interp<'p> {
                 ("headers", v @ Value::Hash(_)) => headers = strings(v),
                 ("env", v @ Value::Hash(_)) => env = strings(v),
                 ("approve", Value::Bool(b)) => approve = *b,
-                (option, v) => return raise("ArgumentError", format!("invalid `mcp` option `{option}: {}`", v.inspect())),
+                (option, v) => {
+                    return raise("ArgumentError", format!("invalid `mcp` option `{option}: {}`", v.inspect()));
+                }
             }
         }
         let endpoint = match (url, argv) {
@@ -190,7 +195,9 @@ impl<'p> Interp<'p> {
         }
         let server = self.server(name)?;
         let info = self.mcp_tools(name)?.into_iter().find(|t| t.name == tool);
-        let Some(info) = info else { return raise("McpError", format!("the MCP server `:{name}` has no tool `{tool}`")) };
+        let Some(info) = info else {
+            return raise("McpError", format!("the MCP server `:{name}` has no tool `{tool}`"));
+        };
         if server.approve && (info.destructive || !info.read_only) {
             let request = format!("Allow the MCP tool `{name}.{tool}` with {input}?");
             if !self.ask_human(&request)? {
@@ -207,7 +214,10 @@ impl<'p> Interp<'p> {
     /// `Mcp.call(:server, "tool", {…})`: the tool's text, untrusted.
     pub(crate) fn mcp_call_value(&mut self, args: &Args<'p>) -> R<'p> {
         let (Some(Value::Symbol(name)), Some(tool)) = (args.pos.first().map(Value::untainted), args.pos.get(1)) else {
-            return raise("ArgumentError", "`Mcp.call` expects a server and a tool: `Mcp.call(:linear, \"list_issues\", {…})`");
+            return raise(
+                "ArgumentError",
+                "`Mcp.call` expects a server and a tool: `Mcp.call(:linear, \"list_issues\", {…})`",
+            );
         };
         if args.pos.iter().any(Value::contains_taint) {
             return raise("TaintError", "an untrusted value reaches `Mcp.call` (effect `mcp`) without validation");
@@ -235,7 +245,9 @@ impl<'p> Interp<'p> {
             if client.is_none() {
                 let transport: Box<dyn grenat_mcp::Transport> = match &server.endpoint {
                     Endpoint::Command { argv, env } => Box::new(grenat_mcp::Stdio::spawn(argv, env)?),
-                    Endpoint::Url { url, headers } => Box::new(grenat_mcp::Http::new(url, headers, Duration::from_secs(60))),
+                    Endpoint::Url { url, headers } => {
+                        Box::new(grenat_mcp::Http::new(url, headers, Duration::from_secs(60)))
+                    }
                 };
                 *client = Some(Client::connect(transport)?);
             }

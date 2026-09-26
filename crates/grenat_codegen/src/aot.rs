@@ -11,10 +11,10 @@ use cranelift_module::{Linkage, Module};
 use grenat_ast::Program;
 use grenat_runtime::Shape;
 
-use crate::eligibility::select;
-use crate::infer::Target;
 use crate::Backend;
+use crate::eligibility::select;
 use crate::emit::emit;
+use crate::infer::Target;
 use crate::native::{Native, Report, Trampoline};
 use crate::object_data::{Strings, Word, new_record, record};
 use crate::structs::Structs;
@@ -66,7 +66,8 @@ impl Image {
     /// As [`Image::source`].
     unsafe fn names(&self) -> Vec<&str> {
         // SAFETY: as `source`
-        let names = unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.names, self.names_len as usize)) };
+        let names =
+            unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.names, self.names_len as usize)) };
         names.lines().collect()
     }
 }

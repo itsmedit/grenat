@@ -86,5 +86,8 @@ test \"refused\" do
 end
 "
     ));
-    assert!(results[0].1.as_deref().unwrap().starts_with("TaintError: an untrusted value reaches the job `remember`"), "{results:?}");
+    assert!(
+        results[0].1.as_deref().unwrap().starts_with("TaintError: an untrusted value reaches the job `remember`"),
+        "{results:?}"
+    );
 }

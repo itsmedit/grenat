@@ -40,7 +40,10 @@ impl<'p> Interp<'p> {
             return raise("NameError", format!("`enqueue`: unknown function `{name}`"));
         }
         if args.pos.iter().any(Value::contains_taint) {
-            return raise("TaintError", format!("an untrusted value reaches the job `{name}` (effect `db.write`) without validation"));
+            return raise(
+                "TaintError",
+                format!("an untrusted value reaches the job `{name}` (effect `db.write`) without validation"),
+            );
         }
         self.check_effect("db.write")?;
         let delay = match args.named.iter().find(|(n, _)| n == "in").map(|(_, v)| v.untainted().clone()) {
@@ -49,8 +52,11 @@ impl<'p> Interp<'p> {
             Some(Value::Int(n)) => n as f64,
             Some(other) => return raise("TypeError", format!("`in:` expects a duration, got {}", other.inspect())),
         };
-        let values: Vec<serde_json::Value> =
-            args.pos[1..].iter().map(codec::encode).collect::<Result<_, _>>().or_else(|e| raise("TypeError", format!("a job's arguments are data: {e}")))?;
+        let values: Vec<serde_json::Value> = args.pos[1..]
+            .iter()
+            .map(codec::encode)
+            .collect::<Result<_, _>>()
+            .or_else(|e| raise("TypeError", format!("a job's arguments are data: {e}")))?;
         let encoded = serde_json::Value::Array(values).to_string();
         let now = now();
         self.store("jobs", |db| jobs::enqueue(db, &name, &encoded, now + delay, now))?;
@@ -154,7 +160,8 @@ impl<'p> Interp<'p> {
 }
 
 fn decode_args<'p>(text: &str) -> Result<Vec<Value<'p>>, Ctrl<'p>> {
-    let json: serde_json::Value = serde_json::from_str(text).or_else(|e| raise("ParseError", format!("a job's arguments: {e}")))?;
+    let json: serde_json::Value =
+        serde_json::from_str(text).or_else(|e| raise("ParseError", format!("a job's arguments: {e}")))?;
     json.as_array()
         .cloned()
         .unwrap_or_default()

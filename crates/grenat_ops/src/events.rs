@@ -43,7 +43,13 @@ pub fn ensure(db: &mut dyn Connection) -> Result<()> {
 pub fn record(db: &mut dyn Connection, at: f64, source: &str, subject: &str, error: &str, message: &str) -> Result<()> {
     ensure(db)?;
     let sql = format!("INSERT INTO {TABLE} (at, source, subject, error, message) VALUES (?, ?, ?, ?, ?)");
-    let params = [Cell::Float(at), Cell::Text(source.into()), Cell::Text(subject.into()), Cell::Text(error.into()), Cell::Text(message.into())];
+    let params = [
+        Cell::Float(at),
+        Cell::Text(source.into()),
+        Cell::Text(subject.into()),
+        Cell::Text(error.into()),
+        Cell::Text(message.into()),
+    ];
     db.execute(&sql, &params).map(drop)
 }
 
@@ -62,6 +68,13 @@ pub fn latest(db: &mut dyn Connection, refusals_only: bool, limit: usize) -> Res
     };
     Ok(rows
         .iter()
-        .map(|r| Event { id: int(r, 0), at: float(r, 1), source: text(r, 2), subject: text(r, 3), error: text(r, 4), message: text(r, 5) })
+        .map(|r| Event {
+            id: int(r, 0),
+            at: float(r, 1),
+            source: text(r, 2),
+            subject: text(r, 3),
+            error: text(r, 4),
+            message: text(r, 5),
+        })
         .collect())
 }

@@ -184,6 +184,9 @@ fn price<'p>(pairs: &[(Value<'p>, Value<'p>)], model: &str) -> Result<(f64, f64)
     };
     match (get("input"), get("output")) {
         (Some(input), Some(output)) if input >= 0.0 && output >= 0.0 => Ok((input, output)),
-        _ => raise("ArgumentError", format!("model `:{model}`: `price:` is `{{input: …, output: …}}`, dollars per million tokens")),
+        _ => raise(
+            "ArgumentError",
+            format!("model `:{model}`: `price:` is `{{input: …, output: …}}`, dollars per million tokens"),
+        ),
     }
 }

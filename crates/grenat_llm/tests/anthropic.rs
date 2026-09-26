@@ -92,7 +92,7 @@ fn request(model: &ModelConfig) -> Request<'_> {
             name: "read".into(),
             description: "Reads".into(),
             input_schema: json!({"type": "object"}),
-                strict: true,
+            strict: true,
         }],
         output_schema: None,
     }

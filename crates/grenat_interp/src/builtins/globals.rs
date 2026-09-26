@@ -212,7 +212,10 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
                 }
             }
             if eval.dataset.is_empty() {
-                return raise("ArgumentError", "`eval` expects a dataset: `eval \"name\", dataset: \"rows.jsonl\" do |row| … end`");
+                return raise(
+                    "ArgumentError",
+                    "`eval` expects a dataset: `eval \"name\", dataset: \"rows.jsonl\" do |row| … end`",
+                );
             }
             interp.evals.borrow_mut().push(eval);
             Ok(Value::Nil)
@@ -228,7 +231,10 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
                 _ => None,
             };
             let Some(question) = pos.next().map(Value::to_display) else {
-                return raise("ArgumentError", "`judge` expects a question: `judge(:smart, \"Is it faithful?\", text)`");
+                return raise(
+                    "ArgumentError",
+                    "`judge` expects a question: `judge(:smart, \"Is it faithful?\", text)`",
+                );
             };
             crate::eval::secrets::not_for_models(&args.pos)?;
             let context: Vec<Value> = pos.cloned().collect();

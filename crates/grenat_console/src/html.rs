@@ -47,12 +47,19 @@ pub fn layout(frame: &Frame, title: &str, body: &str) -> String {
         .iter()
         .map(|(path, label)| {
             let current = if *path == frame.section { " aria-current=\"page\"" } else { "" };
-            let count = if *path == "/approvals" && frame.pending > 0 { format!(" <span class=\"count\">{}</span>", frame.pending) } else { String::new() };
+            let count = if *path == "/approvals" && frame.pending > 0 {
+                format!(" <span class=\"count\">{}</span>", frame.pending)
+            } else {
+                String::new()
+            };
             format!("<a href=\"{path}\"{current}>{label}{count}</a>")
         })
         .collect();
     let sign_out = if frame.signed_in {
-        format!("<form method=\"post\" action=\"/logout\">{}<button class=\"link\">Sign out</button></form>", csrf_field(frame.csrf))
+        format!(
+            "<form method=\"post\" action=\"/logout\">{}<button class=\"link\">Sign out</button></form>",
+            csrf_field(frame.csrf)
+        )
     } else {
         String::new()
     };
@@ -114,7 +121,12 @@ pub fn time(t: f64) -> String {
         return "—".into();
     }
     let seconds = t as i64;
-    format!("{} {:02}:{:02}", grenat_ops::calls::day(t), seconds.rem_euclid(86_400) / 3600, seconds.rem_euclid(3600) / 60)
+    format!(
+        "{} {:02}:{:02}",
+        grenat_ops::calls::day(t),
+        seconds.rem_euclid(86_400) / 3600,
+        seconds.rem_euclid(3600) / 60
+    )
 }
 
 /// `3 min ago`, `in 2 h`: `t` from `now`, with the time in a tooltip.

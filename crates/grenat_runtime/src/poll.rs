@@ -47,11 +47,13 @@ pub fn polled<R>(poll: &Poll, f: impl FnOnce() -> R) -> R {
     TICKER.call_once(|| {
         std::thread::Builder::new()
             .name("grenat-ticker".into())
-            .spawn(|| loop {
-                std::thread::sleep(TICK);
-                for &flag in RUNNING.lock().unwrap_or_else(|e| e.into_inner()).iter() {
-                    // SAFETY: registered flags are alive: they are removed (under this lock) before being dropped
-                    unsafe { (*(flag as *const AtomicU8)).store(1, Ordering::Relaxed) };
+            .spawn(|| {
+                loop {
+                    std::thread::sleep(TICK);
+                    for &flag in RUNNING.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+                        // SAFETY: registered flags are alive: they are removed (under this lock) before being dropped
+                        unsafe { (*(flag as *const AtomicU8)).store(1, Ordering::Relaxed) };
+                    }
                 }
             })
             .expect("ticker thread");

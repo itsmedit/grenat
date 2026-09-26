@@ -95,9 +95,7 @@ impl Infer<'_, '_> {
             Ty::Struct(id) if self.structs.get(id).has_method("to_s") => {
                 Err(format!("calls `{name}` on a `{}`, which defines `to_s`", self.show(t)))
             }
-            Ty::Struct(id) => {
-                self.structs.get(id).fields.iter().try_for_each(|(_, f)| self.printable(*f, name))
-            }
+            Ty::Struct(id) => self.structs.get(id).fields.iter().try_for_each(|(_, f)| self.printable(*f, name)),
             Ty::Array(Elem::Unknown) => Err(format!("calls `{name}` on `[]`")),
             Ty::Array(elem) => self.printable(elem.ty().expect("known"), name),
             _ => Ok(()),

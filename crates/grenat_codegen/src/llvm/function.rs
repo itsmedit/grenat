@@ -69,13 +69,18 @@ pub(crate) fn define(
     for block in func.layout.blocks() {
         bodies.push((block, t.block(block)?));
     }
-    let mut out = format!("define {linkage}{} #0 {{\nentry:\n  br label %b{}\n", prototype(name, &func.signature, Some(&params))?, entry.as_u32());
+    let mut out = format!(
+        "define {linkage}{} #0 {{\nentry:\n  br label %b{}\n",
+        prototype(name, &func.signature, Some(&params))?,
+        entry.as_u32()
+    );
     for (block, body) in bodies {
         writeln!(out, "b{}:", block.as_u32()).unwrap();
         let incoming = t.incoming.get(&block).cloned().unwrap_or_default();
         for (i, param) in func.dfg.block_params(block).iter().enumerate() {
             let ty = ty(func.dfg.value_type(*param))?;
-            let pairs: Vec<String> = incoming.iter().map(|(label, args)| format!("[ {}, %{label} ]", args[i])).collect();
+            let pairs: Vec<String> =
+                incoming.iter().map(|(label, args)| format!("[ {}, %{label} ]", args[i])).collect();
             writeln!(out, "  {} = phi {ty} {}", value(*param), pairs.join(", ")).unwrap();
         }
         out.push_str(&body);
@@ -149,8 +154,20 @@ impl Translation<'_> {
                     writeln!(out, "  {} = bitcast i64 {} to double", r(0), imm.bits() as i64).unwrap();
                 }
                 (
-                    Opcode::Iadd | Opcode::Isub | Opcode::Imul | Opcode::Sdiv | Opcode::Srem | Opcode::Udiv | Opcode::Urem
-                    | Opcode::Band | Opcode::Bor | Opcode::Bxor | Opcode::Fadd | Opcode::Fsub | Opcode::Fmul | Opcode::Fdiv,
+                    Opcode::Iadd
+                    | Opcode::Isub
+                    | Opcode::Imul
+                    | Opcode::Sdiv
+                    | Opcode::Srem
+                    | Opcode::Udiv
+                    | Opcode::Urem
+                    | Opcode::Band
+                    | Opcode::Bor
+                    | Opcode::Bxor
+                    | Opcode::Fadd
+                    | Opcode::Fsub
+                    | Opcode::Fmul
+                    | Opcode::Fdiv,
                     _,
                 ) => {
                     let op = match opcode {
@@ -179,7 +196,13 @@ impl Translation<'_> {
                     let cast = self.temp();
                     let aty = self.vty(args[1])?;
                     writeln!(out, "  {amount} = and {aty} {}, {}", a(1), width - 1).unwrap();
-                    let conv = if aty == ty { "bitcast" } else if self.func.dfg.value_type(args[1]).bits() > width { "trunc" } else { "zext" };
+                    let conv = if aty == ty {
+                        "bitcast"
+                    } else if self.func.dfg.value_type(args[1]).bits() > width {
+                        "trunc"
+                    } else {
+                        "zext"
+                    };
                     if conv == "bitcast" {
                         writeln!(out, "  {cast} = add {ty} {amount}, 0").unwrap();
                     } else {
@@ -230,12 +253,14 @@ impl Translation<'_> {
                 }
                 (Opcode::Icmp, InstructionData::IntCompare { cond, .. }) => {
                     let flag = self.temp();
-                    writeln!(out, "  {flag} = icmp {} {} {}, {}", int_cc(*cond), self.vty(args[0])?, a(0), a(1)).unwrap();
+                    writeln!(out, "  {flag} = icmp {} {} {}, {}", int_cc(*cond), self.vty(args[0])?, a(0), a(1))
+                        .unwrap();
                     writeln!(out, "  {} = zext i1 {flag} to {}", r(0), self.vty(results[0])?).unwrap();
                 }
                 (Opcode::Fcmp, InstructionData::FloatCompare { cond, .. }) => {
                     let flag = self.temp();
-                    writeln!(out, "  {flag} = fcmp {} {} {}, {}", float_cc(*cond), self.vty(args[0])?, a(0), a(1)).unwrap();
+                    writeln!(out, "  {flag} = fcmp {} {} {}, {}", float_cc(*cond), self.vty(args[0])?, a(0), a(1))
+                        .unwrap();
                     writeln!(out, "  {} = zext i1 {flag} to {}", r(0), self.vty(results[0])?).unwrap();
                 }
                 (Opcode::Select, _) => {
@@ -245,9 +270,13 @@ impl Translation<'_> {
                     writeln!(out, "  {} = select i1 {flag}, {ty} {}, {ty} {}", r(0), a(1), a(2)).unwrap();
                 }
                 (Opcode::Bitcast, _) => {
-                    writeln!(out, "  {} = bitcast {} {} to {}", r(0), self.vty(args[0])?, a(0), self.vty(results[0])?).unwrap();
+                    writeln!(out, "  {} = bitcast {} {} to {}", r(0), self.vty(args[0])?, a(0), self.vty(results[0])?)
+                        .unwrap();
                 }
-                (Opcode::Uextend | Opcode::Sextend | Opcode::Ireduce | Opcode::FcvtFromSint | Opcode::FcvtFromUint, _) => {
+                (
+                    Opcode::Uextend | Opcode::Sextend | Opcode::Ireduce | Opcode::FcvtFromSint | Opcode::FcvtFromUint,
+                    _,
+                ) => {
                     let op = match opcode {
                         Opcode::Uextend => "zext",
                         Opcode::Sextend => "sext",
@@ -255,7 +284,8 @@ impl Translation<'_> {
                         Opcode::FcvtFromSint => "sitofp",
                         _ => "uitofp",
                     };
-                    writeln!(out, "  {} = {op} {} {} to {}", r(0), self.vty(args[0])?, a(0), self.vty(results[0])?).unwrap();
+                    writeln!(out, "  {} = {op} {} {} to {}", r(0), self.vty(args[0])?, a(0), self.vty(results[0])?)
+                        .unwrap();
                 }
                 (Opcode::FcvtToSintSat | Opcode::FcvtToUintSat, _) => {
                     let (from, to) = (self.vty(args[0])?, self.vty(results[0])?);
@@ -268,12 +298,24 @@ impl Translation<'_> {
                 (Opcode::Load, InstructionData::Load { offset, .. }) => {
                     let pointer = self.address(&mut out, &a(0), i64::from(*offset));
                     let ty = self.vty(results[0])?;
-                    writeln!(out, "  {} = load {ty}, ptr {pointer}, align {}", r(0), self.func.dfg.value_type(results[0]).bytes()).unwrap();
+                    writeln!(
+                        out,
+                        "  {} = load {ty}, ptr {pointer}, align {}",
+                        r(0),
+                        self.func.dfg.value_type(results[0]).bytes()
+                    )
+                    .unwrap();
                 }
                 (Opcode::Store, InstructionData::Store { offset, .. }) => {
                     let pointer = self.address(&mut out, &a(1), i64::from(*offset));
                     let ty = self.vty(args[0])?;
-                    writeln!(out, "  store {ty} {}, ptr {pointer}, align {}", a(0), self.func.dfg.value_type(args[0]).bytes()).unwrap();
+                    writeln!(
+                        out,
+                        "  store {ty} {}, ptr {pointer}, align {}",
+                        a(0),
+                        self.func.dfg.value_type(args[0]).bytes()
+                    )
+                    .unwrap();
                 }
                 (Opcode::SymbolValue, InstructionData::UnaryGlobalValue { global_value, .. }) => {
                     let GlobalValueData::Symbol { name, offset, .. } = &self.func.global_values[*global_value] else {
@@ -288,8 +330,10 @@ impl Translation<'_> {
                     let ext = &self.func.dfg.ext_funcs[*func_ref];
                     let sig = &self.func.dfg.signatures[ext.signature];
                     let callee = self.names.external(self.func, &ext.name)?;
-                    let list: Vec<String> =
-                        args.iter().map(|v| Ok(format!("{} {}", self.vty(*v)?, self.arg(*v)))).collect::<Result<_, String>>()?;
+                    let list: Vec<String> = args
+                        .iter()
+                        .map(|v| Ok(format!("{} {}", self.vty(*v)?, self.arg(*v))))
+                        .collect::<Result<_, String>>()?;
                     let ret = ret_type(sig)?;
                     match results.len() {
                         0 => writeln!(out, "  call {ret} {callee}({})", list.join(", ")).unwrap(),
@@ -327,7 +371,13 @@ impl Translation<'_> {
                         let mut aggregate = "undef".to_string();
                         for (i, v) in args.iter().enumerate() {
                             let next = self.temp();
-                            writeln!(out, "  {next} = insertvalue {ret} {aggregate}, {} {}, {i}", self.vty(*v)?, self.arg(*v)).unwrap();
+                            writeln!(
+                                out,
+                                "  {next} = insertvalue {ret} {aggregate}, {} {}, {i}",
+                                self.vty(*v)?,
+                                self.arg(*v)
+                            )
+                            .unwrap();
                             aggregate = next;
                         }
                         writeln!(out, "  ret {ret} {aggregate}").unwrap();

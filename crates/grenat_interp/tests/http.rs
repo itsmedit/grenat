@@ -106,7 +106,10 @@ fn network_failures_and_timeouts_are_http_errors() {
     let e = run_err("Http.get(\"http://127.0.0.1:1/x\")\n", Vec::new());
     assert_eq!(e.ty, "HttpError");
     let e = run_err("Http.get(\"ftp://x\")\n", Vec::new());
-    assert_eq!((e.ty.as_str(), e.message.as_str()), ("ArgumentError", "`Http.get` expects an http(s) URL, got \"ftp://x\""));
+    assert_eq!(
+        (e.ty.as_str(), e.message.as_str()),
+        ("ArgumentError", "`Http.get` expects an http(s) URL, got \"ftp://x\"")
+    );
     let e = run_err("Http.get(\"http://x\", retries: 3)\n", Vec::new());
     assert_eq!(e.message, "invalid `Http` option `retries: 3`");
 }
@@ -188,7 +191,9 @@ end
     assert_eq!(results[0].1, None);
     assert_eq!(
         results[1].1.as_deref(),
-        Some("HttpError: no network in tests: `POST https://api.github.com/repos/acme/app` is not stubbed with `mock_http`")
+        Some(
+            "HttpError: no network in tests: `POST https://api.github.com/repos/acme/app` is not stubbed with `mock_http`"
+        )
     );
     assert!(results[2].1.as_deref().unwrap().starts_with("HttpError: no network in tests"));
 }

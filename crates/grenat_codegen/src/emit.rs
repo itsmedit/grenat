@@ -69,7 +69,8 @@ pub(crate) fn emit(module: &mut impl Module, selected: &[Compiled], structs: &St
 
     let mut builder_ctx = FunctionBuilderContext::new();
     let sites = RefCell::new(Vec::new());
-    let parts = Parts { selected, ids: &ids, runtime: &runtime, structs, shapes: &shapes, literals: &literals, sites: &sites };
+    let parts =
+        Parts { selected, ids: &ids, runtime: &runtime, structs, shapes: &shapes, literals: &literals, sites: &sites };
     for (index, compiled) in selected.iter().enumerate() {
         define(module, &mut builder_ctx, &parts, index, compiled)?;
     }
@@ -152,7 +153,14 @@ fn define(
             (text, data)
         })
         .collect();
-    let env = Env { callees: &callees, runtime: &runtime, structs: parts.structs, shapes: &shapes, literals: &literals, sites: parts.sites };
+    let env = Env {
+        callees: &callees,
+        runtime: &runtime,
+        structs: parts.structs,
+        shapes: &shapes,
+        literals: &literals,
+        sites: parts.sites,
+    };
     let plan = liveness::plan(compiled.def, &compiled.typed);
     let frontend = module.isa().frontend_config();
     let builder = FunctionBuilder::new(&mut ctx.func, builder_ctx);

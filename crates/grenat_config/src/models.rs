@@ -30,13 +30,17 @@ pub fn declarations(yaml: &str) -> Result<String, String> {
     };
     let mut out = String::new();
     for (name, options) in &models {
-        let name = key(name).filter(|n| valid_name(n)).ok_or_else(|| format!("`{}` is not a model name: lowercase letters, digits and `_`", shown(name)))?;
+        let name = key(name)
+            .filter(|n| valid_name(n))
+            .ok_or_else(|| format!("`{}` is not a model name: lowercase letters, digits and `_`", shown(name)))?;
         let Yaml::Hash(options) = options else {
             return Err(format!("model `{name}`: its options are a mapping (provider, name…)"));
         };
         let mut line = format!("model :{name}");
         for (option, value) in options {
-            let option = key(option).filter(|o| valid_name(o)).ok_or_else(|| format!("model `{name}`: `{}` is not an option name", shown(option)))?;
+            let option = key(option)
+                .filter(|o| valid_name(o))
+                .ok_or_else(|| format!("model `{name}`: `{}` is not an option name", shown(option)))?;
             if matches!(value, Yaml::Null) {
                 continue;
             }
@@ -79,7 +83,9 @@ fn literal(value: &Yaml) -> Result<String, String> {
         Yaml::Null => "nil".into(),
         Yaml::Boolean(b) => b.to_string(),
         Yaml::Integer(n) => n.to_string(),
-        Yaml::Real(text) => text.parse::<f64>().map(|_| text.clone()).map_err(|_| format!("`{text}` is not a number"))?,
+        Yaml::Real(text) => {
+            text.parse::<f64>().map(|_| text.clone()).map_err(|_| format!("`{text}` is not a number"))?
+        }
         Yaml::String(s) => format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'")),
         Yaml::Array(items) => format!("[{}]", items.iter().map(literal).collect::<Result<Vec<_>, _>>()?.join(", ")),
         Yaml::Hash(pairs) => {
@@ -95,7 +101,8 @@ fn literal(value: &Yaml) -> Result<String, String> {
 }
 
 fn valid_name(name: &str) -> bool {
-    name.starts_with(|c: char| c.is_ascii_lowercase() || c == '_') && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    name.starts_with(|c: char| c.is_ascii_lowercase() || c == '_')
+        && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
 #[cfg(test)]

@@ -4,8 +4,28 @@
 
 /// Tags after which the text goes to a new line.
 const BLOCKS: &[&str] = &[
-    "p", "div", "br", "li", "ul", "ol", "tr", "table", "h1", "h2", "h3", "h4", "h5", "h6", "section", "article",
-    "header", "footer", "pre", "blockquote", "hr", "title",
+    "p",
+    "div",
+    "br",
+    "li",
+    "ul",
+    "ol",
+    "tr",
+    "table",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "section",
+    "article",
+    "header",
+    "footer",
+    "pre",
+    "blockquote",
+    "hr",
+    "title",
 ];
 
 pub(crate) fn text(html: &str) -> String {
@@ -23,7 +43,9 @@ pub(crate) fn text(html: &str) -> String {
             if name == "script" || name == "style" {
                 // skip to the closing tag
                 let close = format!("</{name}");
-                i += lower[i..].find(&close).map_or(rest.len(), |c| c + lower[i + c..].find('>').map_or(close.len(), |g| g + 1));
+                i += lower[i..]
+                    .find(&close)
+                    .map_or(rest.len(), |c| c + lower[i + c..].find('>').map_or(close.len(), |g| g + 1));
                 continue;
             }
             if BLOCKS.contains(&name.as_str()) {

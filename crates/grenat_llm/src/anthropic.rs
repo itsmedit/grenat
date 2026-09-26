@@ -65,7 +65,8 @@ impl Anthropic {
         if body.is_some_and(|b| b.to_string().contains("\"fallbacks\"")) {
             builder = builder.header("anthropic-beta", "server-side-fallback-2026-07-01");
         }
-        let request = builder.body(body.map(Json::to_string).unwrap_or_default().into_bytes()).map_err(|e| e.to_string())?;
+        let request =
+            builder.body(body.map(Json::to_string).unwrap_or_default().into_bytes()).map_err(|e| e.to_string())?;
         let mut response = self.agent.run(request).map_err(|e| format!("connection failed: {e}"))?;
         let status = response.status().as_u16();
         let text = response.body_mut().read_to_string().map_err(|e| format!("unreadable response: {e}"))?;

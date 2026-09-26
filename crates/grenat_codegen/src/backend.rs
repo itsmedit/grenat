@@ -17,11 +17,15 @@ pub enum Backend {
 
 impl Backend {
     /// The object file of what `build` puts into a module, and what it returns.
-    pub(crate) fn object<T>(self, build: impl FnOnce(&mut dyn Module) -> Result<T, String>) -> Result<(Vec<u8>, T), String> {
+    pub(crate) fn object<T>(
+        self,
+        build: impl FnOnce(&mut dyn Module) -> Result<T, String>,
+    ) -> Result<(Vec<u8>, T), String> {
         match self {
             Backend::Cranelift => {
-                let builder = ObjectBuilder::new(isa(true)?, "grenat_program", cranelift_module::default_libcall_names())
-                    .map_err(|e| e.to_string())?;
+                let builder =
+                    ObjectBuilder::new(isa(true)?, "grenat_program", cranelift_module::default_libcall_names())
+                        .map_err(|e| e.to_string())?;
                 let mut module = ObjectModule::new(builder);
                 let out = build(&mut module)?;
                 Ok((module.finish().emit().map_err(|e| e.to_string())?, out))

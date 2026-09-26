@@ -67,7 +67,15 @@ fn grenat_files(path: &Path) -> Vec<PathBuf> {
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.') || n == "target"))
-        .flat_map(|p| if p.is_dir() { grenat_files(&p) } else if p.extension().is_some_and(|x| x == "grn") { vec![p] } else { Vec::new() })
+        .flat_map(|p| {
+            if p.is_dir() {
+                grenat_files(&p)
+            } else if p.extension().is_some_and(|x| x == "grn") {
+                vec![p]
+            } else {
+                Vec::new()
+            }
+        })
         .collect();
     files.sort();
     files

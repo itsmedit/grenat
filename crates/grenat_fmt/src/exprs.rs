@@ -530,7 +530,8 @@ fn heredoc_body(src: &str, opener: usize) -> (Vec<&str>, String, bool) {
     while let Some(found) = src[at..line_end].find("<<").map(|i| at + i) {
         let rest = &src[found + 2..];
         let squiggly = rest.starts_with('~');
-        let id: String = rest[1..].trim_start_matches('\'').chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+        let id: String =
+            rest[1..].trim_start_matches('\'').chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
         if !(rest.starts_with('~') || rest.starts_with('-')) || id.is_empty() {
             at = found + 2;
             continue;

@@ -9,7 +9,8 @@ use common::*;
 use grenat_interp::{Options, Output, Response, run_main, run_tests};
 use serde_json::json;
 
-const CREDENTIALS: &str = "mock_credentials({\"github\" => {\"token\" => \"ghp_1\", \"port\" => 22}, \"empty\" => nil})\n";
+const CREDENTIALS: &str =
+    "mock_credentials({\"github\" => {\"token\" => \"ghp_1\", \"port\" => 22}, \"empty\" => nil})\n";
 
 fn results(src: &str) -> Vec<(String, Option<String>)> {
     let parsed = grenat_parser::parse(src);
@@ -44,14 +45,23 @@ p Credentials.fetch(:github, :port)
 p Credentials.dig(:github, :missing), Credentials.dig(:empty)
 "
     ));
-    assert_eq!(out, "[secret]\n[secret]\n[[secret]]\n{token: [secret]}\n[secret]\n[secret]\ntrue\nfalse\ntrue\ntrue\n[secret]\nnil\nnil\n");
+    assert_eq!(
+        out,
+        "[secret]\n[secret]\n[[secret]]\n{token: [secret]}\n[secret]\n[secret]\ntrue\nfalse\ntrue\ntrue\n[secret]\nnil\nnil\n"
+    );
 }
 
 #[test]
 fn missing_credentials_are_errors() {
-    assert_eq!(error_of("Credentials.fetch(:github, :nope)"), "KeyError: no credential `github.nope` (grenat credentials edit)");
+    assert_eq!(
+        error_of("Credentials.fetch(:github, :nope)"),
+        "KeyError: no credential `github.nope` (grenat credentials edit)"
+    );
     assert_eq!(error_of("Credentials.fetch(:empty)"), "KeyError: the credential `empty` is empty");
-    assert_eq!(error_of("Credentials.fetch(:github)"), "TypeError: `github` holds several credentials: fetch one of its keys");
+    assert_eq!(
+        error_of("Credentials.fetch(:github)"),
+        "TypeError: `github` holds several credentials: fetch one of its keys"
+    );
     assert_eq!(error_of("Credentials.fetch()").split(':').next(), Some("ArgumentError"));
     let e = run_err("Credentials.fetch(:github, :token)", Vec::new());
     assert_eq!(e.ty, "CredentialsError", "{}", e.message);
@@ -72,8 +82,14 @@ prompt leak(t: Secret) -> ~String using :fast
   user \"Here: #{t}\"
 end
 ";
-    let e = run_err(&format!("{CREDENTIALS}{prompt}leak(Credentials.fetch(:github, :token))\n"), vec![Response::text_reply("no")]);
-    assert_eq!((e.ty.as_str(), e.message.as_str()), ("SecretError", "a secret never reaches a model: keep it for headers, URLs and connections"));
+    let e = run_err(
+        &format!("{CREDENTIALS}{prompt}leak(Credentials.fetch(:github, :token))\n"),
+        vec![Response::text_reply("no")],
+    );
+    assert_eq!(
+        (e.ty.as_str(), e.message.as_str()),
+        ("SecretError", "a secret never reaches a model: keep it for headers, URLs and connections")
+    );
     // a tool that answers with a secret: the model gets an error instead
     let agent = "model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"
 tool token -> String
@@ -88,7 +104,10 @@ agent Helper
 end
 puts spawn(Helper).ask(Ask(q: \"the token?\")).trust!
 ";
-    let replies = vec![Response::tool_call("t1", "token", json!({})), Response::tool_call("t2", "final_answer", json!({"value": "refused"}))];
+    let replies = vec![
+        Response::tool_call("t1", "token", json!({})),
+        Response::tool_call("t2", "final_answer", json!({"value": "refused"})),
+    ];
     let run = run_full(&format!("{CREDENTIALS}{agent}"), replies, &[], &[]);
     let requests = run.requests.clone();
     assert_eq!(run.ok(), "refused\n");
@@ -105,7 +124,8 @@ end
 keep
 ";
     assert!(error_of(journaled).contains("a secret is never journaled nor queued"), "{}", error_of(journaled));
-    let queued = "database \"sqlite::memory:\"\ndef use(t: Secret) = 1\nenqueue(:use, Credentials.fetch(:github, :token))\n";
+    let queued =
+        "database \"sqlite::memory:\"\ndef use(t: Secret) = 1\nenqueue(:use, Credentials.fetch(:github, :token))\n";
     assert!(error_of(queued).contains("a secret is never journaled nor queued"), "{}", error_of(queued));
     let stored = "db = Db.connect(\"sqlite::memory:\")\ndb.execute(\"CREATE TABLE t (x TEXT)\")\ndb.execute(\"INSERT INTO t VALUES (?)\", [Credentials.fetch(:github, :token)])\n";
     assert_eq!(error_of(stored), "SecretError: a secret is never written to a database: it stays in the credentials");
@@ -134,7 +154,8 @@ fn credentials_are_read_from_the_application() {
     location.write("stripe:\n  key: sk_live_9\n").unwrap();
     let parsed = grenat_parser::parse("p Credentials.fetch(:stripe, :key) == \"sk_live_9\"\n");
     let buffer = Arc::new(Mutex::new(String::new()));
-    let options = Options { output: Output::Capture(buffer.clone()), credentials_root: Some(root), ..Options::default() };
+    let options =
+        Options { output: Output::Capture(buffer.clone()), credentials_root: Some(root), ..Options::default() };
     run_main(&parsed.program, Vec::new(), options).unwrap();
     assert_eq!(buffer.lock().unwrap().as_str(), "true\n");
 }

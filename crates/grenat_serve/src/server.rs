@@ -1,6 +1,5 @@
 //! An HTTP server: requests in, one response each.
 
-
 /// A request received, to answer with [`Incoming::respond`].
 pub struct Incoming {
     pub method: String,
@@ -18,7 +17,8 @@ impl Incoming {
 
     pub fn respond(self, status: u16, content_type: &str, headers: &[(String, String)], body: String) {
         let mut response = tiny_http::Response::from_string(body).with_status_code(status);
-        let all = std::iter::once(("Content-Type", content_type)).chain(headers.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+        let all = std::iter::once(("Content-Type", content_type))
+            .chain(headers.iter().map(|(k, v)| (k.as_str(), v.as_str())));
         for (name, value) in all {
             if let Ok(header) = tiny_http::Header::from_bytes(name, value) {
                 response = response.with_header(header);
@@ -35,7 +35,9 @@ pub struct Server {
 impl Server {
     /// Listens on `address` (`127.0.0.1:0` for any free port).
     pub fn bind(address: &str) -> Result<Server, String> {
-        tiny_http::Server::http(address).map(|inner| Server { inner }).map_err(|e| format!("cannot listen on {address}: {e}"))
+        tiny_http::Server::http(address)
+            .map(|inner| Server { inner })
+            .map_err(|e| format!("cannot listen on {address}: {e}"))
     }
 
     /// Where it listens.
@@ -49,7 +51,8 @@ impl Server {
         let mut body = Vec::new();
         request.as_reader().read_to_end(&mut body).map_err(|e| e.to_string())?;
         let url = request.url().to_string();
-        let (path, query) = url.split_once('?').map_or((url.clone(), String::new()), |(p, q)| (p.to_string(), q.to_string()));
+        let (path, query) =
+            url.split_once('?').map_or((url.clone(), String::new()), |(p, q)| (p.to_string(), q.to_string()));
         let headers = request.headers().iter().map(|h| (h.field.to_string(), h.value.to_string())).collect();
         Ok(Incoming { method: request.method().to_string(), path, query, headers, body, request })
     }

@@ -37,11 +37,19 @@ fn notify(server: &mut Server, method: &str, params: Json) -> Vec<(String, Vec<J
 }
 
 fn open(server: &mut Server, path: &Path, text: &str) -> Vec<(String, Vec<Json>)> {
-    notify(server, "textDocument/didOpen", json!({"textDocument": {"uri": uri(path), "languageId": "grenat", "version": 1, "text": text}}))
+    notify(
+        server,
+        "textDocument/didOpen",
+        json!({"textDocument": {"uri": uri(path), "languageId": "grenat", "version": 1, "text": text}}),
+    )
 }
 
 fn change(server: &mut Server, path: &Path, text: &str) -> Vec<(String, Vec<Json>)> {
-    notify(server, "textDocument/didChange", json!({"textDocument": {"uri": uri(path), "version": 2}, "contentChanges": [{"text": text}]}))
+    notify(
+        server,
+        "textDocument/didChange",
+        json!({"textDocument": {"uri": uri(path), "version": 2}, "contentChanges": [{"text": text}]}),
+    )
 }
 
 fn at(path: &Path, line: u32, character: u32) -> Json {
@@ -108,12 +116,14 @@ fn a_session() {
 
     // formatting
     change(&mut server, &main, "require \"./lib\"\ndef main\nputs double( 2 )\nend\n");
-    let edits = request(&mut server, 6, "textDocument/formatting", json!({"textDocument": {"uri": uri(&main)}, "options": {}}));
+    let edits =
+        request(&mut server, 6, "textDocument/formatting", json!({"textDocument": {"uri": uri(&main)}, "options": {}}));
     let edits = edits["result"].as_array().unwrap();
     assert_eq!(edits[0]["newText"], "require \"./lib\"\ndef main\n  puts double(2)\nend\n");
     assert_eq!(edits[0]["range"]["end"], json!({"line": 4, "character": 0}));
     change(&mut server, &main, "def main(\n");
-    let edits = request(&mut server, 7, "textDocument/formatting", json!({"textDocument": {"uri": uri(&main)}, "options": {}}));
+    let edits =
+        request(&mut server, 7, "textDocument/formatting", json!({"textDocument": {"uri": uri(&main)}, "options": {}}));
     assert_eq!(edits["result"], Json::Null);
 
     // errors

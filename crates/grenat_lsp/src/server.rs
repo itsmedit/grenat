@@ -90,7 +90,9 @@ impl Server {
         if let Some(id) = message.get("id") {
             reply.messages.push(match result {
                 Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
-                Err((code, message)) => json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}}),
+                Err((code, message)) => {
+                    json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}})
+                }
             });
         }
         reply
@@ -132,7 +134,11 @@ impl Server {
     }
 
     /// The definition of the name under the cursor, and the analysis it comes from.
-    fn under_cursor<R>(&self, params: &Json, f: impl FnOnce(&Analysis, &crate::navigation::Definition) -> R) -> Option<R> {
+    fn under_cursor<R>(
+        &self,
+        params: &Json,
+        f: impl FnOnce(&Analysis, &crate::navigation::Definition) -> R,
+    ) -> Option<R> {
         let (path, text) = self.document(params).ok()?;
         let offset = LineIndex::new(text).offset(&params["position"]);
         let name = name_at(text, offset)?;
@@ -160,7 +166,9 @@ impl Server {
     fn symbols(&self, params: &Json) -> Result<Json, (i64, String)> {
         let (path, _) = self.document(params)?;
         let Some(analysis) = self.analyses.get(&path) else { return Ok(json!([])) };
-        let (Some(program), Some(file)) = (analysis.program.as_ref(), analysis.file(&path)) else { return Ok(json!([])) };
+        let (Some(program), Some(file)) = (analysis.program.as_ref(), analysis.file(&path)) else {
+            return Ok(json!([]));
+        };
         let index = LineIndex::new(analysis.sources.text_of(file));
         let symbols: Vec<Json> = definitions(program)
             .iter()

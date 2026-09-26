@@ -73,7 +73,8 @@ fn translate(message: &Json, provider: &Catalogued, out: &mut Vec<Json>) -> Resu
             .filter(|b| b["type"] == "tool_use")
             .map(|b| json!({"id": b["id"], "type": "function", "function": {"name": b["name"], "arguments": b["input"].to_string()}}))
             .collect();
-        let mut assistant = json!({"role": "assistant", "content": if text.is_empty() { Json::Null } else { json!(text) }});
+        let mut assistant =
+            json!({"role": "assistant", "content": if text.is_empty() { Json::Null } else { json!(text) }});
         if !calls.is_empty() {
             assistant["tool_calls"] = Json::Array(calls);
         }
@@ -105,7 +106,13 @@ fn translate(message: &Json, provider: &Catalogued, out: &mut Vec<Json>) -> Resu
 /// A content block of a user message.
 fn part(block: &Json, provider: &Catalogued) -> Result<Json, LlmError> {
     let source = &block["source"];
-    let data_url = || format!("data:{};base64,{}", source["media_type"].as_str().unwrap_or_default(), source["data"].as_str().unwrap_or_default());
+    let data_url = || {
+        format!(
+            "data:{};base64,{}",
+            source["media_type"].as_str().unwrap_or_default(),
+            source["data"].as_str().unwrap_or_default()
+        )
+    };
     Ok(match block["type"].as_str() {
         Some("text") => json!({"type": "text", "text": block["text"]}),
         Some("image") if source["type"] == "url" => json!({"type": "image_url", "image_url": {"url": source["url"]}}),
@@ -114,10 +121,15 @@ fn part(block: &Json, provider: &Catalogued) -> Result<Json, LlmError> {
             return Err(LlmError::new(format!("the provider `{}` does not read PDF documents", provider.name)));
         }
         Some("document") if source["type"] == "url" => {
-            return Err(LlmError::new(format!("the provider `{}` reads PDF documents given as data (`Pdf.read`), not by URL", provider.name)));
+            return Err(LlmError::new(format!(
+                "the provider `{}` reads PDF documents given as data (`Pdf.read`), not by URL",
+                provider.name
+            )));
         }
         Some("document") => json!({"type": "file", "file": {"filename": "document.pdf", "file_data": data_url()}}),
-        other => return Err(LlmError::new(format!("unsupported content {other:?} for the provider `{}`", provider.name))),
+        other => {
+            return Err(LlmError::new(format!("unsupported content {other:?} for the provider `{}`", provider.name)));
+        }
     })
 }
 

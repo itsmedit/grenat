@@ -224,9 +224,9 @@ impl<'p> Interp<'p> {
             (false, _) => None,
             (true, None) => grenat_codegen::Native::compile(program).ok(),
             // SAFETY: `linked` is the image of this executable, whose source `program` comes from
-            (true, Some(image)) => unsafe { grenat_codegen::Native::link(program, image) }
-                .map_err(|e| link_error = Some(e))
-                .ok(),
+            (true, Some(image)) => {
+                unsafe { grenat_codegen::Native::link(program, image) }.map_err(|e| link_error = Some(e)).ok()
+            }
         };
         let mut interp = Interp {
             shared: Arc::new(shared),

@@ -222,7 +222,9 @@ fn declarations_are_checked() {
         "ArgumentError: `expose` takes a path such as \"/mcp\", got \"\""
     );
     assert_eq!(
-        error(&format!("{tool}expose \"/a\", tools: [:ping], public: true\nexpose \"/a/\", tools: [:ping], public: true")),
+        error(&format!(
+            "{tool}expose \"/a\", tools: [:ping], public: true\nexpose \"/a/\", tools: [:ping], public: true"
+        )),
         "ArgumentError: `/a` is exposed twice"
     );
 }

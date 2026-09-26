@@ -33,7 +33,8 @@ pub fn serve(
         if schedules == 0 && !webhooks && !database {
             return Err(RuntimeError {
                 ty: "ArgumentError".into(),
-                message: "nothing to serve: declare routes (`get \"/\" do … end`), `expose`, `on_webhook` or `every`".into(),
+                message: "nothing to serve: declare routes (`get \"/\" do … end`), `expose`, `on_webhook` or `every`"
+                    .into(),
                 span: None,
                 trace: Vec::new(),
             });
@@ -48,8 +49,12 @@ pub fn serve(
             }
         }
         if webhooks {
-            let server = grenat_serve::Server::bind(address)
-                .map_err(|message| RuntimeError { ty: "IoError".into(), message, span: None, trace: Vec::new() })?;
+            let server = grenat_serve::Server::bind(address).map_err(|message| RuntimeError {
+                ty: "IoError".into(),
+                message,
+                span: None,
+                trace: Vec::new(),
+            })?;
             listening(&server.address());
             loop {
                 let Ok(incoming) = grenat_green::blocking(|| server.next()) else { continue };
@@ -65,7 +70,10 @@ pub fn serve(
                         Ok(answer) => answer,
                         Err(ctrl) => {
                             let error = task.runtime_error(ctrl);
-                            task.write_err(&format!("[{} {}] {}: {}\n", incoming.method, incoming.path, error.ty, error.message));
+                            task.write_err(&format!(
+                                "[{} {}] {}: {}\n",
+                                incoming.method, incoming.path, error.ty, error.message
+                            ));
                             task.record_event("request", &format!("{} {}", incoming.method, incoming.path), &error);
                             HttpAnswer::text(500, "error")
                         }
@@ -92,7 +100,8 @@ impl Interp<'_> {
                 let wait = match &schedule.every {
                     Every::Seconds(s) => Duration::from_secs_f64(*s),
                     Every::Cron(cron) => {
-                        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+                        let now =
+                            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
                         let next = cron.next(now.as_secs() as i64).unwrap_or(i64::MAX / 2);
                         Duration::from_secs_f64((next as f64 - now.as_secs_f64()).max(0.0))
                     }

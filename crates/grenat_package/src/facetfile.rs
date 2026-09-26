@@ -87,7 +87,11 @@ impl Facetfile {
                     let (facet, requirement) = match positional.as_slice() {
                         [facet] => (facet.clone(), Requirement::any()),
                         [facet, requirement] => (facet.clone(), Requirement::parse(requirement)?),
-                        _ => return Err("`facet` takes a name and, optionally, a version: `facet \"x\", \"~> 1.2\"`".into()),
+                        _ => {
+                            return Err(
+                                "`facet` takes a name and, optionally, a version: `facet \"x\", \"~> 1.2\"`".into()
+                            );
+                        }
                     };
                     let origin = match (named("path")?, named("git")?) {
                         (Some(path), None) => Origin::Path(path.into()),
@@ -143,7 +147,10 @@ mod tests {
         assert_eq!(file.facets[0].requirement.to_string(), "~> 0.3");
         assert_eq!(file.facets[0].origin, Origin::Index);
         assert_eq!(file.facets[1].origin, Origin::Path("../utils".into()));
-        assert_eq!(file.facets[2].origin, Origin::Git { url: "https://x.io/greet".into(), reference: Reference::Tag("v1.0.0".into()) });
+        assert_eq!(
+            file.facets[2].origin,
+            Origin::Git { url: "https://x.io/greet".into(), reference: Reference::Tag("v1.0.0".into()) }
+        );
         assert_eq!(file.facets[3].requirement, Requirement::any());
         let err = |text: &str| Facetfile::parse(text).unwrap_err();
         assert_eq!(err("facet \"a\"\nfacet \"a\"\n"), "facet `a` is listed twice");

@@ -88,7 +88,11 @@ fn prompts_and_run_must_declare_taint() {
 fn what_the_network_returns_is_untrusted() {
     let head = "def main uses net\n  r = Http.get(\"https://x.io/a\")\n";
     single(&format!("{head}  Http.post(\"https://x.io/b\", body: r.body)\nend\n"), "E0412", "r.body");
-    single(&format!("{head}  Http.post(\"https://x.io/b\", json: Json.parse(r.body))\nend\n"), "E0412", "Json.parse(r.body)");
+    single(
+        &format!("{head}  Http.post(\"https://x.io/b\", json: Json.parse(r.body))\nend\n"),
+        "E0412",
+        "Json.parse(r.body)",
+    );
     single(&format!("{head}  Http.post(\"https://x.io/b\", json: r.json)\nend\n"), "E0412", "r.json");
     clean(&format!("{head}  Http.post(\"https://x.io/b\", json: {{code: r.status}})\nend\n"));
     clean(&format!("{head}  Http.post(\"https://x.io/b\", body: r.body.check {{ |b| b.size < 100 }}?)\nend\n"));
@@ -96,14 +100,17 @@ fn what_the_network_returns_is_untrusted() {
 
 #[test]
 fn a_model_s_answer_cannot_be_sent_unchecked() {
-    let src = format!("{PRELUDE}def main uses llm, net\n  s = summarize(\"x\")\n  Http.post(\"https://x.io\", json: {{t: s.title}})\nend\n");
+    let src = format!(
+        "{PRELUDE}def main uses llm, net\n  s = summarize(\"x\")\n  Http.post(\"https://x.io\", json: {{t: s.title}})\nend\n"
+    );
     let d = single(&src, "E0412", "{t: s.title}");
     assert!(d.message.starts_with("an untrusted value reaches `Http.post` (effect `net`)"), "{}", d.message);
 }
 
 #[test]
 fn sql_is_never_untrusted() {
-    let head = format!("{PRELUDE}def main uses llm, db\n  db = Db.connect(\"sqlite::memory:\")\n  s = summarize(\"x\")\n");
+    let head =
+        format!("{PRELUDE}def main uses llm, db\n  db = Db.connect(\"sqlite::memory:\")\n  s = summarize(\"x\")\n");
     single(&format!("{head}  db.query(s.title)\nend\n"), "E0412", "s.title");
     clean(&format!("{head}  db.query(\"SELECT * FROM t WHERE title = ?\", [s.title])\nend\n"));
     single(&format!("{head}  db.execute(\"UPDATE t SET title = ?\", [s.title])\nend\n"), "E0412", "[s.title]");
@@ -126,24 +133,40 @@ fn what_an_mcp_server_answers_is_untrusted() {
 #[test]
 fn what_a_webhook_carries_is_untrusted() {
     single("on_webhook \"/x\" do |req|\n  Shell.run([\"echo\", req.body])\nend\n", "E0412", "[\"echo\", req.body]");
-    clean("on_webhook \"/x\" do |req|\n  p req.path\n  Shell.run([\"echo\", req.path])\nend\nevery cron: \"0 8 * * MON\" do\n  p 1\nend\n");
+    clean(
+        "on_webhook \"/x\" do |req|\n  p req.path\n  Shell.run([\"echo\", req.path])\nend\nevery cron: \"0 8 * * MON\" do\n  p 1\nend\n",
+    );
 }
 
 #[test]
 fn an_email_is_never_untrusted() {
-    let head = format!("{PRELUDE}def main uses llm, net\n  s = summarize(\"x\")\n  m = Mail.connect(\"smtp://smtp.acme.com\")\n");
-    single(&format!("{head}  m.send(from: \"a@b.c\", to: \"c@d.e\", subject: \"x\", body: s.title)\nend\n"), "E0412", "s.title");
+    let head = format!(
+        "{PRELUDE}def main uses llm, net\n  s = summarize(\"x\")\n  m = Mail.connect(\"smtp://smtp.acme.com\")\n"
+    );
+    single(
+        &format!("{head}  m.send(from: \"a@b.c\", to: \"c@d.e\", subject: \"x\", body: s.title)\nend\n"),
+        "E0412",
+        "s.title",
+    );
     clean(&format!("{head}  m.send(from: \"a@b.c\", to: \"c@d.e\", subject: \"x\", body: s.trust!.title)\nend\n"));
 }
 
 #[test]
 fn a_page_as_text_is_still_untrusted() {
-    single("def main uses net\n  t = Html.text(Http.get(\"https://x.io\").body)\n  Http.post(\"https://y.io\", body: t)\nend\n", "E0412", "t");
+    single(
+        "def main uses net\n  t = Html.text(Http.get(\"https://x.io\").body)\n  Http.post(\"https://y.io\", body: t)\nend\n",
+        "E0412",
+        "t",
+    );
 }
 
 #[test]
 fn a_page_never_carries_an_unescaped_untrusted_value() {
-    single("get \"/x\" do |req|\n  html \"<p>#{req.params[\"name\"]}</p>\"\nend\n", "E0412", "\"<p>#{req.params[\"name\"]}</p>\"");
+    single(
+        "get \"/x\" do |req|\n  html \"<p>#{req.params[\"name\"]}</p>\"\nend\n",
+        "E0412",
+        "\"<p>#{req.params[\"name\"]}</p>\"",
+    );
     clean("get \"/x\" do |req|\n  html \"<p>#{Html.escape(req.params[\"name\"])}</p>\"\nend\n");
     single("get \"/x\" do |req|\n  redirect req.params[\"to\"]\nend\n", "E0412", "req.params[\"to\"]");
     clean("get \"/x\" do |req|\n  json(req.params)\nend\n");
@@ -152,6 +175,10 @@ fn a_page_never_carries_an_unescaped_untrusted_value() {
 #[test]
 fn a_job_never_carries_an_untrusted_value() {
     let head = "def note(t: String) = t\n";
-    single(&format!("{head}post \"/n\" do |req|\n  enqueue(:note, req.params[\"t\"])\nend\n"), "E0412", "req.params[\"t\"]");
+    single(
+        &format!("{head}post \"/n\" do |req|\n  enqueue(:note, req.params[\"t\"])\nend\n"),
+        "E0412",
+        "req.params[\"t\"]",
+    );
     clean(&format!("{head}def main uses db\n  enqueue(:note, \"x\")\nend\n"));
 }

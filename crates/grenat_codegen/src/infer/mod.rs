@@ -259,7 +259,13 @@ impl<'a, 'p> Infer<'a, 'p> {
         })
     }
 
-    fn if_expr(&mut self, cond: &Expr, then: &[Expr], else_: Option<&[Expr]>, expected: Option<Ty>) -> Result<Flow, Reject> {
+    fn if_expr(
+        &mut self,
+        cond: &Expr,
+        then: &[Expr],
+        else_: Option<&[Expr]>,
+        expected: Option<Ty>,
+    ) -> Result<Flow, Reject> {
         self.condition(cond)?;
         let before = self.assigned.clone();
         let then_flow = self.stmts(then, expected)?;
@@ -366,7 +372,11 @@ impl<'a, 'p> Infer<'a, 'p> {
                 }
             }
             Some(existing) => {
-                return Err(format!("changes the type of `{name}` from `{}` to `{}`", self.show(existing), self.show(t)));
+                return Err(format!(
+                    "changes the type of `{name}` from `{}` to `{}`",
+                    self.show(existing),
+                    self.show(t)
+                ));
             }
             None => {
                 self.typed.vars.insert(name.to_string(), t);
@@ -398,11 +408,7 @@ impl<'a, 'p> Infer<'a, 'p> {
         match array {
             Elem::Unknown => self.expect(recv, Ty::Array(Elem::Unknown), Ty::Array(elem), "stores"),
             known if known == elem => Ok(()),
-            known => Err(format!(
-                "stores `{}` in an array of `{}`",
-                self.show(item),
-                self.structs.show_elem(known)
-            )),
+            known => Err(format!("stores `{}` in an array of `{}`", self.show(item), self.structs.show_elem(known))),
         }
     }
 }

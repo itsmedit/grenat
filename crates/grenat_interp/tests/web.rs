@@ -115,6 +115,16 @@ test \"open redirect\" do
 end
 ",
     );
-    assert!(results[0].1.as_deref().unwrap().starts_with("TaintError: an untrusted value reaches `html` (a page) without escaping"), "{results:?}");
-    assert!(results[1].1.as_deref().unwrap().starts_with("TaintError: an untrusted value is the URL of `redirect`"), "{results:?}");
+    assert!(
+        results[0]
+            .1
+            .as_deref()
+            .unwrap()
+            .starts_with("TaintError: an untrusted value reaches `html` (a page) without escaping"),
+        "{results:?}"
+    );
+    assert!(
+        results[1].1.as_deref().unwrap().starts_with("TaintError: an untrusted value is the URL of `redirect`"),
+        "{results:?}"
+    );
 }

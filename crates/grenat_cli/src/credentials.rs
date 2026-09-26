@@ -78,7 +78,10 @@ fn edit(root: &Path, env: Option<&str>) -> Result<(), String> {
 
 /// `$VISUAL`, `$EDITOR`, or `vi` — with its own arguments (`code --wait`).
 fn run_editor(file: &Path) -> Result<(), String> {
-    let editor = ["VISUAL", "EDITOR"].iter().find_map(|v| std::env::var(v).ok().filter(|e| !e.trim().is_empty())).unwrap_or_else(|| "vi".into());
+    let editor = ["VISUAL", "EDITOR"]
+        .iter()
+        .find_map(|v| std::env::var(v).ok().filter(|e| !e.trim().is_empty()))
+        .unwrap_or_else(|| "vi".into());
     let mut words = editor.split_whitespace();
     let program = words.next().unwrap_or("vi");
     let status = std::process::Command::new(program)
@@ -94,7 +97,8 @@ fn run_editor(file: &Path) -> Result<(), String> {
 
 /// A new directory only its owner can read.
 fn private_dir() -> Result<PathBuf, String> {
-    let dir = std::env::temp_dir().join(format!("grenat-credentials-{}-{}", std::process::id(), credentials::new_key()));
+    let dir =
+        std::env::temp_dir().join(format!("grenat-credentials-{}-{}", std::process::id(), credentials::new_key()));
     let mut builder = std::fs::DirBuilder::new();
     #[cfg(unix)]
     std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);

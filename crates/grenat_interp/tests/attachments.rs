@@ -44,7 +44,10 @@ fn images_and_urls() {
     assert_eq!(messages[0]["content"][0]["source"]["media_type"], "image/png");
     assert_eq!(messages[0]["content"][0]["type"], "image");
     let messages = request(&format!("{PROMPT}read(Pdf.url(\"https://x.io/a.pdf\"), \"What?\")\n"));
-    assert_eq!(messages[0]["content"][0], json!({"type": "document", "source": {"type": "url", "url": "https://x.io/a.pdf"}}));
+    assert_eq!(
+        messages[0]["content"][0],
+        json!({"type": "document", "source": {"type": "url", "url": "https://x.io/a.pdf"}})
+    );
 }
 
 #[test]

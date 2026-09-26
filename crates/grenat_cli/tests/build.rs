@@ -241,7 +241,11 @@ fn a_program_of_several_files_is_built_with_its_file_table() {
     let root = dir().join("several");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("lib")).unwrap();
-    std::fs::write(root.join("main.grn"), "require \"./lib/div\"\n\ndef main\n  puts div(6, 3)\n  puts div(1, 0)\nend\n").unwrap();
+    std::fs::write(
+        root.join("main.grn"),
+        "require \"./lib/div\"\n\ndef main\n  puts div(6, 3)\n  puts div(1, 0)\nend\n",
+    )
+    .unwrap();
     std::fs::write(root.join("lib/div.grn"), "def div(a: Int, b: Int) -> Int = a / b\n").unwrap();
     let main = root.join("main.grn");
     for flags in [&[][..], &["--native"][..]] {
@@ -343,7 +347,11 @@ fn release_numerics_and_errors_match_the_interpreter() {
     assert!(err.contains("OverflowError"), "{err}");
     assert!(err.contains("in `overflow`"), "{err}");
 
-    let exe = build_with("release_div", "def div(a: Int, b: Int) -> Int = a / b\ndef main\n  puts div(1, 0)\nend\n", &["--native", "--release"]);
+    let exe = build_with(
+        "release_div",
+        "def div(a: Int, b: Int) -> Int = a / b\ndef main\n  puts div(1, 0)\nend\n",
+        &["--native", "--release"],
+    );
     let err = text(&run_exe(&exe, &[], &[]).stderr);
     assert!(err.starts_with("error: ZeroDivisionError: division by zero\n"), "{err}");
 }

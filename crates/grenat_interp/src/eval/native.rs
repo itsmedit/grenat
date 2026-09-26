@@ -112,7 +112,9 @@ fn value<'p>(data: &Data) -> Value<'p> {
         Data::Bool(b) => Value::Bool(*b),
         Data::Str(s) => Value::str(s),
         Data::Array(items) => Value::array(items.iter().map(value).collect()),
-        Data::Record { ty, fields } => Value::record(ty, fields.iter().map(|(n, v)| (n.as_str().into(), value(v))).collect()),
+        Data::Record { ty, fields } => {
+            Value::record(ty, fields.iter().map(|(n, v)| (n.as_str().into(), value(v))).collect())
+        }
         Data::Alias(_) => unreachable!("only a whole result is an alias"),
     }
 }

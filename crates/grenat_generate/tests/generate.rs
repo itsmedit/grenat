@@ -64,13 +64,22 @@ fn a_record_its_migration_and_its_test() {
     let fields = ["subject:String".to_string(), "score:Float?".to_string()];
     generate(&dir, Kind::Record, "category", &fields, NOW).unwrap();
     let record = read(&dir, "src/records/category.grn");
-    assert!(record.contains("struct Category\n  table :categories\n  id: Int?\n  subject: String\n  score: Float?\nend"));
+    assert!(
+        record.contains("struct Category\n  table :categories\n  id: Int?\n  subject: String\n  score: Float?\nend")
+    );
     let migration = read(&dir, "src/migrations/20260921141320_create_categories.grn");
     assert!(migration.contains("migration \"20260921141320_create_categories\" do |db|"));
-    assert!(migration.contains("CREATE TABLE categories (id #{db.primary_key}, subject TEXT NOT NULL, score DOUBLE PRECISION)"));
-    assert!(read(&dir, "tests/records/category_test.grn").contains("Category.create(subject: \"subject\", score: 1.5)"));
+    assert!(
+        migration
+            .contains("CREATE TABLE categories (id #{db.primary_key}, subject TEXT NOT NULL, score DOUBLE PRECISION)")
+    );
+    assert!(
+        read(&dir, "tests/records/category_test.grn").contains("Category.create(subject: \"subject\", score: 1.5)")
+    );
     let app = read(&dir, "src/app.grn");
-    assert!(app.contains("require \"./records/category\"\nrequire \"./migrations/20260921141320_create_categories\"\n"));
+    assert!(
+        app.contains("require \"./records/category\"\nrequire \"./migrations/20260921141320_create_categories\"\n")
+    );
 }
 
 #[test]
@@ -96,7 +105,11 @@ fn what_generators_refuse() {
     let before = read(&dir, "src/app.grn");
     // nothing is overwritten, nor half written
     std::fs::remove_file(dir.join("src/tools/lookup.grn")).unwrap();
-    assert!(generate(&dir, Kind::Tool, "lookup", &[], NOW).unwrap_err().contains("tests/tools/lookup_test.grn already exists"));
+    assert!(
+        generate(&dir, Kind::Tool, "lookup", &[], NOW)
+            .unwrap_err()
+            .contains("tests/tools/lookup_test.grn already exists")
+    );
     assert!(!dir.join("src/tools/lookup.grn").exists());
     assert_eq!(read(&dir, "src/app.grn"), before);
     let fields = |f: &[&str]| f.iter().map(|s| s.to_string()).collect::<Vec<_>>();

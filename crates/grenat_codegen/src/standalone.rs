@@ -13,9 +13,9 @@ use cranelift_module::{Linkage, Module};
 use grenat_ast::{FnKind, Item, Program, TypeKind};
 use grenat_runtime::abi::STANDALONE_SYMBOL;
 
+use crate::Backend;
 use crate::aot::Object;
 use crate::eligibility::select;
-use crate::Backend;
 use crate::emit::emit;
 use crate::infer::Target;
 use crate::native::Report;
@@ -112,9 +112,13 @@ fn interpreter_only(program: &Program, compiled: &[&str]) -> Vec<String> {
                 reasons.push("top-level statements need the interpreter: move them into `main`".into());
             }
             Item::Fn(def) if def.kind != FnKind::Def => {
-                reasons.push(format!("`{}` is a {:?}, which needs the interpreter", def.name.name, def.kind).to_lowercase());
+                reasons.push(
+                    format!("`{}` is a {:?}, which needs the interpreter", def.name.name, def.kind).to_lowercase(),
+                );
             }
-            Item::Fn(def) if !compiled.contains(&def.name.name.as_str()) && def.params.iter().any(|p| p.ty.is_none()) => {
+            Item::Fn(def)
+                if !compiled.contains(&def.name.name.as_str()) && def.params.iter().any(|p| p.ty.is_none()) =>
+            {
                 reasons.push(format!("`{}` cannot be compiled: its parameters need types", def.name.name));
             }
             Item::Type(def) if matches!(def.kind, TypeKind::Agent | TypeKind::Supervisor) => {

@@ -330,7 +330,8 @@ fn errors_are_shown_in_the_required_file() {
     let dir = project("required");
     std::fs::write(dir.join("main.grn"), "require \"./lib/math\"\n\ndef main\n  puts half(3)\nend\n").unwrap();
     std::fs::create_dir_all(dir.join("lib")).unwrap();
-    std::fs::write(dir.join("lib/math.grn"), "def half(n: Int) -> Int\n  raise \"odd\" if n % 2 == 1\n  n / 2\nend\n").unwrap();
+    std::fs::write(dir.join("lib/math.grn"), "def half(n: Int) -> Int\n  raise \"odd\" if n % 2 == 1\n  n / 2\nend\n")
+        .unwrap();
     let out = grenat_in(&dir, &["run", "main.grn"]);
     let err = text(&out.stderr);
     assert_eq!(code(&out), 1, "{err}");
@@ -460,7 +461,12 @@ fn serve_runs_schedules_and_receives_webhooks() {
     let post = |headers: &str| {
         let mut stream = std::net::TcpStream::connect(&address).unwrap();
         let body = "{\"n\": 7}";
-        write!(stream, "POST /hook HTTP/1.1\r\nHost: x\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        write!(
+            stream,
+            "POST /hook HTTP/1.1\r\nHost: x\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
         let mut response = String::new();
         stream.read_to_string(&mut response).unwrap();
         response
@@ -485,7 +491,10 @@ fn serve_runs_schedules_and_receives_webhooks() {
 #[test]
 fn serve_answers_routes() {
     use std::io::{BufRead, BufReader, Read, Write};
-    let path = program("web.grn", "get \"/hello/:name\" do |req|\n  html \"<b>#{Html.escape(req.params[\"name\"])}</b>\"\nend\n");
+    let path = program(
+        "web.grn",
+        "get \"/hello/:name\" do |req|\n  html \"<b>#{Html.escape(req.params[\"name\"])}</b>\"\nend\n",
+    );
     let mut child = Command::new(env!("CARGO_BIN_EXE_grenat"))
         .args(["serve", "--listen", "127.0.0.1:0", path.to_str().unwrap()])
         .stderr(std::process::Stdio::piped())
@@ -542,7 +551,10 @@ fn serve_exposes_tools_to_an_mcp_client() {
 fn migrate_applies_pending_migrations() {
     let dir = project("migrate");
     let db = dir.join("app.db");
-    let src = format!("database \"sqlite://{}\"\nmigration \"001_notes\" do |db|\n  db.migrate(\"CREATE TABLE notes (id INTEGER PRIMARY KEY, text TEXT)\")\nend\n", db.display());
+    let src = format!(
+        "database \"sqlite://{}\"\nmigration \"001_notes\" do |db|\n  db.migrate(\"CREATE TABLE notes (id INTEGER PRIMARY KEY, text TEXT)\")\nend\n",
+        db.display()
+    );
     std::fs::write(dir.join("app.grn"), src).unwrap();
     let path = dir.join("app.grn");
     let out = grenat(&["migrate", path.to_str().unwrap()]);
@@ -574,7 +586,8 @@ fn serve_runs_queued_jobs() {
     let address = line.trim().strip_prefix("listening on http://").unwrap().to_string();
     let call = |method: &str, path: &str| {
         let mut stream = std::net::TcpStream::connect(&address).unwrap();
-        write!(stream, "{method} {path} HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+        write!(stream, "{method} {path} HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            .unwrap();
         let mut response = String::new();
         stream.read_to_string(&mut response).unwrap();
         response
@@ -661,7 +674,10 @@ fn serve_records_what_fails_for_the_console() {
     };
     let boom = send("GET /boom HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n".into());
     let body = "{\"text\": \"<script>\"}";
-    let refused = send(format!("POST /mcp/pager_show HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()));
+    let refused = send(format!(
+        "POST /mcp/pager_show HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    ));
     child.kill().unwrap();
     child.wait().unwrap();
     assert!(boom.starts_with("HTTP/1.1 500"), "{boom}");
@@ -743,7 +759,14 @@ fn credentials_are_edited_encrypted_and_shown() {
     let edit = |script: &std::path::Path, extra: &[&str]| {
         let mut args = vec!["credentials", "edit"];
         args.extend(extra);
-        Command::new(env!("CARGO_BIN_EXE_grenat")).args(&args).current_dir(&app).env("EDITOR", script).env_remove("VISUAL").env_remove("GRENAT_MASTER_KEY").output().unwrap()
+        Command::new(env!("CARGO_BIN_EXE_grenat"))
+            .args(&args)
+            .current_dir(&app)
+            .env("EDITOR", script)
+            .env_remove("VISUAL")
+            .env_remove("GRENAT_MASTER_KEY")
+            .output()
+            .unwrap()
     };
     let out = edit(&editor("good.sh", "github:\n  token: ghp_123\n"), &[]);
     assert_eq!(code(&out), 0, "{}", text(&out.stderr));
@@ -865,6 +888,11 @@ fn a_mistake_in_config_models_yml_is_reported_where_it_is() {
     assert!(text(&out.stderr).contains("config/models.yml: invalid YAML"), "{}", text(&out.stderr));
     std::fs::write(app.join("config/models.yml"), "fast:\n  provider: opanai\n  name: gpt-5\n").unwrap();
     let out = grenat_in(&app, &["check"]);
-    assert!(text(&out.stderr).contains("unknown provider `:opanai`") && text(&out.stderr).contains("did you mean `openai`?"), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stderr).contains("unknown provider `:opanai`")
+            && text(&out.stderr).contains("did you mean `openai`?"),
+        "{}",
+        text(&out.stderr)
+    );
     assert!(text(&out.stderr).contains("config/models.yml"), "{}", text(&out.stderr));
 }

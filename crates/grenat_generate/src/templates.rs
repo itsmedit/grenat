@@ -179,7 +179,10 @@ pub(crate) const DATASET: &str = "\
 
 pub(crate) fn record(names: &Names, fields: &[Field]) -> String {
     let declarations: String = fields.iter().map(|f| format!("  {}\n", f.declaration())).collect();
-    fill(&format!("require \"../config\"\n\nstruct __Camel__\n  table :__plural__\n  id: Int?\n{declarations}end\n"), names)
+    fill(
+        &format!("require \"../config\"\n\nstruct __Camel__\n  table :__plural__\n  id: Int?\n{declarations}end\n"),
+        names,
+    )
 }
 
 pub(crate) fn migration(names: &Names, fields: &[Field], version: &str) -> String {

@@ -55,7 +55,10 @@ fn world(dir: &Path) -> String {
     for version in ["1.0.0", "1.2.0", "2.0.0"] {
         release(
             &greet,
-            &[("grenat.toml", &manifest("greet", version)), ("src/lib.grn", &format!("def greet = \"greet {version}\"\n"))],
+            &[
+                ("grenat.toml", &manifest("greet", version)),
+                ("src/lib.grn", &format!("def greet = \"greet {version}\"\n")),
+            ],
             &format!("v{version}"),
         );
     }
@@ -102,7 +105,11 @@ fn facets_are_resolved_fetched_locked_and_required() {
     assert!(lock.contains("dir = \".grenat/facets/greet-1.2.0\""), "{lock}");
 
     // a new release: the lock keeps the old one, until an update
-    release(&dir.join("greet"), &[("src/lib.grn", "def greet = \"greet 1.3.0\"\n"), ("grenat.toml", &manifest("greet", "1.3.0"))], "v1.3.0");
+    release(
+        &dir.join("greet"),
+        &[("src/lib.grn", "def greet = \"greet 1.3.0\"\n"), ("grenat.toml", &manifest("greet", "1.3.0"))],
+        "v1.3.0",
+    );
     install(&app, false).unwrap();
     assert_eq!(versions(&app), ["greet 1.2.0", "shout 0.1.0"]);
     install(&app, true).unwrap();
