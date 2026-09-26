@@ -63,9 +63,7 @@ def main(args: Array(String)) uses llm, net, env
   report = spawn(Researcher).ask(Research(question: args.join(" ")))
   sourced = report.check { |r| r.claims.all? { |c| c.sources.any? } }?
   puts sourced.answer
-  sourced
-    .claims
-    .each_with_index do |c, i|
-      puts "[#{i + 1}] #{c.text} — #{c.sources.join(", ")}"
-    end
+  sourced.claims.each_with_index do |c, i|
+    puts "[#{i + 1}] #{c.text} — #{c.sources.join(", ")}"
+  end
 end

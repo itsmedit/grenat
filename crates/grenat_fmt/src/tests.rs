@@ -186,3 +186,19 @@ fn end_of_line_comments_after_accented_text_stay_aligned() {
     let src = "x = \"é\"  # one\nlong_name = \"“quoted”\"    # two\ny(\"é\")  # three\n";
     assert_eq!(fmt(src), "x = \"é\"                 # one\nlong_name = \"“quoted”\"  # two\ny(\"é\")                  # three\n");
 }
+
+#[test]
+fn chains_break_as_a_rubyist_would() {
+    // a block's body goes on its own lines: the chain before it stays whole
+    let each = "Dir.list(\"inbox\").select { |n| n.end_with?(\".pdf\") }.each do |name|\n  puts name\nend\n";
+    assert_eq!(fmt(each), each);
+    // a module stays with its first call; its arguments break instead
+    let long = "x = Http.get(\"https://api.example.com/repos/acme/shop/pulls/1234/files\", headers: {\"Accept\" => \"text\"}).body\n";
+    assert_eq!(
+        fmt(long),
+        "x = Http.get(\n  \"https://api.example.com/repos/acme/shop/pulls/1234/files\",\n  headers: {\"Accept\" => \"text\"},\n).body\n"
+    );
+    // a long chain of calls still breaks, one call per line
+    let chain = "total = orders.select { |o| o.paid? && o.shipped? }.map { |o| o.amount_with_taxes_and_fees }.sum.round(2)\n";
+    assert_eq!(fmt(chain), "total = orders\n  .select { |o| o.paid? && o.shipped? }\n  .map { |o| o.amount_with_taxes_and_fees }\n  .sum\n  .round(2)\n");
+}

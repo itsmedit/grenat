@@ -228,17 +228,16 @@ impl Printer<'_> {
         let ExprKind::Call { recv, .. } = &e.kind else { unreachable!("a call") };
         // a long chain `a.b(…).c(…)`: one call per line, the lexer joins them
         let chain = chain(e);
-        if !self.measuring
-            && chain.len() >= 2
-            && self.flat(|p| p.expr(e)).is_none_or(|flat| self.column() + flat.len() > WIDTH)
-        {
-            let base = match &chain[0].kind {
-                ExprKind::Call { recv: Some(recv), .. } => recv,
-                _ => unreachable!("a method call"),
-            };
-            self.receiver(base);
+        // a module or a type stays with its first call: `Dir.list(…)`, `Http.get(…)`
+        let anchored = chain.first().is_some_and(|c| matches!(receiver_of(c).kind, ExprKind::Const(_)));
+        let links = if anchored { &chain[1..] } else { &chain[..] };
+        if !self.measuring && links.len() >= 2 && !self.first_line_fits(|p| p.expr(e)) {
+            self.receiver(receiver_of(chain[0]));
+            if anchored {
+                self.link(chain[0]);
+            }
             self.indented(|p| {
-                for link in &chain {
+                for link in links {
                     p.newline();
                     p.link(link);
                 }
@@ -366,6 +365,15 @@ impl Printer<'_> {
         self.write("end");
     }
 
+    /// Whether the first line of what `f` prints fits: a block's body goes on
+    /// lines of its own and does not count.
+    pub(crate) fn first_line_fits(&self, f: impl FnOnce(&mut Printer)) -> bool {
+        let mut m = self.measurer();
+        f(&mut m);
+        let first = m.out.split('\n').next().unwrap_or_default();
+        self.column() + first.chars().count() <= WIDTH
+    }
+
     /// `e` printed on one line, if it fits on one.
     pub(crate) fn flat(&self, f: impl FnOnce(&mut Printer)) -> Option<String> {
         let mut m = self.measurer();
@@ -479,6 +487,14 @@ impl Printer<'_> {
             // `<<-`: the body is kept as it is (its indentation is content)
             self.defer_heredoc_raw(lines.iter().map(|l| l.to_string()).collect(), terminator);
         }
+    }
+}
+
+/// The receiver of a method call.
+fn receiver_of(call: &Expr) -> &Expr {
+    match &call.kind {
+        ExprKind::Call { recv: Some(recv), .. } => recv,
+        _ => unreachable!("a method call"),
     }
 }
 

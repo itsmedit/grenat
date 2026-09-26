@@ -30,25 +30,22 @@ module GitHub
   end
 
   def self.diff(repo: String, pr: Int) -> ~String uses net("api.github.com"), env
-    Http
-      .get("#{API}/repos/#{repo}/pulls/#{pr}", headers: headers("application/vnd.github.diff"))
-      .body
+    Http.get("#{API}/repos/#{repo}/pulls/#{pr}", headers: headers("application/vnd.github.diff")).body
   end
 
   def self.file(repo: String, path: String) -> ~String uses net("api.github.com"), env
-    Http
-      .get("#{API}/repos/#{repo}/contents/#{path}", headers: headers("application/vnd.github.raw"))
-      .body
+    Http.get(
+      "#{API}/repos/#{repo}/contents/#{path}",
+      headers: headers("application/vnd.github.raw"),
+    ).body
   end
 
   def self.comment(repo: String, pr: Int, body: String) -> Int uses net("api.github.com"), env
-    Http
-      .post(
-        "#{API}/repos/#{repo}/issues/#{pr}/comments",
-        json: {body:},
-        headers: headers("application/json"),
-      )
-      .status
+    Http.post(
+      "#{API}/repos/#{repo}/issues/#{pr}/comments",
+      json: {body:},
+      headers: headers("application/json"),
+    ).status
   end
 end
 

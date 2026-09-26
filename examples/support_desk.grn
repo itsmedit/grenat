@@ -76,12 +76,10 @@ struct DocIndex
 
   def search(query: String, limit: Int) -> Array(Hit) uses fs.read
     words = query.downcase.split(" ")
-    hits = Dir
-      .list(root)
-      .map do |name|
-        text = File.read("#{root}/#{name}").downcase
-        Hit(path: "#{root}/#{name}", score: words.count { |w| text.include?(w) }.to_f / words.size)
-      end
+    hits = Dir.list(root).map do |name|
+      text = File.read("#{root}/#{name}").downcase
+      Hit(path: "#{root}/#{name}", score: words.count { |w| text.include?(w) }.to_f / words.size)
+    end
     hits.select { |h| h.score > 0 }.sort_by { |h| -h.score }.take(limit)
   end
 end
