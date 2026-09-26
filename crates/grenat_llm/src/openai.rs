@@ -1,13 +1,14 @@
-//! HTTP client for the providers that speak OpenAI's Chat Completions:
-//! OpenAI itself, Gemini (Google's compatible endpoint), Mistral, xAI,
-//! OpenRouter, Groq, DeepSeek, Together, Ollama.
+//! HTTP client for OpenAI (its Responses API) and for the providers that
+//! speak its Chat Completions: Gemini (Google's compatible endpoint),
+//! Mistral, xAI, OpenRouter, Groq, DeepSeek, Together, Ollama.
 
 use std::time::Duration;
 
 use serde_json::Value as Json;
 
-use crate::catalog::Catalogued;
+use crate::catalog::{Catalogued, Protocol};
 use crate::openai_wire::{chat_body, parse_chat};
+use crate::responses_wire::{parse_responses, responses_body};
 use crate::*;
 
 pub struct OpenAi {
@@ -36,8 +37,8 @@ impl OpenAi {
         self
     }
 
-    fn send(&self, body: &Json) -> crate::retry::Attempt {
-        let mut request = self.agent.post(format!("{}/chat/completions", self.base_url)).header("content-type", "application/json");
+    fn send(&self, path: &str, body: &Json) -> crate::retry::Attempt {
+        let mut request = self.agent.post(format!("{}{path}", self.base_url)).header("content-type", "application/json");
         if let Some(key) = &self.api_key {
             request = request.header("authorization", &format!("Bearer {key}"));
         }
@@ -52,7 +53,11 @@ impl OpenAi {
 
 impl Provider for OpenAi {
     fn complete(&self, request: &Request) -> Result<Response, LlmError> {
+        if self.provider.protocol == Protocol::Responses {
+            let body = responses_body(request, &self.provider)?;
+            return crate::retry::with_retries(self.retry_delay, || self.send("/responses", &body), parse_responses);
+        }
         let body = chat_body(request, &self.provider)?;
-        crate::retry::with_retries(self.retry_delay, || self.send(&body), parse_chat)
+        crate::retry::with_retries(self.retry_delay, || self.send("/chat/completions", &body), parse_chat)
     }
 }

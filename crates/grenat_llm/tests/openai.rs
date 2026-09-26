@@ -1,5 +1,7 @@
-//! Chat Completions client (OpenAI and the providers speaking its protocol),
-//! tested against a local server that plays the API.
+//! The OpenAI connector — the Responses API for OpenAI itself, Chat
+//! Completions for the providers speaking its protocol — tested against a
+//! local server that plays the API (and once against OpenAI itself: see
+//! SPEC, phase 10).
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -67,6 +69,18 @@ fn provider(name: &str) -> Catalogued {
     *catalog::provider(name).unwrap()
 }
 
+/// A provider speaking Chat Completions with every feature (as OpenAI's own
+/// Chat Completions does).
+fn chat() -> Catalogued {
+    Catalogued {
+        name: "chat",
+        protocol: catalog::Protocol::OpenAi,
+        documents: true,
+        max_tokens_field: "max_completion_tokens",
+        ..provider("openai")
+    }
+}
+
 fn answer(message: Json, finish: &str) -> Json {
     json!({
         "model": "gpt-5-2026-08-01",
@@ -108,7 +122,7 @@ fn a_conversation_with_tools_is_translated_both_ways() {
         json!({"role": "assistant", "content": [{"type": "text", "text": "Looking."}, {"type": "tool_use", "id": "call_1", "name": "search", "input": {"q": "grenat"}}]}),
         json!({"role": "user", "content": [{"type": "tool_result", "tool_use_id": "call_1", "content": "nothing", "is_error": true}]}),
     ];
-    let response = client(&url, provider("openai"), Some("sk-test")).complete(&request(&model, history)).unwrap();
+    let response = client(&url, chat(), Some("sk-test")).complete(&request(&model, history)).unwrap();
     assert_eq!(response.stop_reason, "tool_use");
     let uses = response.tool_uses();
     assert_eq!((uses[0].id.as_str(), uses[0].name.as_str(), &uses[0].input), ("call_2", "search", &json!({"q": "rust"})));
@@ -137,7 +151,7 @@ fn structured_output_strict_or_in_json_mode() {
     let model = ModelConfig::new("openai", "gpt-5");
     let mut strict = request(&model, vec![json!({"role": "user", "content": "Summarize"})]);
     strict.output_schema = Some(schema.clone());
-    let body = chat_body(&strict, &provider("openai")).unwrap();
+    let body = chat_body(&strict, &chat()).unwrap();
     assert_eq!(body["response_format"], json!({"type": "json_schema", "json_schema": {"name": "answer", "schema": schema, "strict": true}}));
     // a provider without strict schemas: JSON mode, the schema in the instructions, tools not strict
     let body = chat_body(&strict, &provider("groq")).unwrap();
@@ -157,7 +171,7 @@ fn images_and_documents() {
         {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": "JVBE"}},
         {"type": "text", "text": "Read"},
     ]);
-    let body = chat_body(&request(&model, vec![json!({"role": "user", "content": content})]), &provider("openai")).unwrap();
+    let body = chat_body(&request(&model, vec![json!({"role": "user", "content": content})]), &chat()).unwrap();
     let parts = &body["messages"][1]["content"];
     assert_eq!(parts[0], json!({"type": "image_url", "image_url": {"url": "data:image/png;base64,AAA"}}));
     assert_eq!(parts[1], json!({"type": "image_url", "image_url": {"url": "https://x/y.png"}}));
@@ -175,7 +189,7 @@ fn text_answers_refusals_and_truncation() {
         (200, answer(json!({"role": "assistant", "content": "cut"}), "length")),
     ]);
     let model = ModelConfig::new("openai", "gpt-5");
-    let c = client(&url, provider("openai"), Some("k"));
+    let c = client(&url, chat(), Some("k"));
     let hi = c.complete(&request(&model, vec![json!({"role": "user", "content": "Hi"})])).unwrap();
     assert_eq!((hi.text(), hi.stop_reason.as_str()), ("Hi".to_string(), "end_turn"));
     assert_eq!(c.complete(&request(&model, vec![])).unwrap().stop_reason, "refusal");
@@ -191,7 +205,7 @@ fn retries_rate_limits_not_client_errors() {
         (400, json!({"error": {"message": "invalid schema"}})),
     ]);
     let model = ModelConfig::new("openai", "gpt-5");
-    let c = client(&url, provider("openai"), Some("k"));
+    let c = client(&url, chat(), Some("k"));
     assert_eq!(c.complete(&request(&model, vec![])).unwrap().text(), "ok");
     assert_eq!(c.complete(&request(&model, vec![])).unwrap_err().message, "HTTP 400: invalid schema");
     assert_eq!(received.lock().unwrap().len(), 4);
@@ -213,4 +227,84 @@ fn every_catalogued_provider_is_reachable() {
     }
     assert!(catalog::provider("nope").is_none());
     assert!(catalog::names().starts_with("anthropic, openai, gemini"));
+}
+
+// ── OpenAI's Responses API ─────────────────────────────────────
+
+#[test]
+fn openai_itself_is_spoken_to_through_the_responses_api() {
+    let output = json!({
+        "model": "gpt-5.4-mini-2026-03-17",
+        "status": "completed",
+        "output": [
+            {"type": "reasoning", "id": "rs_1", "summary": []},
+            {"type": "function_call", "id": "fc_1", "call_id": "call_9", "name": "search", "arguments": "{\"q\":\"rust\"}"}
+        ],
+        "usage": {"input_tokens": 108, "output_tokens": 33, "input_tokens_details": {"cached_tokens": 8}}
+    });
+    let (url, received) = serve(vec![(200, output)]);
+    let mut model = ModelConfig::new("openai", "gpt-5.4-mini");
+    model.effort = Some("low".into());
+    let history = vec![
+        json!({"role": "user", "content": "Find it"}),
+        json!({"role": "assistant", "content": [{"type": "text", "text": "Looking."}, {"type": "tool_use", "id": "call_1", "name": "search", "input": {"q": "grenat"}}]}),
+        json!({"role": "user", "content": [{"type": "tool_result", "tool_use_id": "call_1", "content": "nothing"}]}),
+    ];
+    let response = client(&url, provider("openai"), Some("sk-test")).complete(&request(&model, history)).unwrap();
+    assert_eq!(response.stop_reason, "tool_use");
+    let uses = response.tool_uses();
+    assert_eq!((uses[0].id.as_str(), &uses[0].input), ("call_9", &json!({"q": "rust"})));
+    assert_eq!((response.usage.input_tokens, response.usage.cache_read_input_tokens), (100, 8));
+
+    let received = received.lock().unwrap();
+    assert_eq!(received[0].path, "/v1/responses");
+    let body = &received[0].body;
+    assert_eq!((body["store"].clone(), body["max_output_tokens"].clone()), (json!(false), json!(16_000)));
+    assert_eq!(body["instructions"], "be brief");
+    assert_eq!(body["reasoning"], json!({"effort": "low"}));
+    assert_eq!(body["tools"][0]["name"], "search");
+    assert_eq!(body["tools"][0]["strict"], true);
+    assert_eq!(
+        body["input"],
+        json!([
+            {"role": "user", "content": "Find it"},
+            {"role": "assistant", "content": "Looking."},
+            {"type": "function_call", "call_id": "call_1", "name": "search", "arguments": "{\"q\":\"grenat\"}"},
+            {"type": "function_call_output", "call_id": "call_1", "output": "nothing"}
+        ])
+    );
+}
+
+#[test]
+fn responses_structured_output_media_refusals_and_truncation() {
+    let schema = json!({"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"], "additionalProperties": false});
+    let model = ModelConfig::new("openai", "gpt-5.4-mini");
+    let content = json!([
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAA"}},
+        {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": "JVBE"}},
+        {"type": "text", "text": "Read"},
+    ]);
+    let mut asked = request(&model, vec![json!({"role": "user", "content": content})]);
+    asked.output_schema = Some(schema.clone());
+    let body = grenat_llm::responses_body(&asked, &provider("openai")).unwrap();
+    assert_eq!(body["text"]["format"], json!({"type": "json_schema", "name": "answer", "schema": schema, "strict": true}));
+    assert_eq!(
+        body["input"][0]["content"],
+        json!([
+            {"type": "input_image", "image_url": "data:image/png;base64,AAA"},
+            {"type": "input_file", "filename": "document.pdf", "file_data": "data:application/pdf;base64,JVBE"},
+            {"type": "input_text", "text": "Read"}
+        ])
+    );
+    let message = |content: Json| json!({"model": "m", "status": "completed", "output": [{"type": "message", "role": "assistant", "content": content}], "usage": {}});
+    let (url, _) = serve(vec![
+        (200, message(json!([{"type": "output_text", "text": "{\"title\":\"x\"}"}]))),
+        (200, message(json!([{"type": "refusal", "refusal": "no"}]))),
+        (200, json!({"model": "m", "status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}, "output": [], "usage": {}})),
+    ]);
+    let c = client(&url, provider("openai"), Some("k"));
+    let answer = c.complete(&asked).unwrap();
+    assert_eq!((answer.text(), answer.stop_reason.as_str()), ("{\"title\":\"x\"}".to_string(), "end_turn"));
+    assert_eq!(c.complete(&asked).unwrap().stop_reason, "refusal");
+    assert_eq!(c.complete(&asked).unwrap().stop_reason, "max_tokens");
 }

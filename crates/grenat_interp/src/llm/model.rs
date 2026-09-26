@@ -91,7 +91,7 @@ impl<'p> Interp<'p> {
             Protocol::Anthropic => {
                 Arc::new(Anthropic::new(api_key.unwrap_or_default(), base_url.as_deref().unwrap_or(catalogued.base_url)))
             }
-            Protocol::OpenAi => Arc::new(OpenAi::new(*catalogued, api_key, base_url.as_deref())),
+            Protocol::OpenAi | Protocol::Responses => Arc::new(OpenAi::new(*catalogued, api_key, base_url.as_deref())),
         };
         // several tasks may create the client at the same time: the first one wins
         Ok(self.clients.borrow_mut().entry(key).or_insert(client).clone())

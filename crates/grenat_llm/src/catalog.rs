@@ -9,6 +9,9 @@ pub enum Protocol {
     Anthropic,
     /// OpenAI's Chat Completions, which most providers also speak.
     OpenAi,
+    /// OpenAI's Responses API: its own models (reasoning models take tools
+    /// there, not through Chat Completions).
+    Responses,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -56,13 +59,13 @@ pub const PROVIDERS: &[Catalogued] = &[
     },
     Catalogued {
         name: "openai",
-        protocol: Protocol::OpenAi,
+        protocol: Protocol::Responses,
         base_url: "https://api.openai.com/v1",
         key_variable: "OPENAI_API_KEY",
         key_required: true,
         strict_schemas: true,
         documents: true,
-        max_tokens_field: "max_completion_tokens",
+        max_tokens_field: "max_output_tokens",
     },
     // Google's OpenAI-compatible endpoint for Gemini
     Catalogued {

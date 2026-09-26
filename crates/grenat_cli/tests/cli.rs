@@ -765,8 +765,8 @@ fn credentials_are_edited_encrypted_and_shown() {
     assert!(ignored.contains("config/credentials/*.key"));
 }
 
-/// A local server playing a Chat Completions provider: answers `reply`,
-/// returns what it received (headers, body).
+/// A local server playing OpenAI's Responses API: answers `reply`, returns
+/// what it received (headers, body).
 fn chat_server(reply: &'static str) -> (String, std::sync::mpsc::Receiver<(String, serde_json::Value)>) {
     use std::io::{BufRead, BufReader, Read, Write};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -795,8 +795,9 @@ fn chat_server(reply: &'static str) -> (String, std::sync::mpsc::Receiver<(Strin
             reader.read_exact(&mut body).unwrap();
             sender.send((auth, serde_json::from_slice(&body).unwrap())).unwrap();
             let answer = serde_json::json!({
-                "model": "gpt-5", "choices": [{"message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 1000, "completion_tokens": 100}
+                "model": "gpt-5", "status": "completed",
+                "output": [{"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": reply}]}],
+                "usage": {"input_tokens": 1000, "output_tokens": 100}
             })
             .to_string();
             let mut stream = stream;
@@ -838,7 +839,7 @@ fn a_provider_works_from_its_name_and_a_key_in_the_credentials() {
     let (auth, body) = received.recv().unwrap();
     assert_eq!(auth, "Bearer sk-from-credentials");
     assert_eq!(body["model"], "gpt-5");
-    assert_eq!(body["messages"][0]["content"], "Greet Ada");
+    assert_eq!(body["input"][0]["content"], "Greet Ada");
 
     // without a key anywhere: said plainly
     credentials.write("# none\n").unwrap();
