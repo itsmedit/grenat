@@ -355,3 +355,32 @@ fn release_numerics_and_errors_match_the_interpreter() {
     let err = text(&run_exe(&exe, &[], &[]).stderr);
     assert!(err.starts_with("error: ZeroDivisionError: division by zero\n"), "{err}");
 }
+
+#[test]
+fn a_native_program_can_live_in_an_application_with_models() {
+    ensure_host_library();
+    // an application: its models are declared for every program in it
+    let app = dir().join("native-app");
+    std::fs::create_dir_all(app.join("config")).unwrap();
+    std::fs::write(
+        app.join("grenat.toml"),
+        "[package]\nname = \"native_app\"\nversion = \"0.1.0\"\nmain = \"hello.grn\"\n",
+    )
+    .unwrap();
+    std::fs::write(app.join("config/models.yml"), "fast:\n  provider: anthropic\n  name: claude-haiku-4-5\n").unwrap();
+    let source = app.join("hello.grn");
+    std::fs::write(&source, "def main\n  puts \"native\"\nend\n").unwrap();
+    let exe = app.join("hello");
+    let out = grenat(&["build", "--native", source.to_str().unwrap(), "-o", exe.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(text(&run_exe(&exe, &[], &[]).stdout), "native\n");
+    // what uses a model still needs the interpreter, and says why
+    std::fs::write(
+        &source,
+        "prompt hi(t: String) -> ~String using :fast\n  user t\nend\ndef main\n  puts \"x\"\nend\n",
+    )
+    .unwrap();
+    let out = grenat(&["build", "--native", source.to_str().unwrap(), "-o", exe.to_str().unwrap()]);
+    assert!(!out.status.success());
+    assert!(text(&out.stderr).contains("`hi` is a prompt, which needs the interpreter"), "{}", text(&out.stderr));
+}

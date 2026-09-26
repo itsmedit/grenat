@@ -124,9 +124,8 @@ fn interpreter_only(program: &Program, compiled: &[&str]) -> Vec<String> {
             Item::Type(def) if matches!(def.kind, TypeKind::Agent | TypeKind::Supervisor) => {
                 reasons.push(format!("`{}` is an agent, which needs the interpreter", def.name.name));
             }
-            Item::Model(decl) => {
-                reasons.push(format!("model `:{}` needs the interpreter", decl.name.name));
-            }
+            // a model alone does nothing: what uses one (a prompt, an agent)
+            // needs the interpreter, and says so
             _ => {}
         }
     }
