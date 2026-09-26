@@ -81,6 +81,22 @@ impl<'p> Interp<'p> {
         Ok(())
     }
 
+    /// Checks that reaching the SSH server `host` is covered by every
+    /// function on the stack that declares its effects: `ssh`, or `ssh("<host>")`.
+    pub(crate) fn check_ssh(&self, host: &str) -> Result<(), Ctrl<'p>> {
+        for (owner, caps) in &self.capabilities {
+            if !caps.iter().any(|(declared, arg)| declared == "ssh" && arg.as_deref().is_none_or(|h| h == host)) {
+                let declared: Vec<String> =
+                    caps.iter().map(|(p, a)| a.as_ref().map_or(p.clone(), |a| format!("{p}(\"{a}\")"))).collect();
+                return raise(
+                    "CapabilityError",
+                    format!("`ssh` to `{host}` is not allowed by `{owner}` (uses {})", declared.join(", ")),
+                );
+            }
+        }
+        Ok(())
+    }
+
     /// Checks that `effect` (`db.read`…) is declared by every function on
     /// the stack that declares its effects.
     pub(crate) fn check_effect(&self, effect: &str) -> Result<(), Ctrl<'p>> {

@@ -16,6 +16,7 @@ const BUILTIN_TYPES: &[&str] = &[
     "Http",
     "Db",
     "Shell",
+    "Ssh",
     "Mcp",
     "Pdf",
     "Image",

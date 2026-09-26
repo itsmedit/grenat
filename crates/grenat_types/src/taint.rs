@@ -5,7 +5,7 @@ use grenat_ast::{Diagnostic, Expr, ExprKind, FnDef, Param, Span, Type};
 use crate::ty::Ty;
 use crate::*;
 
-pub(crate) const DANGEROUS_EFFECTS: &[&str] = &["shell", "net", "fs.write", "human"];
+pub(crate) const DANGEROUS_EFFECTS: &[&str] = &["shell", "ssh", "net", "fs.write", "human"];
 
 pub(crate) const TAINT_HELP: &str = "validate it with `.check { … }`, `.approve(by: :human)` or `.trust!`";
 

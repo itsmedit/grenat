@@ -1,9 +1,9 @@
-//! An in-process SSH server for the tests, on 127.0.0.1 and a free port,
-//! with a generated host key. User `alice` logs in with the authorized key
-//! or the password `s3cret`. A command is recorded exactly as received,
-//! then run with `/bin/sh -c` in a scratch directory (the server's "home"),
-//! which is also the root of its SFTP subsystem.
-#![allow(dead_code)]
+//! A real SSH server for tests (this crate's and its users'), in process,
+//! on 127.0.0.1 and a free port, with a generated host key. User `alice`
+//! logs in with the authorized key or the password `s3cret`. A command is
+//! recorded exactly as received, then run with `/bin/sh -c` in a scratch
+//! directory (the server's "home"), which is also the root of its SFTP
+//! subsystem. [`socks::Socks`] is a SOCKS5 proxy to reach it through.
 
 pub mod sftp;
 pub mod socks;

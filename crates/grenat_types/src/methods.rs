@@ -205,10 +205,13 @@ impl<'p> Checker<'p> {
                 if path == "net" {
                     // `net` is restricted by host: that of a literal URL
                     arg = arg.and_then(|url| crate::effects::url_host(&url).map(str::to_string));
+                } else if path == "ssh" {
+                    // `ssh` too: that of a literal `user@host`
+                    arg = arg.and_then(|target| crate::effects::ssh_host(&target).map(str::to_string));
                 }
                 cx.add_effect(Eff { path: path.into(), arg, origin: span });
             }
-            if let Some(sink @ ("fs.write" | "net" | "shell" | "mcp")) = effect {
+            if let Some(sink @ ("fs.write" | "net" | "shell" | "ssh" | "mcp")) = effect {
                 for arg in &argv {
                     if let Some(origin) = arg.v.taint {
                         self.taint_violation(arg.span, origin, &format!("{t}.{n}"), sink);
@@ -249,6 +252,10 @@ impl<'p> Checker<'p> {
         argv: &[ArgV],
         block: Option<&'p Block>,
     ) -> V {
+        if builtins::is_ssh(record) {
+            self.walk_block(cx, block, &[]);
+            return self.ssh_method(cx, span, (ty, effect), (record, name), argv);
+        }
         let block_v = self.walk_block(cx, block, &[]);
         cx.add_effect(Eff { path: effect.into(), arg: None, origin: span });
         // an email: nothing untrusted reaches people

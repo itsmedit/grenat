@@ -158,6 +158,7 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
         "deliver_webhook" => deliver_webhook(interp, &args),
         "mcp" => interp.declare_mcp(&args),
         "mock_mcp" => interp.mock_mcp(&args),
+        "mock_ssh" => interp.mock_ssh(&args),
         "mock_credentials" => interp.mock_credentials(&args),
         "mock_shell" => (|| {
             let pattern = arg(&args, 0, name)?.to_display();

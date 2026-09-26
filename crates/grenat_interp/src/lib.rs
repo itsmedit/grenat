@@ -24,6 +24,7 @@ mod prelude;
 mod process;
 mod program;
 mod serve;
+mod ssh;
 mod stack;
 mod state;
 mod task;
@@ -179,6 +180,7 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
             interp.http_stubs.borrow_mut().clear();
             interp.shell_stubs.borrow_mut().clear();
             interp.mcp_stubs.borrow_mut().clear();
+            interp.ssh_stubs.borrow_mut().clear();
             interp.deliveries.borrow_mut().clear();
             interp.credentials_double.borrow_mut().take();
             outcomes.push(TestOutcome { name, error });

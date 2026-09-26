@@ -7,7 +7,7 @@ use grenat_ast::Span;
 use crate::ty::{Ty, V};
 use crate::*;
 
-const HELP: &str = "a secret serves in HTTP URLs and headers, and in connections (`Db.connect`, `Mail.connect`, `mcp`); a function that takes one declares `Secret`";
+const HELP: &str = "a secret serves in HTTP URLs and headers, and in connections (`Db.connect`, `Mail.connect`, `mcp`, `Ssh.connect`); a function that takes one declares `Secret`";
 
 impl<'p> Checker<'p> {
     /// Reports the secrets among `argv`: they would reach a model through `target`.
@@ -27,6 +27,18 @@ impl<'p> Checker<'p> {
             Diagnostic::new(span, format!("`{owner}` expects a `String` for `{slot}`: a secret is not one"))
                 .with_code(E_SECRET)
                 .with_help(HELP),
+        );
+    }
+
+    /// A secret given to an SSH server through `target` (a command, a path,
+    /// a file's content): it only serves to connect.
+    pub(crate) fn secret_to_server(&mut self, span: Span, target: &str) {
+        self.report(
+            Diagnostic::new(span, format!("a secret reaches an SSH server through `{target}`"))
+                .with_code(E_SECRET)
+                .with_help(
+                    "a secret serves to connect: `key:`, `passphrase:`, `password:` and `proxy:` of `Ssh.connect`",
+                ),
         );
     }
 

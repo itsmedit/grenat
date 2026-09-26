@@ -164,6 +164,7 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Http", "get" | "post" | "put" | "patch" | "delete" | "head") => (User(HTTP_RESPONSE.into()), Some("net")),
         ("Db", "connect") => (User(DATABASE.into()), None),
         ("Shell", "run") => (User(SHELL_RESULT.into()), Some("shell")),
+        ("Ssh", "connect") => (User(SSH_SESSION.into()), Some("ssh")),
         ("Pdf" | "Image", "read") => (User(ATTACHMENT.into()), Some("fs.read")),
         ("Pdf" | "Image", "url") => (User(ATTACHMENT.into()), None),
         ("Mail", "connect") => (User(MAILER.into()), None),
@@ -195,6 +196,7 @@ pub const MODULES: &[&str] = &[
     "Http",
     "Db",
     "Shell",
+    "Ssh",
     "Mcp",
     "Pdf",
     "Image",
@@ -210,7 +212,7 @@ pub const CONVERSATION: &str = "Conversation";
 
 /// Methods of built-in records whose result comes from a model or outside.
 pub fn untrusted_method(record: &str, name: &str) -> bool {
-    matches!((record, name), (CONVERSATION, "say"))
+    matches!((record, name), (CONVERSATION, "say") | (SFTP, "read" | "list"))
 }
 
 /// What `Mail.connect` returns.
@@ -241,6 +243,27 @@ pub const SHELL_RESULT: &str = "ShellResult";
 /// What `Db.connect` returns.
 pub const DATABASE: &str = "Database";
 
+/// What `Ssh.connect` returns, what its `run` returns, what its `sftp`
+/// returns, and an entry of `sftp.list`.
+pub const SSH_SESSION: &str = "SshSession";
+pub const SSH_RESULT: &str = "SshResult";
+pub const SFTP: &str = "Sftp";
+pub const SFTP_ENTRY: &str = "SftpEntry";
+
+/// The records whose methods reach an SSH server.
+pub fn is_ssh(record: &str) -> bool {
+    matches!(record, SSH_SESSION | SFTP)
+}
+
+/// The local file of a transfer: which argument, and the effect on it.
+pub fn local_side(record: &str, name: &str) -> Option<(usize, &'static str)> {
+    match (record, name) {
+        (SSH_SESSION | SFTP, "upload") => Some((0, "fs.read")),
+        (SSH_SESSION | SFTP, "download") => Some((1, "fs.write")),
+        _ => None,
+    }
+}
+
 /// A method with arguments of a built-in record: its return type and effect.
 pub fn record_method(record: &str, name: &str) -> Option<(Ty, &'static str)> {
     Some(match (record, name) {
@@ -252,6 +275,13 @@ pub fn record_method(record: &str, name: &str) -> Option<(Ty, &'static str)> {
         (MAILER, "send") => (Ty::Nil, "net"),
         (CONVERSATION, "say") => (Ty::Str, "llm"),
         (CONVERSATION, "save") => (Ty::Nil, "fs.write"),
+        (SSH_SESSION, "run") => (Ty::User(SSH_RESULT.into()), "ssh"),
+        (SSH_SESSION, "sftp") => (Ty::User(SFTP.into()), "ssh"),
+        (SSH_SESSION | SFTP, "upload" | "download") => (Ty::Nil, "ssh"),
+        (SFTP, "list") => (Ty::array(Ty::User(SFTP_ENTRY.into())), "ssh"),
+        (SFTP, "read") => (Ty::Str, "ssh"),
+        (SFTP, "write" | "remove" | "mkdir" | "rename") => (Ty::Nil, "ssh"),
+        (SFTP, "exists?") => (Ty::Bool, "ssh"),
         _ => return None,
     })
 }
@@ -281,6 +311,19 @@ pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
         (SHELL_RESULT, "status") => (Ty::Int, false),
         (SHELL_RESULT, "ok?") => (Ty::Bool, false),
         (SHELL_RESULT, "stdout" | "stderr") => (Ty::Str, true),
+        (SSH_SESSION | SFTP, "id") => (Ty::Int, false),
+        (SSH_SESSION | SFTP, "host") => (Ty::Str, false),
+        (SSH_SESSION, "user") => (Ty::Str, false),
+        (SSH_SESSION, "port") => (Ty::Int, false),
+        (SSH_SESSION, "close") => (Ty::Nil, false),
+        (SSH_RESULT, "status") => (Ty::Int, false),
+        (SSH_RESULT, "ok?") => (Ty::Bool, false),
+        (SSH_RESULT, "signal") => (Ty::opt(Ty::Str), false),
+        (SSH_RESULT, "stdout" | "stderr") => (Ty::Str, true),
+        (SFTP_ENTRY, "name") => (Ty::Str, true),
+        (SFTP_ENTRY, "size") => (Ty::Int, false),
+        (SFTP_ENTRY, "dir?") => (Ty::Bool, false),
+        (SFTP_ENTRY, "modified") => (Ty::opt(Ty::Float), false),
         _ => return None,
     })
 }
@@ -312,6 +355,7 @@ pub const GLOBALS: &[&str] = &[
     "mock_shell",
     "mcp",
     "mock_mcp",
+    "mock_ssh",
     "mock_credentials",
     "database",
     "enqueue",

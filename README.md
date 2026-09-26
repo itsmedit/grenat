@@ -187,6 +187,7 @@ end })
 | `grenat_report` | diagnostic rendering, in the file each error points into |
 | `grenat_db` | databases: SQLite (embedded) and PostgreSQL behind one interface |
 | `grenat_mcp` | the Model Context Protocol: a client (stdio and HTTP), and the server side of `expose` |
+| `grenat_ssh` | SSH and SFTP: host keys verified, commands quoted, SOCKS5 proxies, a blocking API; a real server in process for tests |
 | `grenat_serve` | triggers: cron schedules, webhook signatures, the HTTP server of `grenat serve` |
 | `grenat_generate` | `grenat new --app` and `grenat generate`: an application's parts, with their tests |
 | `grenat_ops` | the operations store: jobs, approvals, model calls, events, eval runs, workflow journals |

@@ -1,14 +1,12 @@
 //! Connections against the in-process server: authentication, host key
 //! policies, commands and their quoting, the SOCKS5 proxy, timeouts.
 
-mod server;
-
 use std::time::{Duration, Instant};
 
+use grenat_ssh::fake::socks::Socks;
+use grenat_ssh::fake::{self, PASSWORD, TempDir, TestServer, USER, fingerprint, key_text, new_key};
 use grenat_ssh::{Auth, ErrorKind, KnownHosts, Options, Session};
 use russh::keys::ssh_key::{LineEnding, PrivateKey};
-use server::socks::Socks;
-use server::{PASSWORD, TempDir, TestServer, USER, fingerprint, key_text, new_key};
 
 /// Options for `server` with `key`, trusting the server's fingerprint.
 fn options(server: &TestServer, key: &PrivateKey) -> Options {
@@ -248,7 +246,7 @@ fn through_a_socks5_proxy() {
     .unwrap();
     assert!(e.message().contains("requires authentication"), "{e}");
 
-    let unreachable = format!("socks5://127.0.0.1:{}", server::closed_port());
+    let unreachable = format!("socks5://127.0.0.1:{}", fake::closed_port());
     let e = Session::connect(Options { proxy: Some(unreachable), ..options(&server, &key) }).err().unwrap();
     assert_eq!(e.kind(), ErrorKind::Proxy);
     assert!(e.message().starts_with("cannot reach the proxy 127.0.0.1:"), "{e}");
@@ -260,7 +258,7 @@ fn through_a_socks5_proxy() {
 
 #[test]
 fn a_silent_server_times_out() {
-    let (_listener, port) = server::silent_port();
+    let (_listener, port) = fake::silent_port();
     let started = Instant::now();
     let e = Session::connect(Options {
         port,
@@ -277,7 +275,7 @@ fn a_silent_server_times_out() {
 
 #[test]
 fn connection_errors() {
-    let port = server::closed_port();
+    let port = fake::closed_port();
     let e = Session::connect(Options { port, ..Options::new(USER, "127.0.0.1", Auth::Password(PASSWORD.into())) })
         .err()
         .unwrap();

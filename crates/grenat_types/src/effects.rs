@@ -7,8 +7,8 @@ use grenat_ast::{Diagnostic, Expr, ExprKind, FnDef, FnKind, Span, StrSeg};
 use crate::*;
 
 pub(crate) const KNOWN_EFFECTS: &[&str] = &[
-    "llm", "net", "fs", "fs.read", "fs.write", "db", "db.read", "db.write", "mcp", "shell", "human", "time", "random",
-    "env",
+    "llm", "net", "fs", "fs.read", "fs.write", "db", "db.read", "db.write", "mcp", "shell", "ssh", "human", "time",
+    "random", "env",
 ];
 
 /// Effects whose results differ from one run to the next: in a workflow,
@@ -43,7 +43,7 @@ pub(crate) fn covers(declared: &Eff, used: &Eff) -> bool {
     path_ok
         && match (&declared.arg, &used.arg) {
             (None, _) | (Some(_), None) => true,
-            (Some(d), Some(u)) if used.path == "net" => d == u,
+            (Some(d), Some(u)) if used.path == "net" || used.path == "ssh" => d == u,
             (Some(d), Some(u)) => {
                 let (d, u) = (normalize_path(d), normalize_path(u));
                 d == "." || u == d || u.starts_with(&format!("{d}/"))
@@ -55,6 +55,18 @@ pub(crate) fn covers(declared: &Eff, used: &Eff) -> bool {
 pub(crate) fn url_host(url: &str) -> Option<&str> {
     let rest = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://"))?;
     let host = rest.split(['/', '?', '#']).next()?.rsplit('@').next()?.split(':').next()?;
+    (!host.is_empty()).then_some(host)
+}
+
+/// The host of an SSH target (`deploy@api.acme.com:2222` → `api.acme.com`).
+pub(crate) fn ssh_host(target: &str) -> Option<&str> {
+    let (_, address) = target.rsplit_once('@')?;
+    let host = match address.strip_prefix('[') {
+        Some(bracketed) => bracketed.split(']').next()?,
+        // an IPv6 address without brackets has no port
+        None if address.matches(':').count() > 1 => address,
+        None => address.split(':').next()?,
+    };
     (!host.is_empty()).then_some(host)
 }
 

@@ -35,6 +35,10 @@ impl<'p> Checker<'p> {
                     n @ (builtins::DATABASE
                     | builtins::HTTP_RESPONSE
                     | builtins::SHELL_RESULT
+                    | builtins::SSH_SESSION
+                    | builtins::SSH_RESULT
+                    | builtins::SFTP
+                    | builtins::SFTP_ENTRY
                     | builtins::ATTACHMENT
                     | builtins::REQUEST
                     | builtins::MAILER

@@ -618,6 +618,48 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 
 `Http.get(url, proxy: "socks5://user:pass@127.0.0.1:1080")` sends a request through a proxy, with every `Http` method: `socks5://` (the host is resolved here), `socks5h://` (resolved by the proxy), `socks4://`, `socks4a://`, and HTTP proxies (`http://`, `https://`, which tunnel with `CONNECT`); credentials go in the URL. Without `proxy:` (or with `proxy: nil`), the environment's proxy is used as curl chooses it — `no_proxy` exempts hosts and their subdomains, then `https_proxy` for an https URL or `http_proxy` for an http one (never `HTTP_PROXY` in capitals, which a CGI request header can set), then `all_proxy` — and `proxy: false` goes direct whatever the environment says. An invalid proxy URL is an `ArgumentError` (an invalid one in the environment, an `HttpError` naming the variable, not its value); an unreachable proxy or a refused password is an `HttpError`. A proxy URL may be a secret (`proxy: Credentials.fetch(:proxy, :url)`): it is revealed to the transport only, and neither an error nor the `--log` line (`[http] GET … via [secret] → 200`) names it; a plain proxy URL is logged without its credentials.
 
+### Phase 11 status: SSH and SFTP
+
+```ruby
+def deploy(server: SshSession, release: String) -> Bool uses ssh("api.acme.com"), fs.read("dist")
+  archive = "/srv/releases/#{release}.tar.gz"
+  server.upload("dist/app.tar.gz", archive)
+  unpacked = server.run(["tar", "-xzf", archive, "-C", "/srv/app"])
+  return false unless unpacked.ok?
+  res = server.run(["systemctl", "restart", "shop"])
+  warn res.stderr.trust! unless res.ok?
+  res.ok?
+end
+
+def main uses ssh("api.acme.com"), fs.read("dist"), env
+  server = Ssh.connect("deploy@api.acme.com", key: Credentials.fetch(:deploy, :ssh_key))
+  puts deploy(server, "2026.09.26")
+  logs = server.sftp.list("/var/log/shop").trust!.select { |e| !e.dir? && e.size > 0 }
+  puts logs.map { |e| e.name }.join(", ")
+  server.close
+end
+
+test "a deployment restarts the shop" do
+  mock_ssh "deploy@api.acme.com", commands: {
+    "tar -xzf *" => "",
+    "systemctl restart shop" => {stderr: "", status: 0},
+  }
+  sftp = Ssh.connect("deploy@api.acme.com", key: Credentials.fetch(:deploy, :ssh_key)).sftp
+  sftp.write("/srv/app/VERSION", "2026.09.26")
+  assert_equal "2026.09.26", sftp.read("/srv/app/VERSION").trust!
+end
+```
+
+`Ssh.connect("user@host", …)` opens an SSH connection — `key:` (the text of a private key, OpenSSH format; `passphrase:` if it is encrypted) or `password:`, and `port:` (22; or `user@host:2222`), `proxy:` (`socks5://[user:password@]host:port`), `timeout:` (30 s to connect) — and returns an `SshSession`: `user`, `host`, `port`. `server.run(["systemctl", "restart", "shop"])` runs a command and gives an `SshResult` — `status` (`-1` when a signal ended it), `signal`, `ok?`, `stdout`, `stderr`; a command that fails is an answer, not an error. `server.upload(local, remote)` and `server.download(remote, local)` copy a file; `server.sftp` is an `Sftp`: `list(dir)` (entries `SftpEntry`: `name`, `size`, `dir?`, `modified` in seconds since the epoch), `read`, `write(path, text)`, `upload`, `download`, `remove` (a file or an empty directory), `mkdir`, `rename`, `exists?`. `server.close` ends the connection. Connections are kept by the runtime (the records hold a number) and shared by the tasks that use them, one call at a time; every call blocks its own task only. The layer (`grenat_ssh`, pure Rust) knows nothing of the language.
+
+- **Commands are argument vectors.** SSH carries one command line, which the server's shell splits again: each argument is quoted, so that `; rm -rf /`, `$(id)` or a quote arrive as one argument, never as shell syntax.
+- **Capabilities.** Reaching a server is an `ssh` effect restricted by host: `uses ssh("api.acme.com")`. The checker takes the host of a literal target (E0300); the runtime checks it when connecting and at every call, on the connection's own host — a connection opened elsewhere is no way around a function's `uses`. A transfer also reads (`upload`: `fs.read`) or writes (`download`: `fs.write`) its local file.
+- **Taint, both ways.** Nothing untrusted reaches a server — the target, a command's arguments, a path, a file's content (E0412, `TaintError`); what comes back is untrusted: `stdout`, `stderr`, `read`, `list`. `status`, `ok?` and `exists?` are not.
+- **Secrets.** The key, its passphrase, the password and the proxy URL may be secrets (`Credentials.fetch`): they are revealed to the connection only, and go nowhere else — not in a command, a path or a file's content (E0414, `SecretError`), and never in an error, a `--log` line (`[ssh] deploy@api.acme.com:22: connected (ssh-ed25519 SHA256:…) via [secret]`), a journal or the console.
+- **Host keys.** The server's key is verified before any credential is sent: it must be recorded in `~/.ssh/known_hosts` (hashed entries and `@revoked` markers read; certificate authorities are not supported), or in the file `known_hosts:` names, or have the fingerprint `fingerprint: "SHA256:…"` gives. Nothing is accepted silently: an unknown key is a `HostKeyError` showing the fingerprint offered and how to trust it once checked out of band (`fingerprint:` or `known_hosts:`); a changed or revoked key is refused.
+- **Errors.** `SshError` (the connection, a command that cannot start, the proxy, a closed connection), `HostKeyError`, `SshAuthError` (credentials refused, a key that cannot be read), `SftpError` (each names the path and what was attempted), `TimeoutError`.
+- **Tests.** `grenat test` reaches no server: `mock_ssh "deploy@api.acme.com", commands: {"systemctl restart shop" => "done"}, files: {"/srv/x" => "content"}` stands for one for the rest of the test — a command's answer is its output, or `{stdout:, stderr:, status:}`, and a trailing `*` matches a prefix of the command line; the files are kept in memory, where `sftp` and transfers find them. A command or a server not mocked is an `SshError`. The interpreter's own tests also run against a real SSH and SFTP server in process (`grenat_ssh`'s `fake` feature).
+
 ### Phase 10 status: models from any provider (`config/models.yml`)
 
 ```yaml
@@ -655,7 +697,7 @@ As with Rails: `grenat credentials edit` opens the application's secrets — YAM
 
 `Credentials.fetch(:github, :token)` (`dig` gives `nil` when missing) is a `Secret`, not a `String`:
 
-- it serves where it is meant to — HTTP URLs, headers, query and body, `Db.connect`, `database`, `Mail.connect`, `mcp` (URL, headers, command, environment), `Shell` environments, `on_webhook` secrets, `expose` tokens — and `"Bearer #{token}"` or `"…" + token` are secrets too;
+- it serves where it is meant to — HTTP URLs, headers, query and body, `Db.connect`, `database`, `Mail.connect`, `mcp` (URL, headers, command, environment), `Ssh.connect` (key, passphrase, password, proxy), `Shell` environments, `on_webhook` secrets, `expose` tokens — and `"Bearer #{token}"` or `"…" + token` are secrets too;
 - anywhere else it reads `[secret]`: `puts`, `p`, logs, JSON, pages, the console; an HTTP error does not name a URL holding one;
 - it never reaches a model: in `user`, `system`, `run`, `judge`, `Conversation#say`, a tool's answer (the model gets an error instead), or as a tool's parameter — refused by the checker (E0414) and at run time (`SecretError`);
 - it is never journaled, queued as a job argument, nor written to a database;

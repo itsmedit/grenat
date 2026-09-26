@@ -5,7 +5,7 @@
 //! error. What it does prove, it proves before execution:
 //!
 //! - **taint**: an untrusted value (a model's answer, a network response) cannot reach a function with a
-//!   dangerous effect (`shell`, `net`, `fs.write`, `human`) without
+//!   dangerous effect (`shell`, `ssh`, `net`, `fs.write`, `human`) without
 //!   `.check`, `.approve(by: :human)` or `.trust!` (E0412); the analysis
 //!   follows taint through calls (each function is checked for the actual
 //!   taint of its arguments), fields, interpolation, blocks and agent
@@ -35,6 +35,7 @@ mod ops;
 mod pattern;
 mod resolve;
 mod secrets;
+mod ssh;
 mod suggest;
 mod taint;
 mod ty;

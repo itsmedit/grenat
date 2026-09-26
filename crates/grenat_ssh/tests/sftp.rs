@@ -1,12 +1,10 @@
 //! SFTP against the in-process server, whose files live in a scratch
 //! directory the test also sees.
 
-mod server;
-
 use std::time::Duration;
 
+use grenat_ssh::fake::{TempDir, TestServer, USER, key_text, new_key};
 use grenat_ssh::{Auth, ErrorKind, KnownHosts, Options, Session, Sftp};
-use server::{TempDir, TestServer, USER, key_text, new_key};
 
 /// A server, and an SFTP session on it.
 fn sftp() -> (TestServer, Session, Sftp) {

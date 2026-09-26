@@ -81,6 +81,10 @@ pub(crate) struct Shared<'p> {
     pub conversations: Mutex<Vec<Arc<Mutex<crate::eval::conversation::ConversationState>>>>,
     /// Open databases (`Db.connect`), by number.
     pub databases: Mutex<Vec<SharedConnection>>,
+    /// Open SSH connections (`Ssh.connect`), by number.
+    pub ssh_sessions: Mutex<Vec<crate::ssh::SharedSsh>>,
+    /// Mocked SSH servers (`mock_ssh`), by `user@host`.
+    pub ssh_stubs: Mutex<HashMap<String, Arc<Mutex<crate::ssh::Double>>>>,
     /// Stubbed HTTP requests (`mock_http`): (method, URL), the reply.
     pub http_stubs: Mutex<Vec<crate::eval::HttpStub>>,
     /// See [`Options::offline`] and [`Options::record`].
@@ -180,6 +184,8 @@ impl<'p> Interp<'p> {
             mocks: Mutex::new(Vec::new()),
             http_stubs: Mutex::new(Vec::new()),
             databases: Mutex::new(Vec::new()),
+            ssh_sessions: Mutex::new(Vec::new()),
+            ssh_stubs: Mutex::new(HashMap::new()),
             conversations: Mutex::new(Vec::new()),
             app_db: Mutex::new(None),
             migrations: Mutex::new(Vec::new()),

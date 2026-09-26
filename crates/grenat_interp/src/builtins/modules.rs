@@ -1,5 +1,5 @@
 //! Built-in modules: `File`, `Dir`, `Math`, `Env`, `Json`, `Runtime`, `Cli`, `Time`
-//! (and `Http`, in its own module).
+//! (and `Http`, `Shell`, `Ssh`…, in their own modules).
 
 use crate::prelude::*;
 
@@ -13,6 +13,7 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         ("Http", _) => call_http(interp, name, args),
         ("Db", "connect") => connect(interp, &args),
         ("Shell", _) => call_shell(interp, name, args),
+        ("Ssh", _) => call_ssh(interp, name, args),
         ("Pdf" | "Image", _) => call_attachment(interp, ty, name, &args),
         ("Mail", _) => call_mail(interp, name, &args),
         ("Conversation", "new" | "load") => interp.conversation_static(name, &args),

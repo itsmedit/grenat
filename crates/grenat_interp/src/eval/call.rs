@@ -7,7 +7,7 @@ fn dangerous_effect(def: &FnDef) -> Option<String> {
     def.effects.iter().find_map(|effect| {
         let path: Vec<&str> = effect.path.iter().map(|i| i.name.as_str()).collect();
         let name = path.join(".");
-        matches!(name.as_str(), "shell" | "net" | "fs.write" | "human").then_some(name)
+        matches!(name.as_str(), "shell" | "ssh" | "net" | "fs.write" | "human").then_some(name)
     })
 }
 

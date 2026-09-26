@@ -32,10 +32,16 @@
 //! **Network.** A connection may go through a SOCKS5 proxy
 //! (`socks5://[user:password@]host:port`) and has a timeout covering TCP,
 //! the proxy, the handshake and authentication (30 s by default).
+//!
+//! **Tests.** The `fake` feature adds the `fake` module: a real SSH and
+//! SFTP server in process, and a SOCKS5 proxy, for the tests of this crate
+//! and of its users.
 
 mod auth;
 mod error;
 mod exec;
+#[cfg(feature = "fake")]
+pub mod fake;
 mod handler;
 mod host_key;
 mod host_pattern;
