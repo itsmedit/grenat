@@ -225,6 +225,19 @@ fn through_a_socks5_proxy() {
     assert!(!e.contains(&port.to_string()) && !e.contains("pr0xy"), "{e}");
     let e = error("Ssh.connect(\"alice@127.0.0.1\", password: \"x\", proxy: \"http://proxy:3128\")\n");
     assert!(e.starts_with("ArgumentError: `Ssh.connect` goes through SOCKS5 proxies only"), "{e}");
+    // nor are the credentials of a proxy refused
+    for (proxy, shown) in [
+        ("\"http://bob:hunter2@proxy.corp:8080\"", "got \"http://proxy.corp:8080\""),
+        ("\"bob:hunter2@proxy.corp:8080\"", "got \"proxy.corp:8080\""),
+        ("Credentials.fetch(:proxy, :url)", "got [secret]"),
+    ] {
+        let e = error(&format!(
+            "mock_credentials({{\"proxy\" => {{\"url\" => \"http://bob:hunter2@proxy.corp:8080\"}}}})\n\
+             Ssh.connect(\"alice@127.0.0.1\", password: \"x\", proxy: {proxy})\n"
+        ));
+        assert!(e.starts_with("ArgumentError: `Ssh.connect` goes through SOCKS5 proxies only"), "{e}");
+        assert!(e.ends_with(shown) && !e.contains("hunter2") && !e.contains("bob"), "{e}");
+    }
 }
 
 #[test]
@@ -339,6 +352,18 @@ fn connection_options_are_checked() {
             "ArgumentError: `Ssh.connect` takes `known_hosts:` or `fingerprint:`, not both",
         ),
         ("Ssh.connect(\"a@b\", password: \"p\", port: 0)", "ArgumentError: invalid `Ssh.connect` option `port: 0`"),
+        (
+            "Ssh.connect(\"a@b\", password: \"p\", timeout: 1e20)",
+            "ArgumentError: invalid `Ssh.connect` option `timeout: 100000000000000000000`",
+        ),
+        (
+            "Ssh.connect(\"a@b\", password: \"p\", timeout: 1e400)",
+            "ArgumentError: invalid `Ssh.connect` option `timeout: ",
+        ),
+        (
+            "Ssh.connect(\"a@b\", password: \"p\", timeout: -1.5)",
+            "ArgumentError: invalid `Ssh.connect` option `timeout: -1.5`",
+        ),
         (
             "Ssh.connect(\"a@b\", password: \"p\", color: :red)",
             "ArgumentError: invalid `Ssh.connect` option `color: :red`",

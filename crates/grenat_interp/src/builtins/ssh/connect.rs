@@ -59,7 +59,7 @@ pub(crate) fn call_ssh<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p>) 
     if interp.log {
         let via = match &proxy {
             Some(Proxy { secret: true, .. }) => " via [secret]".to_string(),
-            Some(Proxy { url, .. }) => format!(" via {}", crate::http::without_credentials(url)),
+            Some(Proxy { url, .. }) => format!(" via {}", without_credentials(url)),
             None => String::new(),
         };
         let port = target.port.unwrap_or(DEFAULT_PORT);
@@ -115,13 +115,15 @@ fn options<'p>(target: &Target, args: &Args<'p>) -> Result<(Options, Option<Prox
             }
             ("proxy", Value::Nil | Value::Bool(false)) => proxy = None,
             ("proxy", Value::Str(url) | Value::Secret(url)) => {
+                let secret = matches!(value, Value::Secret(_));
                 if !url.starts_with("socks5://") && !url.starts_with("socks5h://") {
+                    let shown = if secret { "[secret]".to_string() } else { format!("{:?}", without_credentials(url)) };
                     return raise(
                         "ArgumentError",
-                        format!("`Ssh.connect` goes through SOCKS5 proxies only (socks5://…), got {}", value.inspect()),
+                        format!("`Ssh.connect` goes through SOCKS5 proxies only (socks5://…), got {shown}"),
                     );
                 }
-                proxy = Some(Proxy { url: url.to_string(), secret: matches!(value, Value::Secret(_)) });
+                proxy = Some(Proxy { url: url.to_string(), secret });
             }
             ("known_hosts" | "fingerprint", _) if trust.is_some() => {
                 return raise("ArgumentError", "`Ssh.connect` takes `known_hosts:` or `fingerprint:`, not both");
@@ -129,9 +131,10 @@ fn options<'p>(target: &Target, args: &Args<'p>) -> Result<(Options, Option<Prox
             ("known_hosts", Value::Str(path)) => trust = Some(KnownHosts::File(expand_home(path))),
             ("fingerprint", Value::Str(fingerprint)) => trust = Some(KnownHosts::Fingerprint(fingerprint.to_string())),
             ("timeout", Value::Int(n)) if *n > 0 => options.timeout = Some(Duration::from_secs(*n as u64)),
-            ("timeout", Value::Float(s) | Value::Duration(s)) if *s > 0.0 => {
-                options.timeout = Some(Duration::from_secs_f64(*s));
-            }
+            ("timeout", Value::Float(s) | Value::Duration(s)) if *s > 0.0 => match Duration::try_from_secs_f64(*s) {
+                Ok(limit) => options.timeout = Some(limit),
+                Err(_) => return invalid(option, value),
+            },
             (option, value) => return invalid(option, value),
         }
     }
@@ -151,6 +154,16 @@ fn options<'p>(target: &Target, args: &Args<'p>) -> Result<(Options, Option<Prox
     options.known_hosts = trust.unwrap_or_default();
     options.proxy = proxy.as_ref().map(|p| p.url.clone());
     Ok((options, proxy))
+}
+
+/// A proxy URL without its user name and password, with or without a
+/// scheme (`http://bob:pw@proxy:8080` → `http://proxy:8080`).
+fn without_credentials(url: &str) -> String {
+    if url.contains("://") {
+        crate::http::without_credentials(url)
+    } else {
+        url.rsplit('@').next().unwrap_or_default().to_string()
+    }
 }
 
 /// `~/x` → `<home>/x`.
