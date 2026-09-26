@@ -439,13 +439,15 @@ Goal: `brew install grenat` on macOS, `yay -S grenat` on Arch / Omarchy, with no
 
 | Channel | Command | When |
 |---|---|---|
-| Homebrew tap (`itsmedit/homebrew-grenat`) | `brew install itsmedit/grenat/grenat` | from v0.1 |
+| Homebrew tap (`itsmedit/homebrew-grenat`) ✅ | `brew install itsmedit/grenat/grenat` | from v0.1 |
+| `.deb` and `.rpm` of each release ✅ | `sudo apt install ./grenat_<v>_amd64.deb`, `sudo dnf install <url>.rpm` | from v0.1.1 |
+| Docker image (GHCR) ✅ | `docker run ghcr.io/itsmedit/grenat` | from v0.1.1 |
 | homebrew-core | `brew install grenat` | once the project is "notable" (~75 stars), stable release, built from source |
 | AUR `grenat` (source) and `grenat-bin` (prebuilt) | `yay -S grenat` | from v0.1 |
 | Arch `extra` repository | `pacman -S grenat` | once an Arch packager adopts it |
-| Shell installer | `curl -fsSL https://grenat.dev/install.sh \| sh` | from v0.1 |
+| Shell installer ✅ | `curl -sSL https://github.com/itsmedit/grenat/releases/latest/download/install.sh \| sh` | from v0.1.1 |
 
-**Automation**: `dist` (formerly cargo-dist) generates the GitHub Action triggered on every `v*` tag. It builds the macOS arm64/x86_64 and Linux x86_64/aarch64 binaries, creates the GitHub Release, and updates the tap formula and the shell installer. The `grenat-bin` `PKGBUILD` points to the same artifacts.
+**Automation** (`.github/workflows/release.yml`), on every `v*` tag: the macOS arm64/x86_64 and Linux x86_64/aarch64 binaries — the Linux ones built on Debian 11 (glibc 2.31), so that they run on Ubuntu 20.04+, Debian 11+, Amazon Linux 2023, RHEL 9 and Fedora — each packaged with the runtime libraries and checked as installed (`scripts/release-package.sh`); `.deb` and `.rpm` packages (`packaging/nfpm.yaml`); a GitHub Release with them, their checksums and the install script (`scripts/install.sh`); then the Docker image, built from that release (`packaging/Dockerfile`), pushed to `ghcr.io/itsmedit/grenat`. The tap's formula is written from the release by `scripts/homebrew-formula.sh`. The `grenat-bin` `PKGBUILD` will point to the same artifacts.
 
 **Resulting design constraints**:
 

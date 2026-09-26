@@ -1,0 +1,40 @@
+# The Linux packages of a release (.deb for apt, .rpm for dnf and yum), made
+# by nfpm from the release's files (ARCH: amd64 or arm64, VERSION: 0.1.1).
+name: grenat
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+section: devel
+maintainer: itsmedit <itsmedit@users.noreply.github.com>
+description: |
+  An agentic programming language: Ruby's syntax, Rust's speed.
+  Typed prompts, agents, durable workflows, taint tracking and budgets,
+  with grenat (the toolchain) and setter (its libraries).
+vendor: Grenat
+homepage: https://github.com/itsmedit/grenat
+license: MIT OR Apache-2.0
+recommends:
+  - gcc
+overrides:
+  deb:
+    depends:
+      - libc6 (>= 2.31)
+  rpm:
+    depends:
+      - glibc >= 2.31
+contents:
+  - src: ./package/bin/grenat
+    dst: /usr/bin/grenat
+  - src: ./package/bin/setter
+    dst: /usr/bin/setter
+  # the runtime libraries `grenat build` links, found next to the binary
+  - src: ./package/lib/grenat/libgrenat_host.a
+    dst: /usr/lib/grenat/libgrenat_host.a
+  - src: ./package/lib/grenat/libgrenat_standalone.a
+    dst: /usr/lib/grenat/libgrenat_standalone.a
+  - src: ./package/README.md
+    dst: /usr/share/doc/grenat/README.md
+  - src: ./package/LICENSE-MIT
+    dst: /usr/share/doc/grenat/LICENSE-MIT
+  - src: ./package/LICENSE-APACHE
+    dst: /usr/share/doc/grenat/LICENSE-APACHE

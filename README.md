@@ -70,17 +70,64 @@ actors (one message at a time, deadlocks detected, supervision with restarts), a
 names, types, effects and taint: an unvalidated model answer that reaches the network is
 a **compile-time error**.
 
+## Install
+
+**macOS or Linux, with Homebrew:**
+
 ```sh
-brew install itsmedit/grenat/grenat          # macOS and Linux (or: yay -S grenat, planned)
+brew install itsmedit/grenat/grenat
 ```
 
-From the sources (Rust, and a C linker: Xcode's command line tools on macOS):
+**Any Linux with glibc** (Ubuntu 20.04+, Debian 11+, Fedora, RHEL 9, Amazon Linux 2023…) **or macOS, without a package manager** — the install script puts `grenat` and `setter` in `~/.grenat` (in `/usr/local` as root), checks the archive's SHA-256, and adds them to your `PATH`:
+
+```sh
+curl -sSL https://github.com/itsmedit/grenat/releases/latest/download/install.sh | sh
+# options: sh -s -- --version v0.1.1 | --prefix DIR | --no-modify-path | --uninstall
+```
+
+A fresh EC2 instance (Amazon Linux 2023), for instance:
+
+```sh
+sudo dnf install -y gcc                 # the C linker `grenat build` uses (run, test and serve need none)
+curl -sSL https://github.com/itsmedit/grenat/releases/latest/download/install.sh | sh
+exec $SHELL -l                          # a new shell, with grenat on the PATH
+grenat new --app hello && cd hello && grenat test
+```
+
+**apt or dnf**, with the packages of a release:
+
+```sh
+curl -LO https://github.com/itsmedit/grenat/releases/download/v0.1.1/grenat_0.1.1_amd64.deb
+sudo apt install ./grenat_0.1.1_amd64.deb                  # Ubuntu, Debian (arm64: _arm64.deb)
+sudo dnf install https://github.com/itsmedit/grenat/releases/download/v0.1.1/grenat-0.1.1-1.x86_64.rpm   # Fedora, RHEL, Amazon Linux (aarch64: .aarch64.rpm)
+```
+
+**Docker** — the official image, for amd64 and arm64, with a C linker for `grenat build`:
+
+```sh
+docker run --rm -v "$PWD":/app ghcr.io/itsmedit/grenat test
+docker run --rm -v "$PWD":/app -p 3000:3000 ghcr.io/itsmedit/grenat serve --listen 0.0.0.0:3000
+```
+
+```dockerfile
+# your application's image
+FROM ghcr.io/itsmedit/grenat:0.1.1
+COPY . /app
+CMD ["serve", "--listen", "0.0.0.0:3000"]
+```
+
+**From the sources** (Rust, and a C linker: Xcode's command line tools on macOS):
 
 ```sh
 cargo install --locked --path crates/grenat_cli && cargo install --locked --path crates/grenat_setter
 cargo build --release -p grenat_host -p grenat_standalone     # the libraries `grenat build` links
 mkdir -p ~/.cargo/lib/grenat && cp target/release/libgrenat_{host,standalone}.a ~/.cargo/lib/grenat/
 ```
+
+Alpine (musl) is not supported by the binaries: use a glibc distribution, or the Docker image.
+
+## Try it
+
 
 ```sh
 cargo build
