@@ -53,7 +53,15 @@ fn run<'p>(interp: &mut Interp<'p>, fields: &Fields<'p>, args: &Args<'p>) -> R<'
     let output = interp.on_server(fields, |connection, label| connection.run(&argv, label))?;
     let status = output.status.map_or(-1, i64::from);
     interp
-        .log_ssh(fields, &format!("{} → {}", argv.join(" "), output.signal.as_deref().unwrap_or(&status.to_string())));
+        // the server names the signal: escaped, so that it cannot forge a log line
+        .log_ssh(
+            fields,
+            &format!(
+                "{} → {}",
+                argv.join(" "),
+                output.signal.as_deref().map_or(status.to_string(), |s| s.escape_debug().to_string())
+            ),
+        );
     let text = |bytes: Vec<u8>| Value::str(String::from_utf8_lossy(&bytes)).taint();
     Ok(Value::record(
         SSH_RESULT,

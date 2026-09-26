@@ -58,3 +58,12 @@ fn a_tool_never_takes_nor_gives_a_secret() {
         render("", &d)
     );
 }
+
+#[test]
+fn a_secret_in_a_literal_never_reaches_a_model() {
+    let src = format!(
+        "{MODEL}prompt judge_all(items: Array(String)) -> ~String using :fast\n  user items.join(\", \")\nend\ndef main uses llm, env\n  t = Credentials.fetch(:a, :b)\n  judge(:fast, \"Is it fine?\", [\"x\", t])\nend\n"
+    );
+    let d = diags(&src);
+    assert!(d.iter().any(|d| d.code == Some("E0414") && d.message.contains("through `judge`")), "{}", render(&src, &d));
+}

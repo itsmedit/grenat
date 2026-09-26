@@ -12,9 +12,11 @@ const HELP: &str = "a secret serves in HTTP URLs and headers, and in connections
 impl<'p> Checker<'p> {
     /// Reports the secrets among `argv`: they would reach a model through `target`.
     pub(crate) fn secrets_to_model(&mut self, argv: &[ArgV], target: &str) {
-        for arg in argv.iter().filter(|a| is_secret(&a.v.ty)) {
+        // a secret, or a literal holding one (`["x", token]`)
+        let secrets: Vec<Span> = argv.iter().filter(|a| self.holds_secret(&a.v.ty, a.span)).map(|a| a.span).collect();
+        for span in secrets {
             self.report(
-                Diagnostic::new(arg.span, format!("a secret reaches a model through `{target}`"))
+                Diagnostic::new(span, format!("a secret reaches a model through `{target}`"))
                     .with_code(E_SECRET)
                     .with_help(HELP),
             );
