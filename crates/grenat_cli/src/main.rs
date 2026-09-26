@@ -37,7 +37,7 @@ Usage:
                                  --release: optimized by LLVM, needs clang)
   grenat test [<file.grn>...]    run the `test \"…\" do … end` blocks (never a real model:
                                  `mock`, or `cassette` recorded once); without a
-                                 file, those of the package's src/ and tests/
+                                 file, those of the package's src/, tests/ and db/migrations/
   grenat serve [--listen host:port] [<file.grn>]
                                  serve the program: routes, `expose`d tools and agents,
                                  `on_webhook` handlers (127.0.0.1:3000 by default),

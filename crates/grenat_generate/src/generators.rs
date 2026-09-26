@@ -101,10 +101,10 @@ fn record(names: &Names, fields: &[String], now: i64) -> Result<(Vec<File>, Vec<
     let migration = format!("{version}_create_{}", names.plural);
     let files = vec![
         (format!("src/records/{}.grn", names.snake), templates::record(names, &fields)),
-        (format!("src/migrations/{migration}.grn"), templates::migration(names, &fields, &version)),
+        (format!("db/migrations/{migration}.grn"), templates::migration(names, &fields, &version)),
         (format!("tests/records/{}_test.grn", names.snake), templates::record_test(names, &fields)),
     ];
-    Ok((files, vec![format!("./records/{}", names.snake), format!("./migrations/{migration}")]))
+    Ok((files, vec![format!("./records/{}", names.snake), format!("../db/migrations/{migration}")]))
 }
 
 /// `YYYYMMDDHHMMSS`, UTC: migrations sort in the order they were made.

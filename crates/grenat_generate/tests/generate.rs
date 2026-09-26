@@ -67,7 +67,8 @@ fn a_record_its_migration_and_its_test() {
     assert!(
         record.contains("struct Category\n  table :categories\n  id: Int?\n  subject: String\n  score: Float?\nend")
     );
-    let migration = read(&dir, "src/migrations/20260921141320_create_categories.grn");
+    let migration = read(&dir, "db/migrations/20260921141320_create_categories.grn");
+    assert!(migration.starts_with("migration "), "a migration needs no require: {migration}");
     assert!(migration.contains("migration \"20260921141320_create_categories\" do |db|"));
     assert!(
         migration
@@ -78,7 +79,7 @@ fn a_record_its_migration_and_its_test() {
     );
     let app = read(&dir, "src/app.grn");
     assert!(
-        app.contains("require \"./records/category\"\nrequire \"./migrations/20260921141320_create_categories\"\n")
+        app.contains("require \"./records/category\"\nrequire \"../db/migrations/20260921141320_create_categories\"\n")
     );
 }
 

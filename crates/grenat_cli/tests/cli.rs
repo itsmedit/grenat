@@ -634,6 +634,7 @@ fn a_generated_application_checks_passes_its_tests_and_migrates() {
     assert!(text(&test.stderr).contains("7 passed, 0 failed"), "{}", text(&test.stderr));
     let fmt = grenat_in(&app, &["fmt", "--check", "src", "tests", "evals"]);
     assert_eq!(code(&fmt), 0, "generated code is not in the canonical layout: {}", text(&fmt.stderr));
+    assert!(std::fs::read_dir(app.join("db/migrations")).unwrap().count() == 2, "migrations live in db/migrations");
     let migrate = grenat_in(&app, &["migrate"]);
     assert_eq!(code(&migrate), 0, "{}", text(&migrate.stderr));
     assert!(text(&migrate.stderr).contains("2 migration(s) applied"), "{}", text(&migrate.stderr));

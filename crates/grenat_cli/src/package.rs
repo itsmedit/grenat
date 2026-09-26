@@ -30,11 +30,12 @@ pub fn main_file() -> Result<String, String> {
     Ok(shown(&package.main()))
 }
 
-/// Every `.grn` file of the current package's `src/` and `tests/`.
+/// Every `.grn` file of the current package's `src/`, `tests/` and
+/// `db/migrations/`.
 pub fn files() -> Result<Vec<String>, String> {
     let package = current()?;
     let mut files = Vec::new();
-    for dir in ["src", "tests"] {
+    for dir in ["src", "tests", "db/migrations"] {
         collect(&package.root.join(dir), &mut files);
     }
     files.sort();

@@ -76,7 +76,8 @@ Its parts, each with its tests (`grenat generate agent|workflow|record|tool|eval
 - `config/credentials.yml.enc` — the secrets, encrypted (`grenat credentials edit`); its key,
   `config/master.key`, stays out of the repository (in production: `GRENAT_MASTER_KEY`);
 - `src/app.grn` — requires the parts, then declares what is served;
-- `src/agents/`, `src/workflows/`, `src/records/` (and `src/migrations/`), `src/tools/`;
+- `src/agents/`, `src/workflows/`, `src/records/`, `src/tools/`;
+- `db/migrations/` — the tables, in the order they were made (`grenat migrate`);
 - `tests/`, `evals/`.
 ";
 
@@ -189,7 +190,7 @@ pub(crate) fn migration(names: &Names, fields: &[Field], version: &str) -> Strin
     let columns: Vec<String> = fields.iter().map(Field::column).collect();
     fill(
         &format!(
-            "require \"../config\"\n\nmigration \"{version}_create___plural__\" do |db|\n  db.migrate(\"CREATE TABLE __plural__ (id #{{db.primary_key}}, {})\")\nend\n",
+            "migration \"{version}_create___plural__\" do |db|\n  db.migrate(\"CREATE TABLE __plural__ (id #{{db.primary_key}}, {})\")\nend\n",
             columns.join(", ")
         ),
         names,
