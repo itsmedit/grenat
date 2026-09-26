@@ -83,7 +83,7 @@ impl<'p> Interp<'p> {
                         exposure.entries.extend(self.exposed_agent(item)?);
                     }
                 }
-                ("token", Value::Str(token)) if !token.is_empty() => exposure.token = Some(token.to_string()),
+                ("token", Value::Str(token) | Value::Secret(token)) if !token.is_empty() => exposure.token = Some(token.to_string()),
                 ("public", Value::Bool(b)) => public = *b,
                 ("name", Value::Str(name)) => exposure.name = name.to_string(),
                 (option, v) => return raise("ArgumentError", format!("invalid `expose` option `{option}: {}`", v.inspect())),

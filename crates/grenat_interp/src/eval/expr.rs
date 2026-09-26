@@ -4,7 +4,7 @@ use crate::prelude::*;
 
 /// Built-in modules and types usable as values.
 const BUILTIN_TYPES: &[&str] = &[
-    "File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Conversation", "Jobs", "Approvals", "Int", "Float", "String", "Bool", "Array", "Hash",
+    "File", "Dir", "Math", "Env", "Credentials", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Conversation", "Jobs", "Approvals", "Int", "Float", "String", "Bool", "Array", "Hash",
     "Symbol", "Nil", "Range", "Money", "Duration",
 ];
 
@@ -222,18 +222,24 @@ impl<'p> Interp<'p> {
 
     pub(crate) fn string(&mut self, segs: &'p [StrSeg]) -> R<'p> {
         let mut text = String::new();
-        let mut tainted = false;
+        let (mut tainted, mut secret) = (false, false);
         for seg in segs {
             match seg {
                 StrSeg::Lit(s) => text.push_str(s),
                 StrSeg::Interp(e) => {
                     let v = self.eval(e)?;
                     tainted |= v.contains_taint();
-                    text.push_str(&self.display(&v)?);
+                    // `"Bearer #{token}"` is a secret too
+                    if let Value::Secret(inner) = v.untainted() {
+                        secret = true;
+                        text.push_str(inner);
+                    } else {
+                        text.push_str(&self.display(&v)?);
+                    }
                 }
             }
         }
-        let v = Value::str(text);
+        let v = if secret { Value::Secret(text.into()) } else { Value::str(text) };
         Ok(if tainted { v.taint() } else { v })
     }
 

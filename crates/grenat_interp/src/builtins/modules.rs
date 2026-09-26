@@ -91,6 +91,8 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
             }))
         }
         ("Env", "get") => Ok(std::env::var(&*str_arg(&args, 0, name)?).map_or(Value::Nil, Value::str)),
+        ("Credentials", "fetch") => interp.credential(&args, true),
+        ("Credentials", "dig") => interp.credential(&args, false),
         ("Env", "fetch") => {
             let key = str_arg(&args, 0, name)?;
             match (std::env::var(&*key), args.pos.get(1)) {

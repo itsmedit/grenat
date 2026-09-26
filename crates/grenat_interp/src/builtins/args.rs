@@ -23,6 +23,14 @@ pub(crate) fn str_arg<'p>(args: &Args<'p>, i: usize, method: &str) -> Result<Arc
     }
 }
 
+/// A string, or a secret revealed: where secrets serve (a URL, a connection).
+pub(crate) fn text_arg<'p>(args: &Args<'p>, i: usize, method: &str) -> Result<String, Ctrl<'p>> {
+    match arg(args, i, method)?.untainted() {
+        Value::Secret(s) | Value::Str(s) | Value::Symbol(s) => Ok(s.to_string()),
+        other => raise("TypeError", format!("`{method}` expects a string, got {}", other.type_name())),
+    }
+}
+
 pub(crate) fn block<'p>(args: &Args<'p>, method: &str) -> Result<Value<'p>, Ctrl<'p>> {
     match &args.block {
         Some(b) => Ok(b.clone()),

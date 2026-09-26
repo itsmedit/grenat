@@ -34,6 +34,7 @@ mod names;
 mod ops;
 mod pattern;
 mod resolve;
+mod secrets;
 mod suggest;
 mod taint;
 mod ty;
@@ -54,6 +55,7 @@ pub const E_EFFECT: &str = "E0300";
 pub const E_WORKFLOW: &str = "E0310";
 pub const E_TAINT: &str = "E0412";
 pub const E_TAINT_DECL: &str = "E0413";
+pub const E_SECRET: &str = "E0414";
 pub const E_DECL: &str = "E0500";
 
 /// Checks a program; returns the diagnostics sorted by position.

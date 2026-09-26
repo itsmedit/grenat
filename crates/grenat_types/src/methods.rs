@@ -37,6 +37,9 @@ impl<'p> Checker<'p> {
     ) -> V {
         let n = name.name.as_str();
         let taint = recv.taint;
+        if secrets::is_secret(&recv.ty) {
+            return self.secret_method(name.span, n);
+        }
         // taint control
         match n {
             "trust!" => return V::new(recv.ty),

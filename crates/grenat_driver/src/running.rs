@@ -20,7 +20,13 @@ pub fn render_runtime_error(sources: &Sources, error: &grenat_interp::RuntimeErr
 /// `fixtures/` and datasets.
 pub fn options_for(path: &str) -> grenat_interp::Options {
     let dir = Path::new(path).parent().map(Path::to_path_buf);
-    grenat_interp::Options { dir, record: record_from_env(), log: log_from_env(), ..Default::default() }
+    // the application's credentials: those of its package, else next to the program
+    let package = dir.as_deref().map(|d| if d.as_os_str().is_empty() { Path::new(".") } else { d });
+    let credentials_root = match package.map(grenat_package::find_package) {
+        Some(Ok(Some(package))) => Some(package.root),
+        _ => package.map(Path::to_path_buf),
+    };
+    grenat_interp::Options { dir, credentials_root, record: record_from_env(), log: log_from_env(), ..Default::default() }
 }
 
 /// Runs `program` (its top-level code, then `main`): prints the LLM usage,

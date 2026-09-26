@@ -18,7 +18,6 @@
 use std::time::Duration;
 
 use crate::http::{HttpReply, HttpRequest, host};
-use crate::llm::value_to_json;
 use crate::prelude::*;
 
 use super::*;
@@ -41,15 +40,25 @@ pub(crate) fn call_http<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p>)
     if args.pos.iter().chain(args.named.iter().map(|(_, v)| v)).any(Value::contains_taint) {
         return raise("TaintError", format!("an untrusted value reaches `{target}` (effect `net`) without validation"));
     }
-    let url = str_arg(&args, 0, name)?.to_string();
+    let url = text_arg(&args, 0, name)?;
     let Some(host) = host(&url) else {
         return raise("ArgumentError", format!("`{target}` expects an http(s) URL, got {url:?}"));
     };
     interp.check_net(host, &url)?;
     let request = request(method, url.clone(), &args)?;
-    let reply = interp.http(&request)?;
+    // an error names the URL: one holding a secret is not named
+    let secret_url = args.pos[0].contains_secret()
+        || args.named.iter().any(|(n, v)| n == "query" && v.contains_secret());
+    let reply = match interp.http(&request) {
+        Err(Ctrl::Raise(e)) if secret_url => {
+            return raise(&e.ty, e.message.replace(&request.url, &format!("{} [secret]", host)));
+        }
+        other => other?,
+    };
     if interp.log {
-        interp.write_err(&format!("[http] {method} {url} → {}\n", reply.status));
+        // a URL holding a secret is logged as `[secret]`
+        let shown = if args.pos[0].contains_secret() { args.pos[0].to_display() } else { url };
+        interp.write_err(&format!("[http] {method} {shown} → {}\n", reply.status));
     }
     Ok(response(reply))
 }
@@ -59,16 +68,16 @@ fn request<'p>(method: &'static str, url: String, args: &Args<'p>) -> Result<Htt
     for (option, value) in &args.named {
         match (option.as_str(), value) {
             ("headers", Value::Hash(entries)) => {
-                request.headers.extend(entries.borrow().iter().map(|(k, v)| (k.to_display(), v.to_display())));
+                request.headers.extend(entries.borrow().iter().map(|(k, v)| (k.to_display(), v.reveal())));
             }
             ("json", value) => {
-                request.body = Some(value_to_json(value).to_string());
+                request.body = Some(crate::llm::revealed_json(value).to_string());
                 request.headers.push(("Content-Type".into(), "application/json".into()));
             }
-            ("body", Value::Str(text)) => request.body = Some(text.to_string()),
+            ("body", Value::Str(text) | Value::Secret(text)) => request.body = Some(text.to_string()),
             ("query", Value::Hash(entries)) => {
                 let params: Vec<(String, String)> =
-                    entries.borrow().iter().map(|(k, v)| (k.to_display(), v.to_display())).collect();
+                    entries.borrow().iter().map(|(k, v)| (k.to_display(), v.reveal())).collect();
                 request.url = crate::http::with_query(&request.url, &params);
             }
             ("timeout", Value::Int(n)) if *n > 0 => request.timeout = Duration::from_secs(*n as u64),

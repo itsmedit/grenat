@@ -65,6 +65,7 @@ impl<'p> Interp<'p> {
                 Ok(l.clone())
             }
             (BinOp::Add, Str(a), Str(b)) => Ok(Value::str(format!("{a}{b}"))),
+            (BinOp::Add, Str(a) | Secret(a), Secret(b)) | (BinOp::Add, Secret(a), Str(b)) => Ok(Secret(format!("{a}{b}").into())),
             (BinOp::Add, Str(_), _) => {
                 raise("TypeError", format!("cannot add {} to a string: use interpolation \"#{{…}}\"", r.type_name()))
             }

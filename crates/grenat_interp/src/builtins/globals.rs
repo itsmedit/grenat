@@ -65,6 +65,9 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
         }
         "raise" => raise_value(args),
         "system" | "user" | "assistant" if !interp.prompts.is_empty() => {
+            if let Err(refused) = crate::eval::secrets::not_for_models(&args.pos) {
+                return Some(Err(refused));
+            }
             let role = match name {
                 "system" => "system",
                 "user" => "user",
@@ -155,6 +158,7 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
         "deliver_webhook" => deliver_webhook(interp, &args),
         "mcp" => interp.declare_mcp(&args),
         "mock_mcp" => interp.mock_mcp(&args),
+        "mock_credentials" => interp.mock_credentials(&args),
         "mock_shell" => (|| {
             let pattern = arg(&args, 0, name)?.to_display();
             interp.mock_shell(&pattern, &args)
@@ -226,6 +230,7 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             let Some(question) = pos.next().map(Value::to_display) else {
                 return raise("ArgumentError", "`judge` expects a question: `judge(:smart, \"Is it faithful?\", text)`");
             };
+            crate::eval::secrets::not_for_models(&args.pos)?;
             let context: Vec<Value> = pos.cloned().collect();
             interp.judge(model.as_deref(), &question, &context)
         })(),

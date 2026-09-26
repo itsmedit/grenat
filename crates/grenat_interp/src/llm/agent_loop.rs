@@ -98,6 +98,7 @@ impl<'p> Interp<'p> {
         let Some(instruction) = args.pos.first() else {
             return raise("ArgumentError", "`run` expects an instruction: `run \"…\"`");
         };
+        crate::eval::secrets::not_for_models(std::slice::from_ref(instruction))?;
         let instruction = instruction.to_display();
         let config = self.agent_config(&agent_ty)?;
         let ret = match &handler.ret {
@@ -167,7 +168,10 @@ impl<'p> Interp<'p> {
                 }
                 let called = match routes.get(&tool_use.name) {
                     Some((server, tool)) => self.call_mcp(server, tool, &tool_use.input),
-                    None => self.call_tool_within(tool_use, config.tool_timeout).map(|v| (tool_output(&v), false)),
+                    None => self.call_tool_within(tool_use, config.tool_timeout).and_then(|v| {
+                        crate::eval::secrets::not_for_models(std::slice::from_ref(&v))?;
+                        Ok((tool_output(&v), false))
+                    }),
                 };
                 let (content, is_error) = match called {
                     Ok(answer) => answer,

@@ -274,6 +274,15 @@ impl<'p> Interp<'p> {
                 let ty = ty.clone();
                 return self.static_method(&ty, name, args);
             }
+            Value::Secret(_) => {
+                return match name {
+                    "to_s" => Ok(receiver),
+                    _ => raise(
+                        "SecretError",
+                        format!("a secret has no method `{name}`: pass it where it serves (a header, a URL, a connection)"),
+                    ),
+                };
+            }
             _ => {}
         }
         if let Some(def) = self.method_of(&receiver, name) {

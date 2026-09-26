@@ -211,3 +211,30 @@ fn a_page_as_text_stays_untrusted() {
     let out = run(&format!("p Html.text(Http.get(\"{base}/nowhere\").body)\np Html.text(\"<b>a</b> &amp; b\")\n"));
     assert_eq!(out, "~\"no such page\"\n\"a & b\"\n");
 }
+
+#[test]
+fn secrets_are_revealed_only_in_the_request() {
+    let out = run_http(
+        "\
+mock_credentials({\"api\" => {\"token\" => \"t0k\"}})
+token = Credentials.fetch(:api, :token)
+res = Http.post(\"BASE/echo\", headers: {\"Authorization\" => \"Bearer #{token}\"}, json: {key: token})
+echo = res.json.trust!
+p echo[\"auth\"], Json.parse(echo[\"body\"])
+puts \"Bearer #{token}\"
+p token
+p Json.dump({key: token})
+",
+    );
+    assert_eq!(out, "\"Bearer t0k\"\n{\"key\" => \"t0k\"}\n[secret]\n[secret]\n\"{\\\"key\\\":\\\"[secret]\\\"}\"\n");
+}
+
+#[test]
+fn an_error_does_not_name_a_url_holding_a_secret() {
+    // nobody listens there: the request fails
+    let src = "mock_credentials({\"api\" => {\"key\" => \"s3cr3t\"}})\nkey = Credentials.fetch(:api, :key)\nHttp.get(\"http://127.0.0.1:1/x?key=#{key}\")\n";
+    let e = run_err(src, Vec::new());
+    assert_eq!(e.ty, "HttpError");
+    assert!(!e.message.contains("s3cr3t"), "{}", e.message);
+    assert!(e.message.contains("[secret]"), "{}", e.message);
+}

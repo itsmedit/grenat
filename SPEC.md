@@ -611,6 +611,28 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 10 status: credentials and secrets
+
+```ruby
+def main uses net, env
+  token = Credentials.fetch(:github, :token)        # a Secret
+  Http.get("https://api.github.com/user", headers: {"Authorization" => "Bearer #{token}"})
+  puts token                                        # [secret]
+end
+```
+
+As with Rails: `grenat credentials edit` opens the application's secrets — YAML, encrypted with AES-256-GCM in `config/credentials.yml.enc` — in `$EDITOR`, and encrypts them again on save; the key is `config/master.key` (created `0600`, kept out of git) or `GRENAT_MASTER_KEY`. An environment may have its own (`--env production`: `config/credentials/production.yml.enc` and its own key), used when `GRENAT_ENV` names it. `grenat new --app` creates them.
+
+`Credentials.fetch(:github, :token)` (`dig` gives `nil` when missing) is a `Secret`, not a `String`:
+
+- it serves where it is meant to — HTTP URLs, headers, query and body, `Db.connect`, `database`, `Mail.connect`, `mcp` (URL, headers, command, environment), `Shell` environments, `on_webhook` secrets, `expose` tokens — and `"Bearer #{token}"` or `"…" + token` are secrets too;
+- anywhere else it reads `[secret]`: `puts`, `p`, logs, JSON, pages, the console; an HTTP error does not name a URL holding one;
+- it never reaches a model: in `user`, `system`, `run`, `judge`, `Conversation#say`, a tool's answer (the model gets an error instead), or as a tool's parameter — refused by the checker (E0414) and at run time (`SecretError`);
+- it is never journaled, queued as a job argument, nor written to a database;
+- compared to a string (`req.headers["x-token"] == secret`), in constant time; it has no other method (`to_s` keeps it a secret). A function that takes one says so: `def headers(token: Secret)`.
+
+In tests, `mock_credentials({"github" => {"token" => "t"}})` gives a test its credentials.
+
 ### Phase 9 status: `grenat console`
 
 ```sh

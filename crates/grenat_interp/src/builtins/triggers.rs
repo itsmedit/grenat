@@ -69,8 +69,8 @@ pub(crate) fn on_webhook<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> 
     }
     let named = |n: &str| args.named.iter().find(|(k, _)| k == n).map(|(_, v)| v.clone());
     let proof = match (named("signature"), named("secret"), named("token")) {
-        (Some(Value::Symbol(kind)), Some(secret), None) if &*kind == "github" => Proof::Github(secret.to_display()),
-        (None, None, Some(token)) => Proof::Token(token.to_display()),
+        (Some(Value::Symbol(kind)), Some(secret), None) if &*kind == "github" => Proof::Github(secret.reveal()),
+        (None, None, Some(token)) => Proof::Token(token.reveal()),
         (None, None, None) => Proof::None,
         _ => return raise("ArgumentError", "`on_webhook` takes `secret:, signature: :github`, or `token:`"),
     };

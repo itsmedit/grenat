@@ -33,6 +33,7 @@ pub fn encode(value: &Value) -> Result<Json, String> {
         Value::Variant(v) => json!({"$variant": [&*v.enum_name, &*v.name], "fields": encode_fields(&v.fields)?}),
         Value::Error(e) => json!({"$error": &*e.ty, "message": e.message, "fields": encode_fields(&e.fields)?}),
         Value::Tainted(inner) => json!({"$tainted": encode(inner)?}),
+        Value::Secret(_) => return Err("a secret is never journaled nor queued: fetch it where it is used".into()),
         other => return Err(format!("{} is not data", other.type_name())),
     })
 }

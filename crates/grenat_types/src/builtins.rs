@@ -151,6 +151,8 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Dir", "list") => (Ty::array(Str), Some("fs.read")),
         ("Math", "pi" | "sqrt" | "log" | "sin" | "cos" | "exp") => (Float, None),
         ("Env", "get") => (Ty::opt(Str), Some("env")),
+        ("Credentials", "fetch") => (Ty::Secret, Some("env")),
+        ("Credentials", "dig") => (Ty::opt(Ty::Secret), Some("env")),
         ("Env", "fetch") => (Str, Some("env")),
         ("Json", "dump" | "generate") => (Str, None),
         ("Json", "parse") => (Unknown, None),
@@ -180,7 +182,7 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
     })
 }
 
-pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Conversation", "Jobs", "Approvals"];
+pub const MODULES: &[&str] = &["File", "Dir", "Math", "Env", "Credentials", "Json", "Runtime", "Cli", "Time", "Http", "Db", "Shell", "Mcp", "Pdf", "Image", "Mail", "Html", "Conversation", "Jobs", "Approvals"];
 
 /// What `Conversation.new` returns.
 pub const CONVERSATION: &str = "Conversation";
@@ -263,7 +265,7 @@ pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
 }
 
 pub const TYPE_NAMES: &[&str] =
-    &["Int", "Float", "String", "Bool", "Array", "Hash", "Symbol", "Nil", "Range", "Money", "Duration"];
+    &["Int", "Float", "String", "Bool", "Array", "Hash", "Symbol", "Nil", "Range", "Money", "Duration", "Secret"];
 
 pub const GLOBALS: &[&str] = &[
     "puts",
@@ -289,6 +291,7 @@ pub const GLOBALS: &[&str] = &[
     "mock_shell",
     "mcp",
     "mock_mcp",
+    "mock_credentials",
     "database",
     "enqueue",
     "expose",

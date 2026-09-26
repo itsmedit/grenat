@@ -41,7 +41,7 @@ pub(crate) fn call_shell<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p>
         match (option.as_str(), value) {
             ("cwd", Value::Str(dir)) => request.cwd = Some(dir.to_string()),
             ("env", Value::Hash(entries)) => {
-                request.env = entries.borrow().iter().map(|(k, v)| (k.to_display(), v.to_display())).collect();
+                request.env = entries.borrow().iter().map(|(k, v)| (k.to_display(), v.reveal())).collect();
             }
             ("network", Value::Bool(allowed)) => request.network = *allowed,
             ("timeout", Value::Int(n)) if *n > 0 => request.timeout = Duration::from_secs(*n as u64),

@@ -84,6 +84,11 @@ pub(crate) struct Shared<'p> {
     pub record: bool,
     /// Where `cassettes/` and `fixtures/` are.
     pub dir: std::path::PathBuf,
+    /// See [`Options::credentials_root`]; the credentials once read, and
+    /// those a test gives (`mock_credentials`).
+    pub credentials_root: Option<std::path::PathBuf>,
+    pub credentials_cache: Mutex<Option<Result<serde_json::Value, String>>>,
+    pub credentials_double: Mutex<Option<serde_json::Value>>,
     /// Global spending counter (first budget of every task).
     pub total: Arc<Budget>,
     /// Started supervisor children: (supervisor, agent) → instance.
@@ -184,6 +189,9 @@ impl<'p> Interp<'p> {
             offline: options.offline,
             record: options.record,
             dir: options.dir.clone().unwrap_or_default(),
+            credentials_root: options.credentials_root.clone(),
+            credentials_cache: Mutex::new(None),
+            credentials_double: Mutex::new(None),
             total: total.clone(),
             children: Mutex::new(HashMap::new()),
             approver: Mutex::new(None),

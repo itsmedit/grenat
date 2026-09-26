@@ -20,6 +20,7 @@ impl<'p> Checker<'p> {
                     "Int" => Ty::Int,
                     "Float" => Ty::Float,
                     "String" | "Path" | "Email" | "Url" => Ty::Str,
+                    "Secret" => Ty::Secret,
                     "Symbol" => Ty::Sym,
                     "Bool" => Ty::Bool,
                     "Unit" | "Nil" => Ty::Nil,
@@ -90,6 +91,7 @@ impl<'p> Checker<'p> {
                 Ok(())
             }
             Ty::Type(_) | Ty::Budget => Err(format!("{ty} cannot come out of an LLM")),
+            Ty::Secret => Err("a secret never goes to nor comes from a model".into()),
             _ => Ok(()),
         }
     }
@@ -105,6 +107,7 @@ impl<'p> Checker<'p> {
                     "Int" => Ty::Int,
                     "Float" => Ty::Float,
                     "String" | "Path" | "Email" | "Url" => Ty::Str,
+                    "Secret" => Ty::Secret,
                     "Bool" => Ty::Bool,
                     "Array" => Ty::array(arg(0)),
                     "Hash" => Ty::Hash(Box::new(arg(0)), Box::new(arg(1))),

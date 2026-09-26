@@ -92,7 +92,9 @@ impl<'p> Interp<'p> {
         let state = shared.borrow().clone();
         match name {
             "say" => {
-                let message = arg(args, 0, name)?.to_display();
+                let message = arg(args, 0, name)?;
+                crate::eval::secrets::not_for_models(std::slice::from_ref(&message))?;
+                let message = message.to_display();
                 let (reply, state) = self.say(state, message)?;
                 *shared.borrow_mut() = state;
                 Ok(Value::str(reply).taint())

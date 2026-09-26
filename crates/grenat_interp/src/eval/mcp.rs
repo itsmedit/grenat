@@ -74,7 +74,7 @@ impl<'p> Interp<'p> {
         };
         let strings = |v: &Value<'p>| -> Vec<(String, String)> {
             match v.untainted() {
-                Value::Hash(h) => h.borrow().iter().map(|(k, v)| (k.to_display(), v.to_display())).collect(),
+                Value::Hash(h) => h.borrow().iter().map(|(k, v)| (k.to_display(), v.reveal())).collect(),
                 _ => Vec::new(),
             }
         };
@@ -84,8 +84,8 @@ impl<'p> Interp<'p> {
                 return raise("TaintError", format!("an untrusted value configures the MCP server `{name}`"));
             }
             match (option.as_str(), value) {
-                ("url", Value::Str(u)) => url = Some(u.to_string()),
-                ("command", Value::Array(items)) => argv = Some(items.borrow().iter().map(Value::to_display).collect()),
+                ("url", Value::Str(u) | Value::Secret(u)) => url = Some(u.to_string()),
+                ("command", Value::Array(items)) => argv = Some(items.borrow().iter().map(Value::reveal).collect()),
                 ("headers", v @ Value::Hash(_)) => headers = strings(v),
                 ("env", v @ Value::Hash(_)) => env = strings(v),
                 ("approve", Value::Bool(b)) => approve = *b,

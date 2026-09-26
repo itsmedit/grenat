@@ -62,6 +62,10 @@ pub enum Value<'p> {
     Pool(Arc<Vec<Arc<AgentRef<'p>>>>),
     /// Produced by an LLM, not validated: `~T`.
     Tainted(Arc<Value<'p>>),
+    /// A secret (`Credentials.fetch`): shown as `[secret]`, never sent to a
+    /// model nor stored; revealed only where it serves (a header, a URL, a
+    /// connection).
+    Secret(Arc<str>),
 }
 
 pub struct Record<'p> {
@@ -140,6 +144,27 @@ impl<'p> Value<'p> {
             Value::Record(r) => r.fields.iter().any(|(_, v)| v.contains_taint()),
             Value::Variant(v) => v.fields.iter().any(|(_, v)| v.contains_taint()),
             _ => false,
+        }
+    }
+
+    /// A secret anywhere inside the value.
+    pub fn contains_secret(&self) -> bool {
+        match self {
+            Value::Secret(_) => true,
+            Value::Tainted(inner) => inner.contains_secret(),
+            Value::Array(items) => items.borrow().iter().any(Value::contains_secret),
+            Value::Hash(entries) => entries.borrow().iter().any(|(k, v)| k.contains_secret() || v.contains_secret()),
+            Value::Record(r) => r.fields.iter().any(|(_, v)| v.contains_secret()),
+            Value::Variant(v) => v.fields.iter().any(|(_, v)| v.contains_secret()),
+            _ => false,
+        }
+    }
+
+    /// The text where it serves: a secret's own, anything else as displayed.
+    pub fn reveal(&self) -> String {
+        match self.untainted() {
+            Value::Secret(text) => text.to_string(),
+            other => other.to_display(),
         }
     }
 

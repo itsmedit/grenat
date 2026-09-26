@@ -25,7 +25,7 @@ use super::*;
 pub(crate) const DATABASE: &str = "Database";
 
 pub(crate) fn connect<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
-    let url = str_arg(args, 0, "connect")?.to_string();
+    let url = text_arg(args, 0, "connect")?;
     let connection = grenat_green::blocking(|| grenat_db::connect(&url)).or_else(db_error)?;
     Ok(interp.register_database(connection))
 }
@@ -134,6 +134,7 @@ fn params<'p>(args: &Args<'p>, write: bool) -> Result<Vec<Cell>, Ctrl<'p>> {
 
 pub(crate) fn cell<'p>(value: &Value<'p>) -> Result<Cell, Ctrl<'p>> {
     Ok(match value.untainted() {
+        Value::Secret(_) => return raise("SecretError", "a secret is never written to a database: it stays in the credentials"),
         Value::Nil => Cell::Null,
         Value::Bool(b) => Cell::Bool(*b),
         Value::Int(n) => Cell::Int(*n),

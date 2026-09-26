@@ -92,6 +92,7 @@ impl<'p> Checker<'p> {
             return self.run(cx, span, agent, handler, argv);
         }
         if matches!(n, "system" | "user" | "assistant") && matches!(cx.kind, Kind::Fn(f) if f.kind == FnKind::Prompt) {
+            self.secrets_to_model(&argv, n);
             return V::new(Ty::Nil);
         }
         if let Some(self_ty) = cx.self_ty.clone()
@@ -149,7 +150,9 @@ impl<'p> Checker<'p> {
                     taints[i] = arg.v.taint;
                     if let Some(t) = slot.ty {
                         let expected = self.peek_ty(t);
-                        if !self.compat(&arg.v.ty, &expected) {
+                        if secrets::is_secret(&arg.v.ty) && matches!(expected.base(), Ty::Str) {
+                            self.secret_as_string(arg.span, owner, slot.name);
+                        } else if !self.compat(&arg.v.ty, &expected) {
                             self.error(
                                 E_TYPE,
                                 arg.span,
@@ -300,7 +303,7 @@ impl<'p> Checker<'p> {
             }
             "deny_all" | "approve_all" => V::new(Ty::Sym),
             // test doubles and evals
-            "mock" | "mock_http" | "mock_shell" | "mcp" | "mock_mcp" => V::new(Ty::Nil),
+            "mock" | "mock_http" | "mock_shell" | "mcp" | "mock_mcp" | "mock_credentials" => V::new(Ty::Nil),
             "database" | "expose" => V::new(Ty::Nil),
             // a job: its arguments are written to the database
             "enqueue" => {
@@ -350,6 +353,7 @@ impl<'p> Checker<'p> {
                 V::new(Ty::Nil)
             }
             "judge" => {
+                self.secrets_to_model(argv, "judge");
                 cx.add_effect(Eff { path: "llm".into(), arg: None, origin: span });
                 V::new(Ty::Float)
             }

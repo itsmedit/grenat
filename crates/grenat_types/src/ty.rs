@@ -27,6 +27,8 @@ pub enum Ty {
     User(String),
     /// A type used as a value: `Researcher`, `File`.
     Type(String),
+    /// A credential (`Credentials.fetch`): not a `String`, never for a model.
+    Secret,
 }
 
 impl Ty {
@@ -82,6 +84,7 @@ impl fmt::Display for Ty {
             Ty::Result(t, e) => write!(f, "Result({t}, {e})"),
             Ty::User(n) => f.write_str(n),
             Ty::Type(n) => write!(f, "type {n}"),
+            Ty::Secret => f.write_str("Secret"),
         }
     }
 }

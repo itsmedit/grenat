@@ -20,7 +20,7 @@ pub(crate) const MAILER: &str = "Mailer";
 pub(crate) fn call_mail<'p>(interp: &mut Interp<'p>, name: &str, args: &Args<'p>) -> R<'p> {
     match name {
         "connect" => {
-            let url = str_arg(args, 0, name)?.to_string();
+            let url = text_arg(args, 0, name)?;
             let Some(host) = url.split("://").nth(1).and_then(|rest| rest.rsplit('@').next()).and_then(|a| a.split([':', '/']).next())
             else {
                 return raise("ArgumentError", format!("`Mail.connect` expects smtp://… or smtps://…, got {url:?}"));

@@ -4,6 +4,9 @@ use std::fmt::{self, Write};
 
 use super::*;
 
+/// How a secret shows, anywhere it would be read.
+pub const SECRET_SHOWN: &str = "[secret]";
+
 pub fn money(usd: f64) -> String {
     if usd < 0.01 && usd > 0.0 { format!("${usd:.4}") } else { format!("${usd:.2}") }
 }
@@ -48,6 +51,7 @@ impl<'p> Value<'p> {
             Value::Agent(a) => a.ty.to_string(),
             Value::Pool(p) => p.first().map_or("Pool".into(), |a| a.ty.to_string()),
             Value::Tainted(inner) => format!("~{}", inner.type_name()),
+            Value::Secret(_) => "Secret".into(),
         }
     }
 
@@ -57,6 +61,7 @@ impl<'p> Value<'p> {
             Value::Nil => String::new(),
             Value::Str(s) | Value::Symbol(s) => s.to_string(),
             Value::Tainted(inner) => inner.to_display(),
+            Value::Secret(_) => SECRET_SHOWN.into(),
             Value::Error(e) => e.message.clone(),
             _ => self.inspect(),
         }
@@ -83,6 +88,7 @@ impl<'p> Value<'p> {
         };
         match self {
             Value::Nil => out.push_str("nil"),
+            Value::Secret(_) => out.push_str(SECRET_SHOWN),
             Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
             Value::Int(n) => out.push_str(&n.to_string()),
             Value::Float(f) => out.push_str(&float(*f)),

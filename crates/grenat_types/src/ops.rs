@@ -47,6 +47,7 @@ impl<'p> Checker<'p> {
             }
             _ if lt.is_unknown() || rt.is_unknown() => Unknown,
             BinOp::Add if lt == Str && rt == Str => Str,
+            BinOp::Add if matches!((&lt, &rt), (Str | Secret, Secret) | (Secret, Str)) => Secret,
             BinOp::Add if lt == Str => {
                 self.report(
                     Diagnostic::new(span, format!("cannot add `{rt}` to a string"))

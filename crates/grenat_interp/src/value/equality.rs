@@ -14,6 +14,10 @@ pub fn equal<'p>(a: &Value<'p>, b: &Value<'p>) -> bool {
         (Float(x), Float(y)) | (Money(x), Money(y)) | (Duration(x), Duration(y)) => x == y,
         (Int(x), Float(y)) | (Float(y), Int(x)) => (*x as f64) == *y,
         (Str(x), Str(y)) | (Symbol(x), Symbol(y)) | (Type(x), Type(y)) => x == y,
+        // a token checked against a secret: the time does not tell how much matched
+        (Secret(x), Secret(y) | Str(y)) | (Str(y), Secret(x)) => {
+            x.len() == y.len() && x.bytes().zip(y.bytes()).fold(0, |acc, (a, b)| acc | (a ^ b)) == 0
+        }
         (Array(x), Array(y)) if Arc::ptr_eq(x, y) => true,
         (Hash(x), Hash(y)) if Arc::ptr_eq(x, y) => true,
         (Array(x), Array(y)) => {

@@ -104,26 +104,37 @@ impl<'p> Interp<'p> {
     }
 }
 
-/// JSON representation of a value (tool results, `Json.dump`).
+/// JSON representation of a value (tool results, `Json.dump`): secrets
+/// show as `[secret]`.
 pub(crate) fn value_to_json(value: &Value) -> Json {
+    to_json(value, false)
+}
+
+/// As [`value_to_json`], secrets revealed: a request body sent where they
+/// serve (`Http.post(url, json: {…})`).
+pub(crate) fn revealed_json(value: &Value) -> Json {
+    to_json(value, true)
+}
+
+fn to_json(value: &Value, reveal: bool) -> Json {
+    let json = |v: &Value| to_json(v, reveal);
     match value.untainted() {
         Value::Nil => Json::Null,
+        Value::Secret(text) if reveal => json!(&**text),
         Value::Bool(b) => json!(b),
         Value::Int(n) => json!(n),
         Value::Float(f) | Value::Money(f) | Value::Duration(f) => json!(f),
         Value::Str(s) | Value::Symbol(s) | Value::Type(s) => json!(&**s),
-        Value::Array(items) => Json::Array(items.borrow().iter().map(value_to_json).collect()),
-        Value::Hash(entries) => {
-            Json::Object(entries.borrow().iter().map(|(k, v)| (k.to_display(), value_to_json(v))).collect())
-        }
+        Value::Array(items) => Json::Array(items.borrow().iter().map(json).collect()),
+        Value::Hash(entries) => Json::Object(entries.borrow().iter().map(|(k, v)| (k.to_display(), json(v))).collect()),
         Value::Range(lo, hi, inclusive) => {
             let hi = if *inclusive { *hi } else { hi - 1 };
             Json::Array((*lo..=hi).map(|n| json!(n)).collect())
         }
-        Value::Record(r) => fields_json(&r.fields),
+        Value::Record(r) => fields_to_json(&r.fields, reveal),
         Value::Variant(v) if v.fields.is_empty() => json!(&*v.name),
         Value::Variant(v) => {
-            let mut object = fields_json(&v.fields);
+            let mut object = fields_to_json(&v.fields, reveal);
             object["kind"] = json!(&*v.name);
             object
         }
@@ -132,6 +143,6 @@ pub(crate) fn value_to_json(value: &Value) -> Json {
     }
 }
 
-pub(crate) fn fields_json(fields: &Fields) -> Json {
-    Json::Object(fields.iter().map(|(k, v)| (k.to_string(), value_to_json(v))).collect())
+fn fields_to_json(fields: &Fields, reveal: bool) -> Json {
+    Json::Object(fields.iter().map(|(k, v)| (k.to_string(), to_json(v, reveal))).collect())
 }

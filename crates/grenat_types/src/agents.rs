@@ -44,6 +44,7 @@ impl<'p> Checker<'p> {
         if argv.is_empty() {
             self.error(E_TYPE, span, "`run` expects an instruction: `run \"…\"`");
         }
+        self.secrets_to_model(&argv, "run");
         cx.run_span = Some(span);
         match &handler.ret {
             Some(ret) if !is_tainted_decl(ret) => self.report(

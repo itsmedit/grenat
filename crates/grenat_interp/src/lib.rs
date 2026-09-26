@@ -95,6 +95,9 @@ pub struct Options {
     /// The program's directory: `cassettes/` and `fixtures/` are found there
     /// (default: the current directory).
     pub dir: Option<std::path::PathBuf>,
+    /// The application whose credentials `Credentials.fetch` reads (its
+    /// `config/`), if the program is in one.
+    pub credentials_root: Option<std::path::PathBuf>,
     /// Records every cassette again, with real calls (`GRENAT_RECORD=1`).
     pub record: bool,
     /// No real model: a call neither mocked nor in a cassette is an error
@@ -113,6 +116,7 @@ impl Default for Options {
             linked: None,
             journal: None,
             dir: None,
+            credentials_root: None,
             record: false,
             offline: false,
         }
@@ -176,6 +180,7 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
             interp.shell_stubs.borrow_mut().clear();
             interp.mcp_stubs.borrow_mut().clear();
             interp.deliveries.borrow_mut().clear();
+            interp.credentials_double.borrow_mut().take();
             outcomes.push(TestOutcome { name, error });
         }
         Ok(outcomes)

@@ -77,6 +77,10 @@ impl<'p> Checker<'p> {
                     if let StrSeg::Interp(e) = seg {
                         let part = self.expr(cx, e);
                         v.taint = v.taint.or(part.taint);
+                        // `"Bearer #{token}"` is a secret too
+                        if secrets::is_secret(&part.ty) {
+                            v.ty = Ty::Secret;
+                        }
                     }
                 }
                 v
