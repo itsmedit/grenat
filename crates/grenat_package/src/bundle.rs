@@ -42,6 +42,16 @@ pub fn load_with(entry: &Path, update: bool, overlay: &HashMap<PathBuf, String>)
     };
     loader.visit(entry, entry.to_string_lossy().into_owned())?;
     loader.resolver.save_lock().map_err(LoadError::Message)?;
+    // the application's models (`config/models.yml`), declared first
+    let root = package.as_ref().map(|p| p.root.clone()).or_else(|| entry.parent().map(Path::to_path_buf));
+    if let Some(root) = root {
+        let file = root.join(grenat_config::models::FILE);
+        if let Ok(yaml) = std::fs::read_to_string(&file) {
+            let shown = file.to_string_lossy().into_owned();
+            let declarations = grenat_config::models::declarations(&yaml).map_err(|e| LoadError::Message(format!("{shown}: {e}")))?;
+            loader.files.insert(0, (shown, declarations));
+        }
+    }
     let sources = Sources::join(loader.files.iter().map(|(path, text)| (path.as_str(), text.as_str())));
     Ok(Bundle { sources, package })
 }

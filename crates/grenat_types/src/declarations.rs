@@ -31,19 +31,19 @@ impl<'p> Checker<'p> {
     }
 
     pub(crate) fn check_model(&mut self, model: &'p grenat_ast::ModelDecl) {
+
+        const MODEL_OPTIONS: [&str; 8] = ["provider", "name", "temperature", "max_tokens", "effort", "fallbacks", "base_url", "price"];
         for option in &model.options {
             let Arg::Named { name, value: Some(value) } = option else { continue };
             match (name.name.as_str(), &value.kind) {
-                ("provider", ExprKind::Symbol(p)) if p != "anthropic" => {
-                    self.error(E_DECL, value.span, format!("unsupported provider `:{p}` (available: `:anthropic`)"))
-                }
-                ("provider" | "name" | "temperature" | "max_tokens" | "effort" | "fallbacks", _) => {}
-                (other, _) => self.error_help(
+                ("provider", ExprKind::Symbol(p)) if grenat_llm::catalog::provider(p).is_none() => self.error_help(
                     E_DECL,
-                    name.span,
-                    format!("unknown model option `{other}:`"),
-                    suggest(other, ["provider", "name", "temperature", "max_tokens", "effort", "fallbacks"]),
+                    value.span,
+                    format!("unknown provider `:{p}` (known: {})", grenat_llm::catalog::names()),
+                    suggest(p, grenat_llm::catalog::PROVIDERS.iter().map(|c| c.name)),
                 ),
+                (option, _) if MODEL_OPTIONS.contains(&option) => {}
+                (other, _) => self.error_help(E_DECL, name.span, format!("unknown model option `{other}:`"), suggest(other, MODEL_OPTIONS)),
             }
         }
     }

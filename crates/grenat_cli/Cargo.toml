@@ -29,4 +29,5 @@ grenat_config.workspace = true
 grenat_mcp.workspace = true
 grenat_db.workspace = true
 grenat_ops.workspace = true
+grenat_config.workspace = true
 serde_json.workspace = true

@@ -46,6 +46,8 @@ impl<'p> Interp<'p> {
                 ("max_tokens", Value::Int(n)) if n > 0 => config.max_tokens = n as u32,
                 ("effort", Value::Symbol(s) | Value::Str(s)) => config.effort = Some(s.to_string()),
                 ("fallbacks", Value::Bool(b)) => fallbacks = Some(b),
+                ("base_url", Value::Str(url) | Value::Secret(url)) => config.base_url = Some(url.to_string()),
+                ("price", Value::Hash(pairs)) => config.price = Some(price(&pairs.borrow(), &decl.name.name)?),
                 (option, value) => {
                     return raise(
                         "ArgumentError",
@@ -56,6 +58,17 @@ impl<'p> Interp<'p> {
         }
         if config.name.is_empty() {
             return raise("ArgumentError", format!("model `:{}` has no `name:`", decl.name.name));
+        }
+        if grenat_llm::catalog::provider(&config.provider).is_none() {
+            return raise(
+                "ArgumentError",
+                format!(
+                    "model `:{}`: unknown provider `{}` (known: {})",
+                    decl.name.name,
+                    config.provider,
+                    grenat_llm::catalog::names()
+                ),
+            );
         }
         config.fallbacks = fallbacks.unwrap_or_else(|| ModelConfig::new("", config.name.as_str()).fallbacks);
         Ok(config)
@@ -157,5 +170,20 @@ impl<'p> TypeInfo<'p> {
 
     pub fn is(&self, kind: TypeKind) -> bool {
         self.def.kind == kind
+    }
+}
+
+/// `price: {input: 1.25, output: 10}`: dollars per million tokens.
+fn price<'p>(pairs: &[(Value<'p>, Value<'p>)], model: &str) -> Result<(f64, f64), Ctrl<'p>> {
+    let get = |name: &str| {
+        pairs.iter().find(|(k, _)| k.to_display() == name).and_then(|(_, v)| match v {
+            Value::Int(n) => Some(*n as f64),
+            Value::Float(f) => Some(*f),
+            _ => None,
+        })
+    };
+    match (get("input"), get("output")) {
+        (Some(input), Some(output)) if input >= 0.0 && output >= 0.0 => Ok((input, output)),
+        _ => raise("ArgumentError", format!("model `:{model}`: `price:` is `{{input: …, output: …}}`, dollars per million tokens")),
     }
 }

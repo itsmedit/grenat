@@ -50,6 +50,10 @@ pub(crate) struct Shared<'p> {
     pub messages: HashSet<&'p str>,
     pub models: Mutex<Vec<(String, ModelConfig)>>,
     pub provider: Mutex<Option<Arc<dyn Provider>>>,
+    /// The providers' clients, by provider and address.
+    pub clients: Mutex<HashMap<String, Arc<dyn Provider>>>,
+    /// Models whose unknown price was reported.
+    pub unpriced: Mutex<HashSet<String>>,
     /// Mocked models (`mock`): the model mocked (`None`: any), its replies.
     pub mocks: Mutex<Vec<(Option<ModelConfig>, Arc<grenat_llm::Mock>)>>,
     /// Stubbed programs (`mock_shell`).
@@ -171,6 +175,8 @@ impl<'p> Interp<'p> {
             messages: HashSet::new(),
             models: Mutex::new(Vec::new()),
             provider: Mutex::new(options.provider),
+            clients: Mutex::new(HashMap::new()),
+            unpriced: Mutex::new(HashSet::new()),
             mocks: Mutex::new(Vec::new()),
             http_stubs: Mutex::new(Vec::new()),
             databases: Mutex::new(Vec::new()),

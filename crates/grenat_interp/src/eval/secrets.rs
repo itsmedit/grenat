@@ -35,7 +35,7 @@ impl<'p> Interp<'p> {
         if path.is_empty() {
             return raise("ArgumentError", "`Credentials.fetch` takes keys: `Credentials.fetch(:github, :token)`");
         }
-        let credentials = self.credentials()?;
+        let credentials = self.credentials_tree()?;
         let mut node = &credentials;
         for key in &path {
             node = match node.get(key) {
@@ -58,7 +58,7 @@ impl<'p> Interp<'p> {
 
     /// The credentials, read once: those of the tests' double, else the
     /// environment's file.
-    fn credentials(&mut self) -> Result<Json, Ctrl<'p>> {
+    pub(crate) fn credentials_tree(&mut self) -> Result<Json, Ctrl<'p>> {
         if let Some(double) = self.credentials_double.borrow().clone() {
             return Ok(double);
         }

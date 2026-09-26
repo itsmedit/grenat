@@ -5,10 +5,15 @@ use yaml_rust2::{Yaml, YamlLoader};
 
 /// The document of `text`: an empty one is an empty mapping.
 pub fn parse(text: &str) -> Result<Json, String> {
-    let docs = YamlLoader::load_from_str(text).map_err(|e| format!("invalid YAML: {e}"))?;
-    match docs.as_slice() {
-        [] => Ok(Json::Object(Map::new())),
-        [doc] => json(doc),
+    json(&document(text)?)
+}
+
+/// The document of `text`, as YAML (mappings keep their order).
+pub(crate) fn document(text: &str) -> Result<Yaml, String> {
+    let mut docs = YamlLoader::load_from_str(text).map_err(|e| format!("invalid YAML: {e}"))?;
+    match docs.len() {
+        0 => Ok(Yaml::Hash(Default::default())),
+        1 => Ok(docs.remove(0)),
         _ => Err("a configuration file holds one YAML document".into()),
     }
 }

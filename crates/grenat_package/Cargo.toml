@@ -8,6 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+grenat_config.workspace = true
 grenat_ast.workspace = true
 grenat_parser.workspace = true
 grenat_report.workspace = true

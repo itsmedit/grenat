@@ -67,3 +67,13 @@ fn supervisor_children_must_be_agents() {
     single(&format!("{DESK}supervisor Desk\n  child Wroker\nend\n"), "E0100", "Wroker");
     single(&format!("{DESK}supervisor Desk\n  child Worker\nend\nDesk[Other]\n"), "E0100", "Other");
 }
+
+#[test]
+fn models_are_declared_once_from_a_known_provider() {
+    let src = "model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"\nmodel :fast, provider: :openai, name: \"gpt-5\"\n";
+    let d = single(src, "E0100", ":fast");
+    assert!(d.message.contains("declared twice"), "{}", d.message);
+    let d = single("model :x, provider: :opanai, name: \"gpt-5\"\n", "E0500", ":opanai");
+    assert_eq!(d.help.as_deref(), Some("did you mean `openai`?"));
+    clean("model :x, provider: :ollama, name: \"llama3.3\", base_url: \"http://gpu:11434/v1\", price: {input: 0, output: 0}\n");
+}

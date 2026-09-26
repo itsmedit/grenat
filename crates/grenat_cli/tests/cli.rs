@@ -123,7 +123,9 @@ fn run_propagates_the_exit_code() {
 fn run_without_api_key_explains_what_to_do() {
     let out = grenat(&["run", "examples/explorer.grn", "crates"]);
     assert_eq!(code(&out), 1);
-    assert!(text(&out.stderr).contains("LlmError: ANTHROPIC_API_KEY is not set"));
+    let stderr = text(&out.stderr);
+    assert!(stderr.contains("LlmError: no key for `anthropic`"), "{stderr}");
+    assert!(stderr.contains("grenat credentials edit") && stderr.contains("ANTHROPIC_API_KEY"), "{stderr}");
 }
 
 #[test]
@@ -761,4 +763,107 @@ fn credentials_are_edited_encrypted_and_shown() {
     assert_eq!(text(&shown.stdout), "github:\n  token: ghp_prod\n");
     let ignored = std::fs::read_to_string(app.join(".gitignore")).unwrap();
     assert!(ignored.contains("config/credentials/*.key"));
+}
+
+/// A local server playing a Chat Completions provider: answers `reply`,
+/// returns what it received (headers, body).
+fn chat_server(reply: &'static str) -> (String, std::sync::mpsc::Receiver<(String, serde_json::Value)>) {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/v1", listener.local_addr().unwrap());
+    let (sender, received) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let (mut length, mut auth, mut line) = (0, String::new(), String::new());
+            reader.read_line(&mut line).unwrap();
+            loop {
+                let mut header = String::new();
+                reader.read_line(&mut header).unwrap();
+                let header = header.trim_end().to_string();
+                if header.is_empty() {
+                    break;
+                }
+                let (name, value) = header.split_once(':').unwrap();
+                match name.to_ascii_lowercase().as_str() {
+                    "content-length" => length = value.trim().parse().unwrap(),
+                    "authorization" => auth = value.trim().to_string(),
+                    _ => {}
+                }
+            }
+            let mut body = vec![0; length];
+            reader.read_exact(&mut body).unwrap();
+            sender.send((auth, serde_json::from_slice(&body).unwrap())).unwrap();
+            let answer = serde_json::json!({
+                "model": "gpt-5", "choices": [{"message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 1000, "completion_tokens": 100}
+            })
+            .to_string();
+            let mut stream = stream;
+            write!(stream, "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{answer}", answer.len()).unwrap();
+        }
+    });
+    (url, received)
+}
+
+#[test]
+fn a_provider_works_from_its_name_and_a_key_in_the_credentials() {
+    let base = project("providers");
+    assert_eq!(code(&grenat_in(&base, &["new", "--app", "desk"])), 0);
+    let app = base.join("desk");
+    let (url, received) = chat_server("Bonjour");
+    std::fs::write(
+        app.join("config/models.yml"),
+        format!("smart:\n  provider: openai\n  name: gpt-5\n  base_url: {url}\n  price: {{input: 1.25, output: 10}}\n"),
+    )
+    .unwrap();
+    let credentials = grenat_config::credentials::Location::of(&app, None);
+    credentials.write("openai:\n  api_key: sk-from-credentials\n").unwrap();
+    std::fs::write(
+        app.join("src/hello.grn"),
+        "require \"./config\"\nprompt greet(name: String) -> ~String using :smart\n  user \"Greet #{name}\"\nend\ndef main uses llm\n  puts greet(\"Ada\").trust!\nend\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_grenat"))
+        .args(["run", "src/hello.grn"])
+        .current_dir(&app)
+        .env_remove("OPENAI_API_KEY")
+        .env_remove("GRENAT_MASTER_KEY")
+        .output()
+        .unwrap();
+    assert_eq!(code(&out), 0, "{}", text(&out.stderr));
+    assert_eq!(text(&out.stdout), "Bonjour\n");
+    // the price given: 1000 × 1.25 + 100 × 10 per million
+    assert!(text(&out.stderr).contains("$0.0022"), "{}", text(&out.stderr));
+    let (auth, body) = received.recv().unwrap();
+    assert_eq!(auth, "Bearer sk-from-credentials");
+    assert_eq!(body["model"], "gpt-5");
+    assert_eq!(body["messages"][0]["content"], "Greet Ada");
+
+    // without a key anywhere: said plainly
+    credentials.write("# none\n").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_grenat"))
+        .args(["run", "src/hello.grn"])
+        .current_dir(&app)
+        .env_remove("OPENAI_API_KEY")
+        .output()
+        .unwrap();
+    assert_eq!(code(&out), 1);
+    assert!(text(&out.stderr).contains("no key for `openai`"), "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains("OPENAI_API_KEY"), "{}", text(&out.stderr));
+}
+
+#[test]
+fn a_mistake_in_config_models_yml_is_reported_where_it_is() {
+    let base = project("bad-models");
+    assert_eq!(code(&grenat_in(&base, &["new", "--app", "desk"])), 0);
+    let app = base.join("desk");
+    std::fs::write(app.join("config/models.yml"), "fast: [\n").unwrap();
+    let out = grenat_in(&app, &["check"]);
+    assert_eq!(code(&out), 1);
+    assert!(text(&out.stderr).contains("config/models.yml: invalid YAML"), "{}", text(&out.stderr));
+    std::fs::write(app.join("config/models.yml"), "fast:\n  provider: opanai\n  name: gpt-5\n").unwrap();
+    let out = grenat_in(&app, &["check"]);
+    assert!(text(&out.stderr).contains("unknown provider `:opanai`") && text(&out.stderr).contains("did you mean `openai`?"), "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains("config/models.yml"), "{}", text(&out.stderr));
 }

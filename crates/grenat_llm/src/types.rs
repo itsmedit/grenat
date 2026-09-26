@@ -13,6 +13,11 @@ pub struct ModelConfig {
     pub effort: Option<String>,
     /// Server-side fallback when the model refuses (`fallbacks: "default"`).
     pub fallbacks: bool,
+    /// Another address for the provider (a proxy, a machine running Ollama).
+    pub base_url: Option<String>,
+    /// Dollars per million tokens (input, output), when Grenat does not
+    /// know the model's price.
+    pub price: Option<(f64, f64)>,
 }
 
 impl ModelConfig {
@@ -20,7 +25,16 @@ impl ModelConfig {
         let name = name.into();
         // recommended for models whose classifiers may refuse a request
         let fallbacks = matches!(name.as_str(), "claude-opus-5" | "claude-fable-5-1");
-        ModelConfig { provider: provider.into(), name, max_tokens: 16_000, temperature: None, effort: None, fallbacks }
+        ModelConfig {
+            provider: provider.into(),
+            name,
+            max_tokens: 16_000,
+            temperature: None,
+            effort: None,
+            fallbacks,
+            base_url: None,
+            price: None,
+        }
     }
 }
 

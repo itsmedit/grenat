@@ -9,6 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 grenat_ast.workspace = true
+grenat_llm.workspace = true
 
 [dev-dependencies]
 grenat_parser.workspace = true

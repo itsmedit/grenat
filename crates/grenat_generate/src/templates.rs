@@ -14,10 +14,29 @@ pub(crate) fn fill(template: &str, names: &Names) -> String {
 pub(crate) const CONFIG: &str = "\
 # The database: SQLite by default, PostgreSQL with `DATABASE_URL=postgres://…`.
 # Tests get a new in-memory database each, with every migration applied.
+# The models are in config/models.yml.
 database Env.get(\"DATABASE_URL\") || \"sqlite://db/development.db\"
+";
 
-model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"
-model :smart, provider: :anthropic, name: \"claude-opus-5\"
+pub(crate) const MODELS: &str = "\
+# The application's models: `using :fast` in a prompt, `model :smart` in an
+# agent; the first one is the default. Each provider's key comes from the
+# credentials (`anthropic:` / `api_key: …`, with `grenat credentials edit`),
+# else from its environment variable (ANTHROPIC_API_KEY, OPENAI_API_KEY…).
+#
+# Providers: anthropic, openai, gemini, mistral, xai, openrouter, groq,
+# deepseek, together, ollama (local, no key).
+# Options: temperature, max_tokens, effort, base_url, and price (dollars per
+# million tokens: {input: 1.25, output: 10}) for a model Grenat has no price for.
+fast:
+  provider: anthropic
+  name: claude-haiku-4-5
+smart:
+  provider: anthropic
+  name: claude-opus-5
+# local:
+#   provider: ollama
+#   name: llama3.3
 ";
 
 /// `grenat generate` adds its `require`s after the last one.
@@ -52,7 +71,8 @@ grenat eval evals/…       # quality, with the real models
 
 Its parts, each with its tests (`grenat generate agent|workflow|record|tool|eval <name>`):
 
-- `src/config.grn` — the database and the models;
+- `config/models.yml` — the models, from any provider (no code: the provider's name is enough);
+- `src/config.grn` — the database;
 - `config/credentials.yml.enc` — the secrets, encrypted (`grenat credentials edit`); its key,
   `config/master.key`, stays out of the repository (in production: `GRENAT_MASTER_KEY`);
 - `src/app.grn` — requires the parts, then declares what is served;

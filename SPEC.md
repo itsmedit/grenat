@@ -482,6 +482,7 @@ Installed layout:
 | **7** ✅ | What real agents need, measured by ten use cases (`examples/usecases`): an I/O library with effects (`Http` client and server, `Db`, email), MCP client, multimodal prompts and the Batch API, conversations and long-term memory, a sandbox for `shell` and per-tool timeouts, triggers (`every`, webhooks) | agents in production |
 | **8** ✅ | Agent applications, in the language and its toolchain (no framework on top): an HTTP server with routes, records and migrations on `Db`, jobs and triggers, a persisted approval queue (a workflow waits days for a human), agents served over HTTP and as MCP servers; `grenat new --app`, `grenat generate agent\|workflow\|record\|tool\|eval`, `grenat serve` | applications of agents |
 | **9** ✅ | `grenat console`: the operations console of an application, derived from the program and its runtime — approvals inbox, runs and their journals (replay, resume), costs per agent, evals over time, taint and capability refusals, MCP servers. It observes and operates; code stays the source of truth | agents operated from a browser |
+| **10** ✅ | Configuration without surprise: encrypted credentials per environment (`grenat credentials edit`), `Secret` values that never reach a model, and `config/models.yml` — the models of ten providers (Anthropic, OpenAI, Gemini, Mistral, xAI, OpenRouter, Groq, DeepSeek, Together, Ollama), each reached by the right connector with its key found in the credentials or the environment | an application configured, not coded |
 
 ### Phases 8 and 9: applications, in Grenat itself
 
@@ -610,6 +611,28 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Who may call.** An exposure spends money: it requires `Authorization: Bearer <token>` (compared in constant time; 401 otherwise), unless it says `public: true` — one of the two must be written.
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
+
+### Phase 10 status: models from any provider (`config/models.yml`)
+
+```yaml
+fast:                        # the first model is the default one
+  provider: anthropic
+  name: claude-haiku-4-5
+smart:
+  provider: openai
+  name: gpt-5
+local:
+  provider: ollama           # local: no key
+  name: llama3.3
+```
+
+An application's models are configured, not coded: `config/models.yml` stands for `model :fast, provider: :anthropic, name: "…"` declarations — checked the same way, a mistake reported in that file — and code uses them by name (`using :fast`, `model :smart`). Declaring a model in code still works; declaring one twice is an error.
+
+A provider's name is enough. Grenat knows how to reach each one — Anthropic through its Messages API; OpenAI, Gemini (Google's compatible endpoint), Mistral, xAI, OpenRouter, Groq, DeepSeek, Together and Ollama through Chat Completions — and where its key is: `<provider>.api_key` in the credentials, else its variable (`OPENAI_API_KEY`, `GEMINI_API_KEY`…); a missing key is said plainly. Options: `temperature`, `max_tokens`, `effort` (reasoning effort), `base_url` (a proxy, another machine), `price`.
+
+- **Structured answers.** Where the provider follows a JSON Schema exactly (Anthropic, OpenAI, Gemini, Mistral, xAI, OpenRouter), answers and tool calls are strict; elsewhere (Groq, DeepSeek, Together, Ollama) the model answers in JSON mode with the schema in its instructions, and Grenat validates what comes back, as always.
+- **Documents.** PDFs go to the providers that read them (Anthropic, OpenAI); others refuse them clearly. Images go everywhere.
+- **Cost.** Grenat knows Anthropic's prices; for another model, `price: {input: 1.25, output: 10}` (dollars per million tokens) lets budgets and the console count it — without it, Grenat says once that budgets in dollars do not. `batch_map` is half price where the provider's batch API is used (Anthropic); elsewhere its calls run one by one, at full price.
 
 ### Phase 10 status: credentials and secrets
 

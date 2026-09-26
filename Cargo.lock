@@ -936,6 +936,7 @@ name = "grenat_package"
 version = "0.1.0"
 dependencies = [
  "grenat_ast",
+ "grenat_config",
  "grenat_parser",
  "grenat_report",
  "toml",
@@ -990,6 +991,7 @@ name = "grenat_types"
 version = "0.1.0"
 dependencies = [
  "grenat_ast",
+ "grenat_llm",
  "grenat_parser",
 ]
 

@@ -27,6 +27,11 @@ end
 
 ## Status
 
+**Phase 10 — configured, not coded**: secrets encrypted per environment as with Rails
+(`grenat credentials edit`), as `Secret` values the language keeps away from models and logs;
+models of ten providers in `config/models.yml`, each reached by the right connector with its key
+found in the credentials — the provider's name is enough.
+
 **Phase 9 — agents operated from a browser**: `grenat console`, open source like the rest —
 approvals waiting for a human, jobs and their workflow journals (retry), what the models cost
 by agent, workflow and day, eval scores over time, failures and refusals, MCP servers. The
@@ -74,7 +79,7 @@ target/debug/grenat build examples/objects.grn && ./objects   # a standalone exe
 target/debug/grenat build --native examples/objects.grn        # without the interpreter: ~0.5 MB
 target/debug/grenat build --native --release examples/fib.grn  # optimized by LLVM (needs clang)
 
-export ANTHROPIC_API_KEY=sk-ant-…
+export ANTHROPIC_API_KEY=sk-ant-…            # or, in an application: grenat credentials edit
 target/debug/grenat run --log examples/explorer.grn crates/grenat_parser        # a real agent
 target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl        # multi-agent + approval
 
@@ -113,7 +118,7 @@ end })
 | `grenat_lexer` | tokens, interpolation, heredocs, `##` doc comments |
 | `grenat_ast` | syntax tree |
 | `grenat_parser` | recursive descent + Pratt, diagnostics with error recovery |
-| `grenat_llm` | Claude API client (structured output, tools, fallbacks); mocks, cassettes and a scripted provider for tests |
+| `grenat_llm` | model providers: the catalog, Anthropic's Messages API and Chat Completions (OpenAI, Gemini, Mistral, Ollama…); mocks, cassettes and a scripted provider for tests |
 | `grenat_types` | checker: names, types, effects, `~T` taint (E0100–E0500) |
 | `grenat_codegen` | Cranelift: typing, liveness (Perceus), translation, boundary; JIT and object files; LLVM IR for release builds |
 | `grenat_runtime` | reference-counted strings, arrays and records called by native code |
@@ -127,6 +132,7 @@ end })
 | `grenat_generate` | `grenat new --app` and `grenat generate`: an application's parts, with their tests |
 | `grenat_ops` | the operations store: jobs, approvals, model calls, events, eval runs, workflow journals |
 | `grenat_console` | `grenat console`: pages and actions of the operations console, and who may use it |
+| `grenat_config` | the application's configuration: encrypted credentials per environment, `config/*.yml` |
 | `grenat_setter` | `setter`: creates, adds, installs and publishes facets (libraries) |
 | `grenat_package` | `grenat.toml`, `require`, facets (`Facetfile`, versions, indexes), path and git dependencies |
 | `grenat_fmt` | the formatter |

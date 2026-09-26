@@ -21,6 +21,7 @@ pub fn create_app(dir: &Path, name: &str) -> Result<Vec<Change>, String> {
     writer.create(grenat_package::facetfile::FACETFILE, "# The facets this application uses (`setter add <name>`).\n")?;
     writer.create(".gitignore", &format!(".grenat/\ndb/*.db\n{}\n", grenat_config::credentials::IGNORED.join("\n")))?;
     writer.create("README.md", &templates::fill(templates::README, &names))?;
+    writer.create("config/models.yml", templates::MODELS)?;
     writer.create("src/config.grn", templates::CONFIG)?;
     writer.create(APP_FILE, templates::APP)?;
     writer.create("tests/app_test.grn", templates::APP_TEST)?;

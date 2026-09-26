@@ -8,9 +8,13 @@
 
 mod anthropic;
 mod batch;
+pub mod catalog;
 mod cassette;
 mod mock;
+mod openai;
+mod openai_wire;
 mod pricing;
+mod retry;
 mod scripted;
 mod types;
 mod wire;
@@ -18,7 +22,9 @@ mod wire;
 pub use anthropic::Anthropic;
 pub use cassette::Cassette;
 pub use mock::{Mock, MockReply};
-pub use pricing::cost_usd;
+pub use openai::OpenAi;
+pub use openai_wire::chat_body;
+pub use pricing::{cost_at, cost_usd};
 pub use scripted::Scripted;
 pub use types::*;
 pub(crate) use wire::parse_response;

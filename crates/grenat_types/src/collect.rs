@@ -24,7 +24,13 @@ impl<'p> Checker<'p> {
                         self.error(E_NAME, def.name.span, format!("type `{}` is defined twice", def.name.name));
                     }
                 }
-                Item::Model(model) => self.models.push(&model.name.name),
+                Item::Model(model) => {
+                    if self.models.contains(&model.name.name.as_str()) {
+                        let message = format!("model `:{}` is declared twice (in config/models.yml and in code?)", model.name.name);
+                        self.error(E_NAME, model.name.span, message);
+                    }
+                    self.models.push(&model.name.name);
+                }
                 // expanded before checking (see `grenat_macros`)
                 Item::Stmt(_) | Item::Macro(_) => {}
             }

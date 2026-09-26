@@ -11,6 +11,7 @@
 //! Values come out as JSON trees; nothing here knows the language.
 
 pub mod credentials;
+pub mod models;
 pub mod yaml;
 
 /// The environment: `GRENAT_ENV`, or `development`.

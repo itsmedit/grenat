@@ -19,9 +19,13 @@ pub(crate) fn price_per_mtok(model: &str) -> Option<(f64, f64)> {
 
 /// Cost of a call in dollars; `None` for a model with an unknown price.
 pub fn cost_usd(model: &str, usage: &Usage) -> Option<f64> {
-    let (input, output) = price_per_mtok(model)?;
+    Some(cost_at(price_per_mtok(model)?, usage))
+}
+
+/// Cost of a call at `(input, output)` dollars per million tokens.
+pub fn cost_at((input, output): (f64, f64), usage: &Usage) -> f64 {
     let input_equiv = usage.input_tokens as f64
         + usage.cache_creation_input_tokens as f64 * 1.25
         + usage.cache_read_input_tokens as f64 * 0.1;
-    Some((input_equiv * input + usage.output_tokens as f64 * output) / 1_000_000.0)
+    (input_equiv * input + usage.output_tokens as f64 * output) / 1_000_000.0
 }

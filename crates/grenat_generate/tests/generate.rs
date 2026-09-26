@@ -25,6 +25,8 @@ fn a_new_application() {
     let dir = app("desk");
     assert!(read(&dir, "grenat.toml").contains("main = \"src/app.grn\""));
     assert!(read(&dir, "src/config.grn").starts_with("# The database"));
+    let models = grenat_config::models::declarations(&read(&dir, "config/models.yml")).unwrap();
+    assert!(models.starts_with("model :fast, provider: :anthropic"), "{models}");
     assert!(read(&dir, "src/app.grn").contains("require \"./config\""));
     assert!(read(&dir, "tests/app_test.grn").contains("request(:get, \"/health\")"));
     assert!(read(&dir, "README.md").starts_with("# desk\n"));

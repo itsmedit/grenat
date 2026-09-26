@@ -17,8 +17,6 @@ pub struct Anthropic {
     pub(crate) poll_interval: Duration,
 }
 
-pub(crate) const MAX_ATTEMPTS: u32 = 4;
-
 impl Anthropic {
     /// Reads `ANTHROPIC_API_KEY` (and the optional `ANTHROPIC_BASE_URL`).
     pub fn from_env() -> Result<Self, LlmError> {
@@ -100,29 +98,7 @@ impl Anthropic {
 impl Provider for Anthropic {
     fn complete(&self, request: &Request) -> Result<Response, LlmError> {
         let body = request_body(request);
-        let mut last_error = String::new();
-        for attempt in 0..MAX_ATTEMPTS {
-            let wait = match self.send(&body) {
-                Ok((200, _, json)) => return parse_response(&json),
-                Ok((status, retry_after, json)) => {
-                    let message = json["error"]["message"].as_str().unwrap_or("unknown error");
-                    last_error = format!("HTTP {status}: {message}");
-                    // 408, 409, 429, 5xx (including 529 "overloaded"): retry
-                    if !(matches!(status, 408 | 409 | 429) || status >= 500) {
-                        break;
-                    }
-                    retry_after.map_or(self.retry_delay * (1 << attempt), Duration::from_secs)
-                }
-                Err(e) => {
-                    last_error = e;
-                    self.retry_delay * (1 << attempt)
-                }
-            };
-            if attempt + 1 < MAX_ATTEMPTS {
-                std::thread::sleep(wait.min(Duration::from_secs(30)));
-            }
-        }
-        Err(LlmError::new(last_error))
+        crate::retry::with_retries(self.retry_delay, || self.send(&body), parse_response)
     }
 
     fn batch(&self, requests: &[Request]) -> Result<Vec<Result<Response, LlmError>>, LlmError> {

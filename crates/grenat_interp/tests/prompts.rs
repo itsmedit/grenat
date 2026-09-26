@@ -57,3 +57,24 @@ fn refusal_raises() {
     let e = run_err(&src, vec![Response::from_content(vec![], "refusal")]);
     assert_eq!(e.ty, "LlmRefusal");
 }
+
+#[test]
+fn a_model_without_a_known_price_is_said_once_and_priced_when_told() {
+    let src = "model :gpt, provider: :openai, name: \"gpt-5\"
+model :priced, provider: :openai, name: \"gpt-5-mini\", price: {input: 1.0, output: 2.0}
+prompt a(t: String) -> ~String using :gpt
+  user t
+end
+prompt b(t: String) -> ~String using :priced
+  user t
+end
+a(\"x\")
+a(\"y\")
+b(\"z\")
+";
+    let replies = vec![Response::text_reply("1"), Response::text_reply("2"), Response::text_reply("3").with_usage(1_000_000, 0)];
+    let run = run_full(src, replies, &[], &[]);
+    let summary = run.result.as_ref().unwrap().clone();
+    assert_eq!(run.output.matches("the price of `gpt-5` is unknown").count(), 1, "{}", run.output);
+    assert!((summary.cost_usd - 1.0).abs() < 1e-9, "{}", summary.cost_usd);
+}
