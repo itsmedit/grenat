@@ -101,6 +101,12 @@ impl<'p> Checker<'p> {
             let recv = V { ty: self_ty, taint: cx.self_taint };
             return self.user_method(cx, span, recv, def, argv, block);
         }
+        // in a record's `def self.`, its `where`, `create`… without a receiver
+        if let Some(Ty::Type(t)) = cx.self_ty.clone()
+            && let Some(v) = self.record_static(cx, span, &t, n, &argv)
+        {
+            return v;
+        }
         if let Some(def) = self.fns.get(n).copied() {
             return self.fn_call(cx, span, def, None, argv, block);
         }

@@ -295,7 +295,7 @@ impl<'p> Checker<'p> {
 
     /// `Ticket.all/where/find/count/create`: typed, with their effects; a
     /// record created from untrusted values is refused.
-    fn record_static(&mut self, cx: &mut Ctx<'p>, span: Span, t: &str, n: &str, argv: &[ArgV]) -> Option<V> {
+    pub(crate) fn record_static(&mut self, cx: &mut Ctx<'p>, span: Span, t: &str, n: &str, argv: &[ArgV]) -> Option<V> {
         if !self.is_record(t) {
             return None;
         }

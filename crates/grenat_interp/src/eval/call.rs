@@ -136,6 +136,12 @@ impl<'p> Interp<'p> {
         if let Some((def, ty)) = self.sibling_static(name) {
             return self.call_fn(def, args, Some(Value::Type(ty)));
         }
+        // in a record's `def self.`, its `where`, `create`… without a receiver
+        if let Some(Value::Type(ty)) = self.self_val()
+            && let Some(result) = self.record_static(&ty, name, &args)
+        {
+            return result;
+        }
         if let Some(def) = self.fns.get(name).copied() {
             return self.call_fn(def, args, None);
         }

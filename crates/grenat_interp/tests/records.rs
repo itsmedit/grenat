@@ -112,3 +112,30 @@ fn migrations_are_applied_once() {
     let e = migrate(&grenat_parser::parse("migration \"x\" do |db|\nend\n").program, options()).unwrap_err();
     assert!(e.message.starts_with("no database"), "{}", e.message);
 }
+
+#[test]
+fn a_record_s_class_methods_call_where_and_create_without_a_receiver() {
+    all_pass(
+        "struct Note
+  table :notes
+  id: Int?
+  key: String
+  text: String
+
+  def self.remember(key: String, text: String) -> Note uses db
+    known = where(key:).first
+    known ? known.with(text:).save : create(key:, text:)
+  end
+end
+migration \"001_notes\" do |db|
+  db.migrate(\"CREATE TABLE notes (id #{db.primary_key}, key TEXT NOT NULL, text TEXT NOT NULL)\")
+end
+test \"remembered once\" do
+  Note.remember(\"a\", \"v1\")
+  Note.remember(\"a\", \"v2\")
+  assert_equal 1, Note.count
+  assert_equal \"v2\", Note.find(1)&.text
+end
+",
+    );
+}

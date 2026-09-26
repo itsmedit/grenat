@@ -76,3 +76,19 @@ fn constants_are_typed_by_their_value() {
     single("module M\n  LIMIT = 5\nend\np M::LIMIT.upcase\n", "E0200", "upcase");
     single("module M\n  LIMIT = 5\nend\np M::LIMT\n", "E0100", "M::LIMT");
 }
+
+#[test]
+fn a_record_s_class_methods_know_where_and_create() {
+    clean(
+        "struct Note
+  table :notes
+  id: Int?
+  text: String
+
+  def self.latest -> Array(Note) uses db
+    where(text: \"x\")
+  end
+end
+",
+    );
+}
