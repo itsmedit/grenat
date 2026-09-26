@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use common::*;
 use grenat_interp::{Options, Output, run_tests};
 use grenat_ssh::fake::socks::Socks;
-use grenat_ssh::fake::{self, PASSWORD, TestServer, key_text, new_key};
+use grenat_ssh::fake::{self, PASSWORD, TempDir, TestServer, key_text, new_key};
 
 /// A server letting in the key of `deploy.ssh_key` (in the credentials the
 /// program's first line gives), and how to connect to it.
@@ -118,7 +118,8 @@ p sftp.exists?(\"docs\")
 #[test]
 fn uploads_and_downloads() {
     let r = remote();
-    let local = temp_dir("ssh-transfers");
+    let scratch = TempDir::new("ssh-transfers");
+    let local = scratch.path();
     std::fs::write(local.join("app.tar.gz"), [0u8, 1, 2, 255]).unwrap();
     let (up, back) = (local.join("app.tar.gz"), local.join("back.tar.gz"));
     run(&format!(
@@ -149,8 +150,8 @@ fn uploads_and_downloads() {
 fn host_keys_are_verified() {
     let key = new_key();
     let server = TestServer::start(key.public_key());
-    let dir = temp_dir("ssh-known-hosts");
-    let known_hosts = dir.join("known_hosts");
+    let dir = TempDir::new("ssh-known-hosts");
+    let known_hosts = dir.path().join("known_hosts");
     std::fs::write(&known_hosts, "").unwrap();
     let e = error(&connect_to(
         &server,
@@ -388,9 +389,10 @@ fn connection_options_are_checked() {
 fn tests_of(src: &str) -> Vec<Option<String>> {
     let parsed = grenat_parser::parse(src);
     assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+    let journal = TempDir::new("ssh-journal");
     let options = Options {
         output: Output::Capture(Arc::new(Mutex::new(String::new()))),
-        journal: Some(temp_dir("journal")),
+        journal: Some(journal.path().to_path_buf()),
         ..Options::default()
     };
     let outcomes = run_tests(&parsed.program, options).unwrap();
@@ -399,7 +401,8 @@ fn tests_of(src: &str) -> Vec<Option<String>> {
 
 #[test]
 fn tests_reach_no_server() {
-    let local = temp_dir("ssh-mock");
+    let scratch = TempDir::new("ssh-mock");
+    let local = scratch.path();
     std::fs::write(local.join("app.tar.gz"), "archive").unwrap();
     let src = format!(
         "\
