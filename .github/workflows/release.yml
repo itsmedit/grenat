@@ -1,0 +1,62 @@
+name: Release
+
+# A `v*` tag: the binaries of each platform, packaged with the runtime
+# libraries `grenat build` links, published as a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, target: aarch64-apple-darwin }
+          - { os: macos-15-intel, target: x86_64-apple-darwin }
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --release --locked -p grenat_cli -p grenat_setter -p grenat_host -p grenat_standalone
+      - name: Package
+        run: |
+          name="grenat-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "$name/bin" "$name/lib/grenat"
+          cp target/release/grenat target/release/setter "$name/bin/"
+          cp target/release/libgrenat_host.a target/release/libgrenat_standalone.a "$name/lib/grenat/"
+          cp README.md LICENSE-MIT LICENSE-APACHE "$name/"
+          tar czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+      - name: Check the package as installed
+        run: |
+          dir="$RUNNER_TEMP/installed" && mkdir -p "$dir"
+          tar xzf grenat-*.tar.gz -C "$dir" --strip-components 1
+          printf 'def main\n  puts "hello"\nend\n' > "$RUNNER_TEMP/hello.grn"
+          "$dir/bin/grenat" --version
+          "$dir/bin/grenat" build --native "$RUNNER_TEMP/hello.grn" -o "$RUNNER_TEMP/hello"
+          test "$("$RUNNER_TEMP/hello")" = hello
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: grenat-*.tar.gz*
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" grenat-*.tar.gz grenat-*.tar.gz.sha256
+          --repo "$GITHUB_REPOSITORY" --title "Grenat $GITHUB_REF_NAME" --generate-notes

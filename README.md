@@ -71,6 +71,18 @@ names, types, effects and taint: an unvalidated model answer that reaches the ne
 a **compile-time error**.
 
 ```sh
+brew install itsmedit/grenat/grenat          # macOS and Linux (or: yay -S grenat, planned)
+```
+
+From the sources (Rust, and a C linker: Xcode's command line tools on macOS):
+
+```sh
+cargo install --locked --path crates/grenat_cli && cargo install --locked --path crates/grenat_setter
+cargo build --release -p grenat_host -p grenat_standalone     # the libraries `grenat build` links
+mkdir -p ~/.cargo/lib/grenat && cp target/release/libgrenat_{host,standalone}.a ~/.cargo/lib/grenat/
+```
+
+```sh
 cargo build
 target/debug/grenat run examples/basics.grn            # the core language, no LLM
 target/debug/grenat run --log examples/fib.grn        # native code: see what the JIT compiled
