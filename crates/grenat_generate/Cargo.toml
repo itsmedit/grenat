@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[dev-dependencies]
+grenat_config.workspace = true
+
 [dependencies]
 grenat_package.workspace = true
+grenat_config.workspace = true
 grenat_serve.workspace = true

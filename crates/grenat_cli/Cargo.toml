@@ -23,6 +23,7 @@ grenat_driver.workspace = true
 grenat_codegen.workspace = true
 grenat_fmt.workspace = true
 grenat_generate.workspace = true
+grenat_config.workspace = true
 
 [dev-dependencies]
 grenat_mcp.workspace = true

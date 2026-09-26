@@ -2,6 +2,7 @@
 
 mod build;
 mod console;
+mod credentials;
 mod fmt;
 mod generate;
 mod link;
@@ -45,6 +46,10 @@ Usage:
                                  the operations console, in a browser: approvals,
                                  jobs, journals, costs, evals, refusals, MCP servers
                                  (127.0.0.1:4000 by default; elsewhere, a token)
+  grenat credentials edit|show [--env <environment>]
+                                 the application's secrets, encrypted in
+                                 config/credentials.yml.enc (key: config/master.key
+                                 or GRENAT_MASTER_KEY), as with Rails
   grenat migrate [<file.grn>]    apply the migrations the database has not seen yet
   grenat eval <file.grn> [name]  run the `eval` blocks (those whose name contains `name`)
   grenat check [<file.grn>...]   check names, types, effects and taint
@@ -61,6 +66,8 @@ Environment variables:
   GRENAT_LOG=1        log every LLM and tool call, and what the JIT compiled (same as --log)
   GRENAT_RECORD=1     record every cassette again, with real calls
   GRENAT_CONSOLE_TOKEN  the token of `grenat console` (rather than --token)
+  GRENAT_ENV          the environment (development by default): which credentials
+  GRENAT_MASTER_KEY   the key of the credentials, rather than config/master.key
   GRENAT_JIT=0        interpret everything (same as --no-jit; also in built executables)
   GRENAT_HOME         where `grenat build` finds lib/grenat/libgrenat_{host,standalone}.a
   GRENAT_KEEP_OBJECT  keep the object file of `grenat build` (in the temporary directory)
@@ -82,6 +89,7 @@ fn main() -> ExitCode {
         Some("generate" | "g") => generate::generate(&args[1..]),
         Some("serve") => serve::serve(&args[1..]),
         Some("console") => console::console(&args[1..]),
+        Some("credentials") => credentials::credentials(&args[1..]),
         Some("migrate") => migrate::migrate(&args[1..]),
         Some("update") if args.len() == 1 => package::update(),
         Some("fmt") => fmt::fmt(&args[1..]),

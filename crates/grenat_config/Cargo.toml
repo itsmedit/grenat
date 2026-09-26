@@ -1,0 +1,15 @@
+[package]
+name = "grenat_config"
+description = "The configuration of a Grenat application: encrypted credentials per environment, and config/*.yml"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+yaml-rust2 = "0.10"
+aes-gcm = "0.10"
+base64 = "0.22"
+getrandom = "0.2"

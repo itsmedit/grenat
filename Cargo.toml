@@ -34,6 +34,7 @@ grenat_setter = { path = "crates/grenat_setter" }
 grenat_generate = { path = "crates/grenat_generate" }
 grenat_ops = { path = "crates/grenat_ops" }
 grenat_console = { path = "crates/grenat_console" }
+grenat_config = { path = "crates/grenat_config" }
 serde_json = "1"
 ureq = { version = "3", features = ["json"] }
 

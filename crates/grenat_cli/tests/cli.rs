@@ -723,3 +723,42 @@ fn console_shows_and_decides_what_waits() {
     let job = grenat_ops::jobs::get(db.as_mut(), 1).unwrap().unwrap();
     assert_eq!(job.status, grenat_ops::jobs::Status::Queued, "the job runs again");
 }
+
+#[test]
+fn credentials_are_edited_encrypted_and_shown() {
+    let base = project("credentials");
+    assert_eq!(code(&grenat_in(&base, &["new", "--app", "desk"])), 0);
+    let app = base.join("desk");
+    assert!(app.join("config/master.key").exists() && app.join("config/credentials.yml.enc").exists());
+    // an "editor" that writes what the test wants
+    let editor = |name: &str, text: &str| {
+        let script = base.join(name);
+        std::fs::write(&script, format!("#!/bin/sh\ncat > \"$1\" <<'YAML'\n{text}YAML\n")).unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        script
+    };
+    let edit = |script: &std::path::Path, extra: &[&str]| {
+        let mut args = vec!["credentials", "edit"];
+        args.extend(extra);
+        Command::new(env!("CARGO_BIN_EXE_grenat")).args(&args).current_dir(&app).env("EDITOR", script).env_remove("VISUAL").env_remove("GRENAT_MASTER_KEY").output().unwrap()
+    };
+    let out = edit(&editor("good.sh", "github:\n  token: ghp_123\n"), &[]);
+    assert_eq!(code(&out), 0, "{}", text(&out.stderr));
+    assert!(!std::fs::read_to_string(app.join("config/credentials.yml.enc")).unwrap().contains("ghp_123"), "encrypted");
+    let shown = grenat_in(&app, &["credentials", "show"]);
+    assert_eq!(text(&shown.stdout), "github:\n  token: ghp_123\n");
+    // invalid YAML: nothing saved
+    let bad = edit(&editor("bad.sh", "github: [\n"), &[]);
+    assert_eq!(code(&bad), 1);
+    assert!(text(&bad.stderr).contains("invalid YAML"), "{}", text(&bad.stderr));
+    assert_eq!(text(&grenat_in(&app, &["credentials", "show"]).stdout), "github:\n  token: ghp_123\n");
+    // an environment of its own, with its own key
+    let prod = edit(&editor("prod.sh", "github:\n  token: ghp_prod\n"), &["--env", "production"]);
+    assert_eq!(code(&prod), 0, "{}", text(&prod.stderr));
+    assert!(app.join("config/credentials/production.key").exists());
+    let shown = grenat_in(&app, &["credentials", "show", "--env", "production"]);
+    assert_eq!(text(&shown.stdout), "github:\n  token: ghp_prod\n");
+    let ignored = std::fs::read_to_string(app.join(".gitignore")).unwrap();
+    assert!(ignored.contains("config/credentials/*.key"));
+}

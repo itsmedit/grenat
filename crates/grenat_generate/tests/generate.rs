@@ -29,6 +29,10 @@ fn a_new_application() {
     assert!(read(&dir, "tests/app_test.grn").contains("request(:get, \"/health\")"));
     assert!(read(&dir, "README.md").starts_with("# desk\n"));
     assert!(dir.join("db").is_dir());
+    let gitignore = read(&dir, ".gitignore");
+    assert!(gitignore.contains("config/master.key") && gitignore.contains("config/credentials/*.key"), "{gitignore}");
+    let credentials = grenat_config::credentials::Location::of(&dir, None);
+    assert!(credentials.read().unwrap().contains("Credentials.fetch"), "created, and readable with its key");
     assert!(create_app(&dir, "desk").unwrap_err().contains("already exists"));
     assert!(create_app(&dir.with_file_name("Desk"), "Desk").unwrap_err().contains("invalid application name"));
 }

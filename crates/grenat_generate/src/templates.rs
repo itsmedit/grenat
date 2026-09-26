@@ -53,6 +53,8 @@ grenat eval evals/…       # quality, with the real models
 Its parts, each with its tests (`grenat generate agent|workflow|record|tool|eval <name>`):
 
 - `src/config.grn` — the database and the models;
+- `config/credentials.yml.enc` — the secrets, encrypted (`grenat credentials edit`); its key,
+  `config/master.key`, stays out of the repository (in production: `GRENAT_MASTER_KEY`);
 - `src/app.grn` — requires the parts, then declares what is served;
 - `src/agents/`, `src/workflows/`, `src/records/` (and `src/migrations/`), `src/tools/`;
 - `tests/`, `evals/`.

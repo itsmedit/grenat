@@ -19,12 +19,17 @@ pub fn create_app(dir: &Path, name: &str) -> Result<Vec<Change>, String> {
     let manifest = format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nmain = \"{APP_FILE}\"\n\n[dependencies]\n");
     writer.create(grenat_package::MANIFEST, &manifest)?;
     writer.create(grenat_package::facetfile::FACETFILE, "# The facets this application uses (`setter add <name>`).\n")?;
-    writer.create(".gitignore", ".grenat/\ndb/*.db\n")?;
+    writer.create(".gitignore", &format!(".grenat/\ndb/*.db\n{}\n", grenat_config::credentials::IGNORED.join("\n")))?;
     writer.create("README.md", &templates::fill(templates::README, &names))?;
     writer.create("src/config.grn", templates::CONFIG)?;
     writer.create(APP_FILE, templates::APP)?;
     writer.create("tests/app_test.grn", templates::APP_TEST)?;
     writer.create("db/.keep", "")?;
+    // secrets: encrypted, their key kept out of the repository
+    let credentials = grenat_config::credentials::Location::of(dir, None);
+    credentials.create()?;
+    writer.changes.push(Change::Created("config/master.key".into()));
+    writer.changes.push(Change::Created("config/credentials.yml.enc".into()));
     Ok(writer.changes)
 }
 
