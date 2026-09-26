@@ -318,7 +318,7 @@ pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
         (SSH_SESSION, "close") => (Ty::Nil, false),
         (SSH_RESULT, "status") => (Ty::Int, false),
         (SSH_RESULT, "ok?") => (Ty::Bool, false),
-        (SSH_RESULT, "signal") => (Ty::opt(Ty::Str), false),
+        (SSH_RESULT, "signal") => (Ty::opt(Ty::Str), true),
         (SSH_RESULT, "stdout" | "stderr") => (Ty::Str, true),
         (SFTP_ENTRY, "name") => (Ty::Str, true),
         (SFTP_ENTRY, "size") => (Ty::Int, false),

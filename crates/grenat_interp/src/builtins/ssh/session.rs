@@ -59,7 +59,8 @@ fn run<'p>(interp: &mut Interp<'p>, fields: &Fields<'p>, args: &Args<'p>) -> R<'
         SSH_RESULT,
         vec![
             ("status".into(), Value::Int(status)),
-            ("signal".into(), output.signal.map_or(Value::Nil, Value::str)),
+            // the server names the signal as it likes: untrusted too
+            ("signal".into(), output.signal.map_or(Value::Nil, |name| Value::str(name).taint())),
             ("stdout".into(), text(output.stdout)),
             ("stderr".into(), text(output.stderr)),
         ],

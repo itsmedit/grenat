@@ -73,7 +73,7 @@ server.close
         out,
         format!(
             "SshSession(id: 0, user: \"alice\", host: \"127.0.0.1\", port: {})\n0\ntrue\n~\"hello world\\n\"\nnil\n\
-             3\nfalse\n~\"oops\\n\"\n\"TERM\"\n\"[; touch pwned][$(id)][42]\"\n",
+             3\nfalse\n~\"oops\\n\"\n~\"TERM\"\n\"[; touch pwned][$(id)][42]\"\n",
             r.server.port
         )
     );
@@ -296,6 +296,19 @@ fn nothing_untrusted_reaches_the_server() {
         assert!(e.starts_with("TaintError: an untrusted value reaches `"), "{sink}: {e}");
     }
     assert!(r.server.commands().iter().all(|c| c == "echo a"), "{:?}", r.server.commands());
+    // the name of a signal is the server's word too
+    let src = format!(
+        "{}sig = server.run([\"sh\", \"-c\", \"kill -USR1 $$\"]).signal\np sig.tainted?\nserver.run([\"echo\", sig])\n",
+        r.prelude
+    );
+    let signalled = run_with(&src, Vec::new(), &[]);
+    assert_eq!(signalled.output, "true\n");
+    let e = signalled.err();
+    assert_eq!(
+        (e.ty.as_str(), e.message.as_str()),
+        ("TaintError", "an untrusted value reaches `run` (effect `ssh`) without validation")
+    );
+    assert!(!r.server.commands().iter().any(|c| c.starts_with("echo S")), "{:?}", r.server.commands());
     // validated, it may
     let out = run(&format!("{head}p server.run([\"echo\", out.check {{ |o| o.size < 5 }}?]).stdout\n"));
     assert_eq!(out, "~\"a\\n\\n\"\n");

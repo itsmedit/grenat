@@ -63,6 +63,7 @@ fn what_the_server_says_is_untrusted() {
         ("server.run([\"hostname\"]).stderr", "server.run([\"hostname\"]).stderr"),
         ("server.sftp.read(\"/etc/hostname\")", "server.sftp.read(\"/etc/hostname\")"),
         ("server.sftp.list(\"/srv\").first.name", "server.sftp.list(\"/srv\")"),
+        ("server.run([\"hostname\"]).signal.to_s", "server.run([\"hostname\"]).signal"),
     ] {
         let src = main("ssh, env, shell", &format!("  x = {read}\n  Shell.run([\"echo\", x])\n"));
         let d = single(&src, "E0412", "[\"echo\", x]");
