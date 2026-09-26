@@ -245,7 +245,7 @@ fn logs_name_no_secret() {
     let proxy = Socks::start(Some(("bob", "pr0xy")));
     let r = remote();
     let src = format!(
-        "{}server.run([\"echo\", \"a\"])\nserver.sftp.write(\"f\", \"x\")\n\
+        "{}server.run([\"echo\", \"a\"])\nserver.sftp.write(\"f\", \"x\")\nserver.sftp.exists?(\"f\")\n\
          mock_credentials({{\"proxy\" => {{\"url\" => \"socks5://bob:pr0xy@127.0.0.1:{}\"}}}})\n\
          Ssh.connect(\"alice@127.0.0.1\", port: {}, password: \"{PASSWORD}\", fingerprint: \"{}\", proxy: Credentials.fetch(:proxy, :url))\n",
         r.prelude,
@@ -258,6 +258,7 @@ fn logs_name_no_secret() {
     assert!(log.contains(&format!("{label}\n")), "{log}");
     assert!(log.contains("[ssh] alice@127.0.0.1: echo a → 0\n"), "{log}");
     assert!(log.contains("[ssh] alice@127.0.0.1: write f\n"), "{log}");
+    assert!(log.contains("[ssh] alice@127.0.0.1: exists? f → true\n"), "{log}");
     assert!(log.contains(&format!("{label} via [secret]\n")), "{log}");
     assert!(!log.contains("pr0xy") && !log.contains("BEGIN OPENSSH"), "{log}");
 }
@@ -432,6 +433,14 @@ end
 test \"mocks are the test's own\" do
   Ssh.connect(\"deploy@api.acme.com\", password: \"x\")
 end
+test \"a later mock reaches an open session\" do
+  mock_ssh \"deploy@api.acme.com\", commands: {{\"uptime\" => \"up\"}}
+  server = Ssh.connect(\"deploy@api.acme.com\", password: \"x\")
+  mock_ssh \"deploy@api.acme.com\", commands: {{\"hostname\" => \"api\"}}, files: {{\"/etc/hostname\" => \"api\"}}
+  assert_equal \"api\", server.run([\"hostname\"]).stdout.trust!
+  assert_equal \"api\", server.sftp.read(\"/etc/hostname\").trust!
+  server.run([\"uptime\"])
+end
 ",
         dir = local.display()
     );
@@ -442,6 +451,7 @@ end
             Some("SshError: the mock of `deploy@api.acme.com` has no command `rm -rf /`".into()),
             Some("SshError: no SSH in tests: `deploy@api.acme.com` is not stubbed with `mock_ssh`".into()),
             Some("SshError: no SSH in tests: `deploy@api.acme.com` is not stubbed with `mock_ssh`".into()),
+            Some("SshError: the mock of `deploy@api.acme.com` has no command `uptime`".into()),
         ]
     );
     assert_eq!(std::fs::read_to_string(local.join("back.tar.gz")).unwrap(), "archive");

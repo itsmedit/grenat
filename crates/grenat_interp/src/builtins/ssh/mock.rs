@@ -1,6 +1,7 @@
 //! `mock_ssh "deploy@api.acme.com", commands: {…}, files: {…}`: a server
 //! for the rest of a test. A command's answer is its output, or a hash of
-//! `stdout:`, `stderr:` and `status:`.
+//! `stdout:`, `stderr:` and `status:`. Mocking the server again replaces
+//! it, for the connections already open to it too.
 
 use grenat_ssh::Output;
 
@@ -42,7 +43,14 @@ impl<'p> Interp<'p> {
         }
         let label = target.label();
         let double = Double::new(&label, commands, files);
-        self.ssh_stubs.borrow_mut().insert(label, Arc::new(Mutex::new(double)));
+        let mut stubs = self.ssh_stubs.borrow_mut();
+        match stubs.get(&label) {
+            // mocked again: the connections already open to it see the new server
+            Some(open) => *open.lock().unwrap_or_else(|e| e.into_inner()) = double,
+            None => {
+                stubs.insert(label, Arc::new(Mutex::new(double)));
+            }
+        }
         Ok(Value::Nil)
     }
 }

@@ -72,6 +72,7 @@ pub(crate) fn file_method<'p>(interp: &mut Interp<'p>, fields: &Fields<'p>, name
         "exists?" => {
             let target = path(0)?;
             let found = interp.on_server(fields, |c, label| c.files(label, |files| files.exists(&target)))?;
+            interp.log_ssh(fields, &format!("exists? {target} → {found}"));
             Ok(Value::Bool(found))
         }
         _ => raise("NoMethodError", format!("unknown method `{name}` for SFTP")),

@@ -1,7 +1,9 @@
 //! `mock_ssh`: a server that exists only in a test. Commands are answered
 //! from a table (a trailing `*` matches a prefix of the command line), files
 //! are kept in memory, directories are those holding files or made by
-//! `mkdir`. A command it was not told about is an error, as a missing file is.
+//! `mkdir`. A command it was not told about is an error, as a missing file
+//! is; so is what a real server refuses: something inside a file, a
+//! directory moved into itself.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -40,6 +42,18 @@ impl Double {
             || self.dirs.contains(path)
             || self.files.keys().chain(&self.dirs).any(|p| under(path, p).is_some())
     }
+
+    /// Refuses to put something at `path` inside a file (`what` is tried).
+    fn inside_a_file(&self, path: &str, what: impl FnOnce() -> String) -> Result<(), Error> {
+        let mut rest = path;
+        while let Some((parent, _)) = rest.rsplit_once('/') {
+            if self.files.contains_key(parent) {
+                return Err(failed(what(), &format!("`{parent}` is not a directory")));
+            }
+            rest = parent;
+        }
+        Ok(())
+    }
 }
 
 impl RemoteFiles for Double {
@@ -77,6 +91,7 @@ impl RemoteFiles for Double {
         if self.is_dir(&path) {
             return Err(failed(format!("write `{path}`"), "it is a directory"));
         }
+        self.inside_a_file(&path, || format!("write `{path}`"))?;
         self.files.insert(path, bytes.to_vec());
         Ok(())
     }
@@ -111,6 +126,7 @@ impl RemoteFiles for Double {
         if self.exists(&path)? {
             return Err(failed(format!("create the directory `{path}`"), "it exists"));
         }
+        self.inside_a_file(&path, || format!("create the directory `{path}`"))?;
         self.dirs.insert(path);
         Ok(())
     }
@@ -124,6 +140,10 @@ impl RemoteFiles for Double {
         if self.exists(&to)? {
             return Err(failed(what, &format!("`{to}` exists")));
         }
+        if under(&from, &to).is_some() {
+            return Err(failed(what, &format!("`{to}` is inside `{from}`")));
+        }
+        self.inside_a_file(&to, || what)?;
         let moved = |path: &str| {
             if path == from { Some(to.clone()) } else { under(&from, path).map(|rest| format!("{to}/{rest}")) }
         };
@@ -232,6 +252,22 @@ mod tests {
     }
 
     #[test]
+    fn a_file_holds_nothing() {
+        let mut d = double();
+        assert_eq!(
+            d.mkdir("notes.txt/sub").unwrap_err().message(),
+            "cannot create the directory `notes.txt/sub`: `notes.txt` is not a directory"
+        );
+        assert_eq!(
+            d.write("/srv/app/config.yml/x", b"x").unwrap_err().message(),
+            "cannot write `/srv/app/config.yml/x`: `/srv/app/config.yml` is not a directory"
+        );
+        assert!(d.rename("notes.txt", "/srv/app/config.yml/n").unwrap_err().message().ends_with("is not a directory"));
+        assert_eq!(d.read("notes.txt").unwrap(), b"hi");
+        assert!(!d.is_dir("notes.txt") && d.list("notes.txt").is_err());
+    }
+
+    #[test]
     fn renaming_moves_what_a_directory_holds() {
         let mut d = double();
         d.rename("/srv/app", "/srv/old").unwrap();
@@ -244,6 +280,13 @@ mod tests {
             d.rename("n.txt", "/srv/old").unwrap_err().message(),
             "cannot rename `n.txt` to `/srv/old`: `/srv/old` exists"
         );
+        // never into itself
+        assert_eq!(
+            d.rename("/srv", "/srv/old/sub").unwrap_err().message(),
+            "cannot rename `/srv` to `/srv/old/sub`: `/srv/old/sub` is inside `/srv`"
+        );
+        assert!(d.rename("/srv/old", "/srv/old").unwrap_err().message().ends_with("`/srv/old` exists"));
+        assert_eq!(names(&d.list("/srv").unwrap()), [("old", true)]);
     }
 
     #[test]
