@@ -7,6 +7,8 @@
 //! res.json     # the body, parsed
 //! Http.post(url, json: {title: "Bug"}, timeout: 5)
 //! Http.get("https://api.x.io/search", query: {q: "rust & grenat"})  # encoded
+//! Http.get(url, proxy: "socks5h://user:pass@127.0.0.1:1080")      # or socks5, socks4, http
+//! Http.get(url, proxy: false)                                      # not even the environment's
 //! ```
 //!
 //! A request is a `net` effect: its host must be allowed by every function
@@ -14,10 +16,15 @@
 //! Nothing untrusted may go out (a tainted URL, header or body is a
 //! `TaintError`), and what comes back is untrusted: the body and headers of
 //! a response are tainted, as a model's answer is.
+//!
+//! Without `proxy:`, a request goes through the proxy the environment names
+//! (`https_proxy`, `http_proxy`, `all_proxy`, `no_proxy`), as curl's would. A
+//! proxy URL may be a secret: it is revealed to the transport only, and
+//! neither an error nor the log names it.
 
 use std::time::Duration;
 
-use crate::http::{HttpReply, HttpRequest, host};
+use crate::http::{HttpReply, HttpRequest, ProxyChoice, host, validate_proxy, without_credentials};
 use crate::prelude::*;
 
 use super::*;
@@ -49,22 +56,42 @@ pub(crate) fn call_http<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p>)
     // an error names the URL: one holding a secret is not named
     let secret_url =
         args.pos[0].contains_secret() || args.named.iter().any(|(n, v)| n == "query" && v.contains_secret());
+    let secret_proxy = args.named.iter().any(|(n, v)| n == "proxy" && v.contains_secret());
     let reply = match interp.http(&request) {
-        Err(Ctrl::Raise(e)) if secret_url => {
-            return raise(&e.ty, e.message.replace(&request.url, &format!("{} [secret]", host)));
+        Err(Ctrl::Raise(e)) if secret_url || secret_proxy => {
+            let mut message = e.message.clone();
+            if secret_url {
+                message = message.replace(&request.url, &format!("{} [secret]", host));
+            }
+            if let (true, ProxyChoice::Url(proxy)) = (secret_proxy, &request.proxy) {
+                message = hide_proxy(&message, proxy);
+            }
+            return raise(&e.ty, message);
         }
         other => other?,
     };
     if interp.log {
         // a URL holding a secret is logged as `[secret]`
         let shown = if args.pos[0].contains_secret() { args.pos[0].to_display() } else { url };
-        interp.write_err(&format!("[http] {method} {shown} → {}\n", reply.status));
+        let via = match &request.proxy {
+            ProxyChoice::Url(_) if secret_proxy => " via [secret]".to_string(),
+            ProxyChoice::Url(proxy) => format!(" via {}", without_credentials(proxy)),
+            _ => String::new(),
+        };
+        interp.write_err(&format!("[http] {method} {shown}{via} → {}\n", reply.status));
     }
     Ok(response(reply))
 }
 
 fn request<'p>(method: &'static str, url: String, args: &Args<'p>) -> Result<HttpRequest, Ctrl<'p>> {
-    let mut request = HttpRequest { method, url, headers: Vec::new(), body: None, timeout: DEFAULT_TIMEOUT };
+    let mut request = HttpRequest {
+        method,
+        url,
+        headers: Vec::new(),
+        body: None,
+        timeout: DEFAULT_TIMEOUT,
+        proxy: ProxyChoice::Environment,
+    };
     for (option, value) in &args.named {
         match (option.as_str(), value) {
             ("headers", Value::Hash(entries)) => {
@@ -84,12 +111,42 @@ fn request<'p>(method: &'static str, url: String, args: &Args<'p>) -> Result<Htt
             ("timeout", Value::Float(s) | Value::Duration(s)) if *s > 0.0 => {
                 request.timeout = Duration::from_secs_f64(*s);
             }
+            ("proxy", value) => request.proxy = proxy(value)?,
             (option, value) => {
                 return raise("ArgumentError", format!("invalid `Http` option `{option}: {}`", value.inspect()));
             }
         }
     }
     Ok(request)
+}
+
+/// `proxy:` — a proxy URL (a secret revealed), `false` for none, `nil` for
+/// the environment's. An invalid URL is named only when it holds no secret.
+fn proxy<'p>(value: &Value<'p>) -> Result<ProxyChoice, Ctrl<'p>> {
+    match value.untainted() {
+        Value::Bool(false) => Ok(ProxyChoice::Direct),
+        Value::Nil => Ok(ProxyChoice::Environment),
+        Value::Str(url) | Value::Secret(url) => match validate_proxy(url) {
+            Ok(()) => Ok(ProxyChoice::Url(url.to_string())),
+            Err(reason) => {
+                raise("ArgumentError", format!("invalid `Http` option `proxy: {}`: {reason}", value.inspect()))
+            }
+        },
+        other => raise("ArgumentError", format!("invalid `Http` option `proxy: {}`", other.inspect())),
+    }
+}
+
+/// `message` without the secret proxy URL `proxy`, nor its password.
+fn hide_proxy(message: &str, proxy: &str) -> String {
+    let message = message.replace(proxy, "[secret]");
+    let password = proxy
+        .split_once("://")
+        .and_then(|(_, rest)| rest.rsplit_once('@'))
+        .and_then(|(creds, _)| creds.split_once(':').map(|(_, password)| password));
+    match password {
+        Some(password) if !password.is_empty() => message.replace(password, "[secret]"),
+        _ => message,
+    }
 }
 
 /// `HttpResponse(status:, headers:, body:)`, headers and body tainted.

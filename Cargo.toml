@@ -36,7 +36,7 @@ grenat_ops = { path = "crates/grenat_ops" }
 grenat_console = { path = "crates/grenat_console" }
 grenat_config = { path = "crates/grenat_config" }
 serde_json = "1"
-ureq = { version = "3", features = ["json"] }
+ureq = { version = "3", features = ["json", "socks-proxy"] }
 
 [profile.release]
 lto = "thin"

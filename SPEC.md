@@ -614,6 +614,10 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 11 status: proxies for Http
+
+`Http.get(url, proxy: "socks5://user:pass@127.0.0.1:1080")` sends a request through a proxy, with every `Http` method: `socks5://` (the host is resolved here), `socks5h://` (resolved by the proxy), `socks4://`, `socks4a://`, and HTTP proxies (`http://`, `https://`, which tunnel with `CONNECT`); credentials go in the URL. Without `proxy:` (or with `proxy: nil`), the environment's proxy is used as curl chooses it — `no_proxy` exempts hosts and their subdomains, then `https_proxy` for an https URL or `http_proxy` for an http one (never `HTTP_PROXY` in capitals, which a CGI request header can set), then `all_proxy` — and `proxy: false` goes direct whatever the environment says. An invalid proxy URL is an `ArgumentError` (an invalid one in the environment, an `HttpError` naming the variable, not its value); an unreachable proxy or a refused password is an `HttpError`. A proxy URL may be a secret (`proxy: Credentials.fetch(:proxy, :url)`): it is revealed to the transport only, and neither an error nor the `--log` line (`[http] GET … via [secret] → 200`) names it; a plain proxy URL is logged without its credentials.
+
 ### Phase 10 status: models from any provider (`config/models.yml`)
 
 ```yaml

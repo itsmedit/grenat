@@ -1,6 +1,10 @@
 //! HTTP transport: one request, one reply, nothing about the language.
 
+mod proxy;
+
 use std::time::Duration;
+
+pub(crate) use proxy::{ProxyChoice, validate as validate_proxy, without_credentials};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct HttpRequest {
@@ -9,6 +13,7 @@ pub(crate) struct HttpRequest {
     pub headers: Vec<(String, String)>,
     pub body: Option<String>,
     pub timeout: Duration,
+    pub proxy: ProxyChoice,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,10 +24,15 @@ pub(crate) struct HttpReply {
 }
 
 /// Sends `request`; an error is a failure to get any answer (a status
-/// such as 404 is an answer).
+/// such as 404 is an answer, an unreachable proxy is not).
 pub(crate) fn send(request: &HttpRequest) -> Result<HttpReply, String> {
-    let agent: ureq::Agent =
-        ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(request.timeout)).build().into();
+    let proxy = proxy::resolve(&request.proxy, &request.url, |name| std::env::var(name).ok())?;
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .timeout_global(Some(request.timeout))
+        .proxy(proxy)
+        .build()
+        .into();
     let mut builder = ureq::http::Request::builder().method(request.method).uri(&request.url);
     for (name, value) in &request.headers {
         builder = builder.header(name, value);

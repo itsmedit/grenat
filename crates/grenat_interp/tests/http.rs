@@ -3,7 +3,7 @@
 mod common;
 
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 
 use common::*;
@@ -242,4 +242,304 @@ fn an_error_does_not_name_a_url_holding_a_secret() {
     assert_eq!(e.ty, "HttpError");
     assert!(!e.message.contains("s3cr3t"), "{}", e.message);
     assert!(e.message.contains("[secret]"), "{}", e.message);
+}
+
+// ── Proxies ──────────────────────────────────────────────────
+
+/// A local proxy speaking SOCKS5, SOCKS4(a) and HTTP CONNECT on one port,
+/// told apart by the first byte. It answers for `grenat.test` itself (a
+/// name only the proxy can resolve), requires `credentials` when given, and
+/// notes what it is asked (`auth u:p`, `socks5 grenat.test:80`…).
+struct Proxy {
+    address: String,
+    seen: Arc<Mutex<Vec<String>>>,
+}
+
+impl Proxy {
+    fn start(credentials: Option<(&str, &str)>) -> Proxy {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let credentials = credentials.map(|(u, p)| (u.to_string(), p.to_string()));
+        let notes = seen.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let (notes, credentials) = (notes.clone(), credentials.clone());
+                std::thread::spawn(move || {
+                    let _ = serve_proxy(stream, credentials, &notes);
+                });
+            }
+        });
+        Proxy { address, seen }
+    }
+
+    fn seen(&self) -> Vec<String> {
+        self.seen.lock().unwrap().clone()
+    }
+}
+
+type Notes = Mutex<Vec<String>>;
+
+fn serve_proxy(mut client: TcpStream, credentials: Option<(String, String)>, notes: &Notes) -> std::io::Result<()> {
+    let target = match read_bytes(&mut client, 1)?[0] {
+        5 => socks5(&mut client, credentials, notes)?,
+        4 => socks4(&mut client, notes)?,
+        _ => connect(&mut client, notes)?,
+    };
+    let Some(target) = target else { return Ok(()) };
+    let upstream = TcpStream::connect(target.replace("grenat.test", "127.0.0.1"))?;
+    let (mut up_read, mut client_write) = (upstream.try_clone()?, client.try_clone()?);
+    std::thread::spawn(move || {
+        let _ = std::io::copy(&mut up_read, &mut client_write);
+        let _ = client_write.shutdown(std::net::Shutdown::Both);
+    });
+    let mut upstream = upstream;
+    let _ = std::io::copy(&mut client, &mut upstream);
+    Ok(())
+}
+
+fn read_bytes(stream: &mut TcpStream, n: usize) -> std::io::Result<Vec<u8>> {
+    let mut buf = vec![0; n];
+    stream.read_exact(&mut buf)?;
+    Ok(buf)
+}
+
+fn read_text(stream: &mut TcpStream) -> std::io::Result<String> {
+    let n = read_bytes(stream, 1)?[0] as usize;
+    Ok(String::from_utf8_lossy(&read_bytes(stream, n)?).into_owned())
+}
+
+/// SOCKS5 (RFC 1928, RFC 1929); the version byte is read.
+fn socks5(
+    client: &mut TcpStream,
+    credentials: Option<(String, String)>,
+    notes: &Notes,
+) -> std::io::Result<Option<String>> {
+    let count = read_bytes(client, 1)?[0] as usize;
+    let methods = read_bytes(client, count)?;
+    let method = if credentials.is_some() { 2 } else { 0 };
+    if !methods.contains(&method) {
+        client.write_all(&[5, 0xFF])?;
+        return Ok(None);
+    }
+    client.write_all(&[5, method])?;
+    if let Some((user, password)) = credentials {
+        read_bytes(client, 1)?;
+        let (given_user, given_password) = (read_text(client)?, read_text(client)?);
+        notes.lock().unwrap().push(format!("auth {given_user}:{given_password}"));
+        if (given_user, given_password) != (user, password) {
+            client.write_all(&[1, 1])?;
+            return Ok(None);
+        }
+        client.write_all(&[1, 0])?;
+    }
+    let head = read_bytes(client, 4)?;
+    let host = match head[3] {
+        1 => read_bytes(client, 4)?.iter().map(u8::to_string).collect::<Vec<_>>().join("."),
+        3 => read_text(client)?,
+        _ => return Ok(None),
+    };
+    let port = u16::from_be_bytes(read_bytes(client, 2)?.try_into().unwrap());
+    let target = format!("{host}:{port}");
+    notes.lock().unwrap().push(format!("socks5 {target}"));
+    client.write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0])?;
+    Ok(Some(target))
+}
+
+/// SOCKS4 and SOCKS4a; the version byte is read.
+fn socks4(client: &mut TcpStream, notes: &Notes) -> std::io::Result<Option<String>> {
+    let head = read_bytes(client, 7)?;
+    let port = u16::from_be_bytes([head[1], head[2]]);
+    let until_nul = |client: &mut TcpStream| -> std::io::Result<String> {
+        let mut text = Vec::new();
+        loop {
+            match read_bytes(client, 1)?[0] {
+                0 => return Ok(String::from_utf8_lossy(&text).into_owned()),
+                b => text.push(b),
+            }
+        }
+    };
+    until_nul(client)?;
+    let host = match &head[3..7] {
+        [0, 0, 0, _] => until_nul(client)?,
+        ip => ip.iter().map(u8::to_string).collect::<Vec<_>>().join("."),
+    };
+    let target = format!("{host}:{port}");
+    notes.lock().unwrap().push(format!("socks4 {target}"));
+    client.write_all(&[0, 0x5A, 0, 0, 0, 0, 0, 0])?;
+    Ok(Some(target))
+}
+
+/// An HTTP proxy: `CONNECT host:port`; the first byte is read.
+fn connect(client: &mut TcpStream, notes: &Notes) -> std::io::Result<Option<String>> {
+    let mut head = vec![b'C'];
+    while !head.ends_with(b"\r\n\r\n") {
+        head.push(read_bytes(client, 1)?[0]);
+    }
+    let head = String::from_utf8_lossy(&head).into_owned();
+    let target = head.split_whitespace().nth(1).unwrap_or_default().to_string();
+    notes.lock().unwrap().push(format!("connect {target}"));
+    if let Some(auth) = head.lines().find(|l| l.to_ascii_lowercase().starts_with("proxy-authorization:")) {
+        notes.lock().unwrap().push(auth.to_string());
+    }
+    client.write_all(b"HTTP/1.1 200 Connection established\r\n\r\n")?;
+    Ok(Some(target))
+}
+
+fn port_of(base: &str) -> String {
+    base.rsplit(':').next().unwrap().to_string()
+}
+
+/// `src` run with `--log`: its output and log lines.
+fn logged(src: &str) -> String {
+    run_mode(src, grenat_interp::Scripted::new([]), &[], &[], Mode { log: true, ..Mode::default() }).ok()
+}
+
+/// A program whose credentials hold `url` as `proxy.url`, then `rest`.
+fn with_secret_proxy(url: &str, rest: &str) -> String {
+    format!(
+        "mock_credentials({{\"proxy\" => {{\"url\" => \"{url}\"}}}})\nproxy = Credentials.fetch(:proxy, :url)\n{rest}"
+    )
+}
+
+#[test]
+fn requests_go_through_a_socks5_proxy() {
+    let (base, proxy) = (server(), Proxy::start(None));
+    let port = port_of(&base);
+    let out = run(&format!(
+        "p Http.get(\"{base}/repo\", proxy: \"socks5://{0}\").json[\"stars\"]\np Http.post(\"{base}/echo\", body: \"hi\", proxy: \"socks5://{0}\").json.trust![\"body\"]\n",
+        proxy.address
+    ));
+    assert_eq!(out, "~42\n\"hi\"\n");
+    assert_eq!(proxy.seen(), [format!("socks5 127.0.0.1:{port}"), format!("socks5 127.0.0.1:{port}")]);
+}
+
+#[test]
+fn socks5h_lets_the_proxy_resolve_the_host() {
+    let (base, proxy) = (server(), Proxy::start(None));
+    let port = port_of(&base);
+    // `grenat.test` exists only for the proxy
+    let url = format!("http://grenat.test:{port}/repo");
+    let out = run(&format!("p Http.get(\"{url}\", proxy: \"socks5h://{}\").status\n", proxy.address));
+    assert_eq!(out, "200\n");
+    assert_eq!(proxy.seen(), [format!("socks5 grenat.test:{port}")]);
+    // with socks5, the host is resolved here, where it does not exist
+    let e = run_err(&format!("Http.get(\"{url}\", proxy: \"socks5://{}\")\n", proxy.address), Vec::new());
+    assert_eq!(e.ty, "HttpError");
+    assert_eq!(proxy.seen().len(), 1);
+}
+
+#[test]
+fn credentials_go_to_the_proxy() {
+    let (base, proxy) = (server(), Proxy::start(Some(("ada", "p@ss"))));
+    let out = run(&format!("p Http.get(\"{base}/repo\", proxy: \"socks5://ada:p@ss@{}\").status\n", proxy.address));
+    assert_eq!(out, "200\n");
+    // a secret in the proxy URL, revealed to the proxy only
+    let src = format!(
+        "mock_credentials({{\"proxy\" => {{\"password\" => \"p@ss\"}}}})\npw = Credentials.fetch(:proxy, :password)\np Http.get(\"{base}/repo\", proxy: \"socks5://ada:#{{pw}}@{}\").status\n",
+        proxy.address
+    );
+    assert_eq!(run(&src), "200\n");
+    let seen = proxy.seen();
+    assert_eq!((seen[0].as_str(), seen[2].as_str()), ("auth ada:p@ss", "auth ada:p@ss"));
+}
+
+#[test]
+fn a_wrong_password_is_an_http_error_that_keeps_the_secret() {
+    let (base, proxy) = (server(), Proxy::start(Some(("ada", "right"))));
+    let e =
+        run_err(&format!("Http.get(\"{base}/repo\", proxy: \"socks5://ada:wrong@{}\")\n", proxy.address), Vec::new());
+    assert_eq!(e.ty, "HttpError");
+    assert!(e.message.starts_with(&format!("GET {base}/repo: ")), "{}", e.message);
+    let url = format!("socks5://ada:s3cr3t@{}", proxy.address);
+    let e = run_err(&with_secret_proxy(&url, &format!("Http.get(\"{base}/repo\", proxy: proxy)\n")), Vec::new());
+    assert_eq!(e.ty, "HttpError");
+    assert!(!e.message.contains("s3cr3t"), "{}", e.message);
+    assert_eq!(proxy.seen(), ["auth ada:wrong", "auth ada:s3cr3t"]);
+}
+
+#[test]
+fn an_unreachable_proxy_is_an_http_error() {
+    let base = server();
+    let e = run_err(&format!("Http.get(\"{base}/repo\", proxy: \"socks5://127.0.0.1:1\")\n"), Vec::new());
+    assert_eq!(e.ty, "HttpError");
+    let src =
+        with_secret_proxy("socks5://ada:s3cr3t@127.0.0.1:1", &format!("Http.get(\"{base}/repo\", proxy: proxy)\n"));
+    let e = run_err(&src, Vec::new());
+    assert_eq!(e.ty, "HttpError");
+    assert!(!e.message.contains("s3cr3t"), "{}", e.message);
+}
+
+#[test]
+fn an_invalid_proxy_is_an_argument_error() {
+    let e = run_err("Http.get(\"http://x.io\", proxy: \"gopher://h:70\")\n", Vec::new());
+    assert_eq!(e.ty, "ArgumentError");
+    assert_eq!(
+        e.message,
+        "invalid `Http` option `proxy: \"gopher://h:70\"`: a proxy URL starts with http://, https://, socks4://, socks4a://, socks5://, socks5h://"
+    );
+    let e = run_err("Http.get(\"http://x.io\", proxy: \"socks5://h:port\")\n", Vec::new());
+    assert_eq!(
+        e.message,
+        "invalid `Http` option `proxy: \"socks5://h:port\"`: a proxy URL is `scheme://[user:password@]host[:port]`"
+    );
+    let e = run_err("Http.get(\"http://x.io\", proxy: true)\n", Vec::new());
+    assert_eq!((e.ty.as_str(), e.message.as_str()), ("ArgumentError", "invalid `Http` option `proxy: true`"));
+    // a secret is not named
+    let e =
+        run_err(&with_secret_proxy("bogus://ada:s3cr3t@h", "Http.get(\"http://x.io\", proxy: proxy)\n"), Vec::new());
+    assert_eq!(e.ty, "ArgumentError");
+    assert!(!e.message.contains("s3cr3t") && e.message.contains("[secret]"), "{}", e.message);
+}
+
+#[test]
+fn socks4_and_http_proxies() {
+    let (base, proxy) = (server(), Proxy::start(None));
+    let port = port_of(&base);
+    let out = run(&format!(
+        "p Http.get(\"{base}/repo\", proxy: \"socks4://{0}\").status\np Http.get(\"http://grenat.test:{port}/repo\", proxy: \"socks4a://{0}\").status\np Http.get(\"{base}/echo\", proxy: \"http://ada:pw@{0}\").json.trust![\"method\"]\n",
+        proxy.address
+    ));
+    assert_eq!(out, "200\n200\n\"GET\"\n");
+    let seen = proxy.seen();
+    assert_eq!(
+        seen[..3],
+        [format!("socks4 127.0.0.1:{port}"), format!("socks4 grenat.test:{port}"), format!("connect 127.0.0.1:{port}")]
+    );
+    // `ada:pw` in base64
+    assert_eq!(seen[3].to_ascii_lowercase(), "proxy-authorization: basic ywrhonb3");
+}
+
+#[test]
+fn proxy_false_goes_direct_and_nil_is_the_environment() {
+    let base = server();
+    let out = run(&format!(
+        "p Http.get(\"{base}/repo\", proxy: false).status\np Http.head(\"{base}/repo\", proxy: nil).status\n"
+    ));
+    assert_eq!(out, "200\n200\n");
+}
+
+#[test]
+fn the_log_names_the_proxy_without_its_credentials() {
+    let (base, proxy) = (server(), Proxy::start(Some(("ada", "s3cr3t"))));
+    let out = logged(&format!("Http.get(\"{base}/repo\", proxy: \"socks5://ada:s3cr3t@{}\")\n", proxy.address));
+    assert!(out.contains(&format!("[http] GET {base}/repo via socks5://{} → 200", proxy.address)), "{out}");
+    assert!(!out.contains("s3cr3t"), "{out}");
+    let url = format!("socks5://ada:s3cr3t@{}", proxy.address);
+    let out = logged(&with_secret_proxy(&url, &format!("Http.get(\"{base}/repo\", proxy: proxy)\n")));
+    assert!(out.contains(&format!("[http] GET {base}/repo via [secret] → 200")), "{out}");
+    assert!(!out.contains("s3cr3t") && !out.contains(&proxy.address), "{out}");
+}
+
+#[test]
+fn stubs_answer_whatever_the_proxy() {
+    let results = tests_output(
+        "\
+test \"stubbed behind a proxy\" do
+  mock_http \"GET https://api.github.com/x\", json: {ok: true}
+  assert_equal 200, Http.get(\"https://api.github.com/x\", proxy: \"socks5://127.0.0.1:1\").status
+end
+",
+    );
+    assert_eq!(results[0].1, None);
 }
