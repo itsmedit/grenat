@@ -104,3 +104,28 @@ jobs:
             --tag "ghcr.io/${GITHUB_REPOSITORY,,}:$version" \
             --tag "ghcr.io/${GITHUB_REPOSITORY,,}:latest" \
             --push
+
+  homebrew:
+    needs: release
+    runs-on: ubuntu-24.04
+    env:
+      # a token that may push to itsmedit/homebrew-grenat; without it, the
+      # formula is updated by hand (scripts/homebrew-formula.sh)
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.TAP_TOKEN != ''
+      - name: Update the tap's formula
+        if: env.TAP_TOKEN != ''
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/itsmedit/homebrew-grenat.git" tap
+          scripts/homebrew-formula.sh "$GITHUB_REF_NAME" > tap/Formula/grenat.rb
+          cd tap
+          git config user.name "Mehdi Farsi"
+          git config user.email "mehdifarsi.pro@gmail.com"
+          git add Formula/grenat.rb
+          git commit -m "grenat ${GITHUB_REF_NAME#v}"
+          git push
+      - name: No token
+        if: env.TAP_TOKEN == ''
+        run: echo "::notice::HOMEBREW_TAP_TOKEN is not set; update the tap with scripts/homebrew-formula.sh $GITHUB_REF_NAME"
