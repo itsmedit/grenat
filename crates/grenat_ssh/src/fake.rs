@@ -1,7 +1,7 @@
 //! A real SSH server for tests (this crate's and its users'), in process,
 //! on 127.0.0.1 and a free port, with a generated host key. User `alice`
 //! logs in with the authorized key or the password `s3cret`. A command is
-//! recorded exactly as received, then run with `/bin/sh -c` in a scratch
+//! recorded exactly as received, then run with `/bin/sh -c "exec …"` in a scratch
 //! directory (the server's "home"), which is also the root of its SFTP
 //! subsystem. [`socks::Socks`] is a SOCKS5 proxy to reach it through;
 //! [`relay::Relay`], a connection to it that a test can cut.
@@ -174,8 +174,15 @@ impl russh::server::Handler for Connection {
         let command = String::from_utf8_lossy(data).into_owned();
         self.server.commands.lock().unwrap().push(command.clone());
         session.channel_success(channel)?;
-        let output =
-            std::process::Command::new("/bin/sh").arg("-c").arg(&command).current_dir(&self.server.home).output()?;
+        // `exec`: the command replaces the shell, so that a signal ends it as
+        // it would end a login shell's last command on every system (dash,
+        // Debian's sh, would otherwise report 128 + the signal); what arrives
+        // is always one command, its arguments quoted by the client
+        let output = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(format!("exec {command}"))
+            .current_dir(&self.server.home)
+            .output()?;
         session.data(channel, output.stdout)?;
         session.extended_data(channel, 1, output.stderr)?;
         match output.status.code() {
