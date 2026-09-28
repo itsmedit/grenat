@@ -6,6 +6,8 @@ use syn::ext::IdentExt;
 use syn::spanned::Spanned;
 use syn::{FnArg, GenericArgument, Ident, ItemFn, Pat, PathArguments, ReturnType, Type};
 
+use crate::grenat::check_function_name;
+
 /// A parameter: its name (as Grenat sees it) and Rust type.
 pub(crate) struct Param {
     pub name: String,
@@ -73,7 +75,9 @@ impl Signature {
                 }
             }
         };
-        Ok(Signature { name: sig.ident.unraw().to_string(), ident: sig.ident.clone(), params, returns })
+        let name = sig.ident.unraw().to_string();
+        check_function_name(&name).map_err(|why| syn::Error::new(sig.ident.span(), why))?;
+        Ok(Signature { name, ident: sig.ident.clone(), params, returns })
     }
 }
 
@@ -149,8 +153,26 @@ mod tests {
     }
 
     #[test]
+    fn a_parameter_may_be_named_as_a_keyword() {
+        // a label in Grenat (`f(next: 1)`), unlike a function's name
+        let sig = read(syn::parse_quote!(
+            fn f(next: i64, end: i64) {}
+        ))
+        .unwrap();
+        assert_eq!(sig.params.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["next", "end"]);
+    }
+
+    #[test]
     fn what_cannot_cross_the_boundary_is_refused() {
         let err = |item: ItemFn| read(item).err().expect("refused").to_string();
+        // Grenat's keywords are legal Rust names
+        assert_eq!(
+            err(syn::parse_quote!(
+                fn begin() {}
+            )),
+            "`begin` is a Grenat keyword: Grenat code could not name it"
+        );
+
         assert!(
             err(syn::parse_quote!(
                 fn f(a: &str) {}

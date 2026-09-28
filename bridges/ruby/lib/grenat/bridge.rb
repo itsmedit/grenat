@@ -65,6 +65,18 @@ module Grenat
     # An error type Grenat code can rescue: `SheetError`.
     ERROR_NAME = /\A[A-Z][A-Za-z0-9]*Error\z/.freeze
 
+    # Grenat's keywords: never a function's name (a parameter or a field may be named `end`).
+    KEYWORDS = %w[
+      abstract agent and begin break case class def do else elsif end ensure enum false if in
+      module next nil not or prompt rescue return self struct supervisor then tool true unless
+      until when while workflow
+    ].freeze
+
+    # The effects Grenat knows, by their path (`net("api.x.com")` is `net`).
+    EFFECTS = %w[
+      llm net fs fs.read fs.write db db.read db.write mcp shell ssh human time random env
+    ].freeze
+
     @functions = {}
     @structs = []
 
@@ -76,11 +88,16 @@ module Grenat
       def export(name, params: {}, returns: :nil, effects: [], pure: false, doc: nil, error: "BridgeError", &block)
         name = name.to_s
         raise ArgumentError, "`#{name}` is not a Grenat function name" unless NAME.match?(name)
+        raise ArgumentError, "`#{name}` is a Grenat keyword, not a function name" if KEYWORDS.include?(name)
         raise ArgumentError, "`#{name}` needs a block: the function itself" unless block
         raise ArgumentError, "`#{name}` is pure, and has effects: a pure function has none" if pure && !effects.empty?
         unless ERROR_NAME.match?(error.to_s)
           raise ArgumentError, "`#{name}` raises `#{error}`: an error type is a capitalized name ending in `Error`"
         end
+
+        effects = effects.map(&:to_s)
+        unknown = effects.find { |effect| !EFFECTS.include?(effect.split("(").first) }
+        raise ArgumentError, "`#{name}` declares the effect `#{unknown}`: not a Grenat effect" if unknown
 
         params = params.to_h { |param, type| [param.to_sym, grenat_type(type)] }
         @functions[name] = Function.new(

@@ -17,16 +17,10 @@ use crate::manifest::Manifest;
 use crate::trust::{Foreign, Trust};
 
 /// Installs the bridge of the package in `dir` (named `name`), if it has
-/// one: its manifest and declarations, checked to parse.
+/// one: its manifest and declarations (written only once they parse).
 pub fn install(name: &str, dir: &Path) -> Result<Option<Installed>, String> {
     let Some(spec) = Manifest::load(dir)?.bridge else { return Ok(None) };
     let installed = install_bridge(name, dir, &spec).map_err(|e| format!("facet `{name}`: bridge: {e}"))?;
-    let declarations = Layout::new(dir).declarations();
-    let text =
-        std::fs::read_to_string(&declarations).map_err(|e| format!("cannot read {}: {e}", declarations.display()))?;
-    if let Some(d) = grenat_parser::parse(&text).diagnostics.first() {
-        return Err(format!("facet `{name}`: the declarations of its bridge do not parse: {}", d.message));
-    }
     Ok(Some(installed))
 }
 

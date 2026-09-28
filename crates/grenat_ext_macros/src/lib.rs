@@ -13,6 +13,7 @@ mod attrs;
 mod derive;
 mod docs;
 mod export;
+mod grenat;
 mod signature;
 
 use proc_macro::TokenStream;

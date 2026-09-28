@@ -39,6 +39,18 @@ PROTOCOL = 1
 _NAME = re.compile(r"\A[a-z_][a-z0-9_]*\Z")
 # An error type Grenat code can rescue: `SheetError`.
 _ERROR_NAME = re.compile(r"\A[A-Z][A-Za-z0-9]*Error\Z")
+# Grenat's keywords: never a function's name (a parameter or a field may be named `end`).
+KEYWORDS = frozenset((
+    "abstract", "agent", "and", "begin", "break", "case", "class", "def", "do", "else", "elsif",
+    "end", "ensure", "enum", "false", "if", "in", "module", "next", "nil", "not", "or", "prompt",
+    "rescue", "return", "self", "struct", "supervisor", "then", "tool", "true", "unless", "until",
+    "when", "while", "workflow",
+))
+# The effects Grenat knows, by their path (`net("api.x.com")` is `net`).
+EFFECTS = frozenset((
+    "llm", "net", "fs", "fs.read", "fs.write", "db", "db.read", "db.write", "mcp", "shell", "ssh",
+    "human", "time", "random", "env",
+))
 _SCALARS = {str: "String", int: "Int", float: "Float", bool: "Bool", type(None): "Nil"}
 
 _functions = {}
@@ -101,6 +113,11 @@ def export(function=None, *, name=None, params=None, returns=None, effects=(), p
         exported = name or function.__name__
         if not _NAME.match(exported):
             raise ValueError("`%s` is not a Grenat function name" % exported)
+        if exported in KEYWORDS:
+            raise ValueError("`%s` is a Grenat keyword, not a function name" % exported)
+        unknown = [str(e) for e in effects if str(e).split("(")[0] not in EFFECTS]
+        if unknown:
+            raise ValueError("`%s` declares the effect `%s`: not a Grenat effect" % (exported, unknown[0]))
         if pure and effects:
             raise ValueError("`%s` is pure, and has effects: a pure function has none" % exported)
         if not _ERROR_NAME.match(str(error)):

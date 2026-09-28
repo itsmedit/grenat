@@ -6,10 +6,7 @@ use grenat_ast::{Diagnostic, Expr, ExprKind, FnDef, FnKind, Span, StrSeg};
 
 use crate::*;
 
-pub(crate) const KNOWN_EFFECTS: &[&str] = &[
-    "llm", "net", "fs", "fs.read", "fs.write", "db", "db.read", "db.write", "mcp", "shell", "ssh", "human", "time",
-    "random", "env",
-];
+pub(crate) use grenat_ast::KNOWN_EFFECTS;
 
 /// Effects whose results differ from one run to the next: in a workflow,
 /// they must be inside a `step`, whose result is journaled.

@@ -12,10 +12,12 @@ rust-version.workspace = true
 fixture = []
 
 [dependencies]
+grenat_ast.workspace = true
 grenat_ext.workspace = true
+grenat_lexer.workspace = true
+grenat_parser.workspace = true
 serde_json.workspace = true
 libloading = "0.8"
 
 [dev-dependencies]
 grenat_native = { path = ".", features = ["fixture"] }
-grenat_parser.workspace = true

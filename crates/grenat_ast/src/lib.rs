@@ -110,6 +110,13 @@ pub struct Param {
     pub span: Span,
 }
 
+/// The effects a function may declare (`uses fs.read, net("api.x.com")`),
+/// by their path: those the checker and the runtime know.
+pub const KNOWN_EFFECTS: &[&str] = &[
+    "llm", "net", "fs", "fs.read", "fs.write", "db", "db.read", "db.write", "mcp", "shell", "ssh", "human", "time",
+    "random", "env",
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Effect {
     /// `fs.read` → `["fs", "read"]`

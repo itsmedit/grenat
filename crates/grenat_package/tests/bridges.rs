@@ -139,6 +139,37 @@ fn a_server_that_cannot_describe_itself_fails_the_install() {
 }
 
 #[test]
+fn a_manifest_grenat_cannot_declare_fails_the_install_and_writes_nothing() {
+    let dir = temp_dir("keyword");
+    let facet = dir.join("bad");
+    let function = |name: &str, effects: &str| {
+        format!(
+            r#"{{"name":"{name}","symbol":"{name}","doc":null,"params":[],"returns":"Int","effects":[{effects}],"pure":false,"error":"BridgeError"}}"#
+        )
+    };
+    let app = dir.join("app");
+    write(&app.join("grenat.toml"), "[package]\nname = \"app\"\n");
+    write(&app.join("Facetfile"), "facet \"bad\", path: \"../bad\", bridge: true\n");
+    for (function, why) in [
+        (function("if", ""), "the manifest declares a function named `if`: a Grenat keyword, not a name"),
+        (function("g", r#""bogus""#), "`g` has the effect `bogus`: not a Grenat effect"),
+    ] {
+        let answer =
+            format!(r#"{{"jsonrpc":"2.0","id":1,"result":{{"abi":1,"functions":[{function}],"structs":[]}}}}"#);
+        let server = format!("read line; echo '{answer}'");
+        let toml = format!("[package]\nname = \"bad\"\n[bridge]\ncommand = [\"sh\", \"-c\", {server:?}]\n");
+        write(&facet.join("grenat.toml"), &toml);
+        write(&facet.join("src/lib.grn"), "def x = 1\n");
+        let e = install(&app, false).unwrap_err();
+        assert!(e.starts_with("facet `bad`: bridge: "), "{e}");
+        assert!(e.contains(why), "{e}");
+        // no declarations left behind to break every program
+        let layout = Layout::new(&facet);
+        assert!(!layout.declarations().exists() && !layout.manifest().exists());
+    }
+}
+
+#[test]
 fn the_bridge_section_of_a_manifest() {
     let parse = |text: &str| Manifest::parse(&format!("[package]\nname = \"x\"\n{text}"));
     let spec = parse("[bridge]\ncommand = [\"ruby\", \"bridge/server.rb\"]\n").unwrap().bridge.unwrap();

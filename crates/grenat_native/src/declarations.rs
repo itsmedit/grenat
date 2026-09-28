@@ -9,11 +9,15 @@
 //! ```
 //!
 //! A function's result is untrusted (`~T`) unless it is `pure`. What the
-//! manifest says is checked before it becomes code: names, types and
-//! effects have the shapes Grenat gives them, so that nothing else can
-//! slip into the file.
+//! manifest says is checked before it becomes code: names (never a
+//! keyword), types and effects (known ones) have the shapes Grenat gives
+//! them, so that nothing else can slip into the file; and the file is
+//! parsed before it is given, so that an install never leaves one behind
+//! that breaks every program.
 
+use grenat_ast::KNOWN_EFFECTS;
 use grenat_ext::manifest::{Field, Function, Manifest, Struct};
+use grenat_lexer::Keyword;
 
 /// The declarations of the library of `facet`, described by `manifest`.
 pub fn declarations(facet: &str, manifest: &Manifest) -> Result<String, String> {
@@ -36,6 +40,9 @@ pub fn declarations_under(header: &str, manifest: &Manifest) -> Result<String, S
     for f in &manifest.functions {
         out.push('\n');
         declare_function(&mut out, f)?;
+    }
+    if let Some(d) = grenat_parser::parse(&out).diagnostics.first() {
+        return Err(format!("its declarations do not parse: {}", d.message));
     }
     Ok(out)
 }
@@ -75,6 +82,10 @@ pub fn signature(f: &Function) -> Result<String, String> {
     if !is_name(&f.name) {
         return Err(format!("the manifest declares a function named `{}`: not a Grenat name", f.name));
     }
+    // a parameter or a field may be named `end` (a label, or after a `.`), a function may not
+    if Keyword::lookup(&f.name).is_some() {
+        return Err(format!("the manifest declares a function named `{}`: a Grenat keyword, not a name", f.name));
+    }
     let mut out = format!("native def {}", f.name);
     if !f.params.is_empty() {
         let params: Vec<String> = f.params.iter().map(|p| typed(p, &f.name)).collect::<Result<_, _>>()?;
@@ -91,8 +102,8 @@ pub fn signature(f: &Function) -> Result<String, String> {
     if f.pure && !f.effects.is_empty() {
         return Err(format!("`{}` is pure, and has effects: a pure function has none", f.name));
     }
-    if let Some(bad) = f.effects.iter().find(|e| !is_effect(e)) {
-        return Err(format!("`{}` has the effect `{bad}`: not a Grenat effect", f.name));
+    for effect in &f.effects {
+        check_effect(effect).map_err(|why| format!("`{}` has the effect `{effect}`: {why}", f.name))?;
     }
     if !f.effects.is_empty() {
         out.push_str(&format!(" uses {}", f.effects.join(", ")));
@@ -177,7 +188,21 @@ fn parse_type(rest: &mut &str) -> bool {
     true
 }
 
-/// `fs.read`, or `net("api.x.com")`.
+/// Why `effect` is not a Grenat effect, if it is not: an effect the
+/// checker knows (`fs.read`), with a restriction or not (`net("api.x.com")`).
+fn check_effect(effect: &str) -> Result<(), String> {
+    if !is_effect(effect) {
+        return Err("not a Grenat effect".into());
+    }
+    let path = effect.split('(').next().unwrap_or_default();
+    if KNOWN_EFFECTS.contains(&path) {
+        Ok(())
+    } else {
+        Err(format!("not a Grenat effect (they are {})", KNOWN_EFFECTS.join(", ")))
+    }
+}
+
+/// The shape of an effect: `fs.read`, or `net("api.x.com")`.
 fn is_effect(effect: &str) -> bool {
     let (path, restriction) = match effect.split_once('(') {
         Some((path, rest)) => (path, Some(rest)),
@@ -266,6 +291,22 @@ native def tick uses time, net(\"api.x.com\")
         assert!(err(function("f", vec![], "Int", &["fs read"], false)).contains("not a Grenat effect"));
         assert!(err(function("f", vec![], "Int", &["net(\"a\")\nx"], false)).contains("not a Grenat effect"));
         assert!(err(function("f", vec![], "Int", &["net"], true)).contains("a pure function has none"));
+        // a keyword, or an effect Grenat does not know, would break every program that loads the file
+        for keyword in ["if", "end", "begin", "unless", "self", "def"] {
+            assert_eq!(
+                err(function(keyword, vec![], "Int", &[], true)),
+                format!("the manifest declares a function named `{keyword}`: a Grenat keyword, not a name")
+            );
+        }
+        assert_eq!(
+            err(function("g", vec![], "String", &["bogus"], false)),
+            format!("`g` has the effect `bogus`: not a Grenat effect (they are {})", KNOWN_EFFECTS.join(", "))
+        );
+        assert!(err(function("g", vec![], "Int", &["fs.delete(\"x\")"], false)).contains("not a Grenat effect"));
+        // a parameter or a field named as a keyword is a label: it parses
+        let next = Struct { name: "Link".into(), doc: None, fields: vec![field("next", "Int")] };
+        let class = function("f", vec![field("class", "Link")], "Int", &[], true);
+        assert!(declarations("x", &manifest(vec![class], vec![next])).is_ok());
         let refused = Function { error: "Refused".into(), ..function("f", vec![], "Int", &[], true) };
         assert_eq!(
             err(refused),

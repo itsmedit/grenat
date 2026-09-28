@@ -20,5 +20,7 @@ serde_json.workspace = true
 libc = "0.2"
 
 [dev-dependencies]
+grenat_ast.workspace = true
 grenat_bridge = { path = ".", features = ["fixture"] }
+grenat_lexer.workspace = true
 grenat_parser.workspace = true

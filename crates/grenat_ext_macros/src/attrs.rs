@@ -6,6 +6,8 @@ use syn::LitStr;
 use syn::meta::ParseNestedMeta;
 use syn::parse::Parser;
 
+use crate::grenat::{EFFECTS, is_known_effect};
+
 /// The error type of an `Err`, unless `error = "…"` names another.
 pub(crate) const DEFAULT_ERROR: &str = "NativeError";
 
@@ -65,6 +67,12 @@ fn effects(text: &LitStr) -> syn::Result<Vec<String>> {
                 format!("`{effect}` is not an effect: write them as Grenat does, `fs.read, net(\"api.x.com\")`"),
             ));
         }
+        if !is_known_effect(effect) {
+            return Err(syn::Error::new(
+                text.span(),
+                format!("`{effect}` is not a Grenat effect: they are {}", EFFECTS.join(", ")),
+            ));
+        }
         effects.push(effect.to_string());
     }
     Ok(effects)
@@ -113,6 +121,7 @@ mod tests {
         assert!(err(quote!(pure, effects = "fs.read")).contains("a `pure` function has no effects"));
         assert!(err(quote!(effects = "fs read")).contains("`fs read` is not an effect"));
         assert!(err(quote!(effects = "net(api)")).contains("is not an effect"));
+        assert!(err(quote!(effects = "fs.read, bogus")).contains("`bogus` is not a Grenat effect: they are llm, net"));
         assert!(err(quote!(error = "oops")).contains("capitalized"));
         assert!(err(quote!(error = "Sheet")).contains("ending in `Error`"));
         assert!(err(quote!(fast)).contains("unknown option"));

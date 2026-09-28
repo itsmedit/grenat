@@ -31,6 +31,9 @@ macro_rules! keywords {
         pub enum Keyword { $($variant,)* }
 
         impl Keyword {
+            /// Every keyword: a name that is never an identifier.
+            pub const ALL: &'static [Keyword] = &[$(Keyword::$variant,)*];
+
             pub fn lookup(s: &str) -> Option<Keyword> {
                 match s { $($text => Some(Keyword::$variant),)* _ => None }
             }

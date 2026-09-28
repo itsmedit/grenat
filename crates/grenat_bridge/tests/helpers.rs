@@ -195,6 +195,29 @@ Grenat::Bridge.run
     }
 }
 
+#[test]
+fn the_helpers_know_grenats_keywords_and_effects() {
+    let mut keywords: Vec<&str> = grenat_lexer::Keyword::ALL.iter().map(|k| k.as_str()).collect();
+    keywords.sort_unstable();
+    let mut effects = grenat_ast::KNOWN_EFFECTS.to_vec();
+    effects.sort_unstable();
+    let expected = format!("{}\n{}\n", keywords.join(" "), effects.join(" "));
+    for (facet, script) in [
+        (
+            RUBY,
+            "require 'grenat/bridge'\nputs Grenat::Bridge::KEYWORDS.sort.join(' '), Grenat::Bridge::EFFECTS.sort.join(' ')",
+        ),
+        (PYTHON, "import grenat_bridge as g\nprint(' '.join(sorted(g.KEYWORDS)))\nprint(' '.join(sorted(g.EFFECTS)))"),
+    ] {
+        if fixture::missing(facet).is_some() {
+            continue;
+        }
+        let (program, flag) = if facet == RUBY { ("ruby", "-e") } else { ("python3", "-c") };
+        let out = Command::new(program).args([flag, script]).envs(helpers::env(&lib())).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout), expected, "{facet}: {}", String::from_utf8_lossy(&out.stderr));
+    }
+}
+
 /// The error a server raises while it declares its functions.
 fn refused(facet: &str, script: &str) -> Option<String> {
     if fixture::missing(facet).is_some() {
@@ -217,6 +240,12 @@ fn what_cannot_cross_is_refused_when_exported() {
         ("Grenat::Bridge.export(:f, returns: {int: :int}) { 1 }", "a hash type has string keys"),
         ("Grenat::Bridge.export(:f, returns: [:int, :int]) { 1 }", "an array type has one element type"),
         ("Grenat::Bridge.export(:f, error: \"Refused\") { 1 }", "`f` raises `Refused`: an error type is"),
+        ("Grenat::Bridge.export(:if, params: {x: :string}) { 1 }", "`if` is a Grenat keyword, not a function name"),
+        (
+            "Grenat::Bridge.export(:g, effects: [\"bogus\"]) { 1 }",
+            "`g` declares the effect `bogus`: not a Grenat effect",
+        ),
+        ("Grenat::Bridge.export(:g, effects: [\"fs.delete\"]) { 1 }", "declares the effect `fs.delete`"),
     ] {
         if let Some(stderr) = ruby(code) {
             assert!(stderr.contains(message), "{code}: {stderr}");
@@ -231,6 +260,12 @@ fn what_cannot_cross_is_refused_when_exported() {
         ("@export\ndef f() -> bytes: return b''", "unknown type"),
         ("@export\ndef f() -> Dict[int, int]: return {}", "a dict type has string keys"),
         ("@export(error='Refused')\ndef f() -> int: return 1", "`f` raises `Refused`: an error type is"),
+        ("@export(name='unless')\ndef f() -> int: return 1", "`unless` is a Grenat keyword, not a function name"),
+        ("@export\ndef begin() -> int: return 1", "`begin` is a Grenat keyword, not a function name"),
+        (
+            "@export(effects=['bogus'])\ndef g() -> int: return 1",
+            "`g` declares the effect `bogus`: not a Grenat effect",
+        ),
     ] {
         if let Some(stderr) = python(code) {
             assert!(stderr.contains(message), "{code}: {stderr}");

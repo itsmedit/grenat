@@ -1211,7 +1211,9 @@ dependencies = [
 name = "grenat_bridge"
 version = "0.1.2"
 dependencies = [
+ "grenat_ast",
  "grenat_bridge",
+ "grenat_lexer",
  "grenat_native",
  "grenat_parser",
  "grenat_sandbox",
@@ -1315,6 +1317,8 @@ dependencies = [
 name = "grenat_ext_macros"
 version = "0.1.2"
 dependencies = [
+ "grenat_ast",
+ "grenat_lexer",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -1428,7 +1432,9 @@ dependencies = [
 name = "grenat_native"
 version = "0.1.2"
 dependencies = [
+ "grenat_ast",
  "grenat_ext",
+ "grenat_lexer",
  "grenat_native",
  "grenat_parser",
  "libloading",

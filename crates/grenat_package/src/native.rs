@@ -17,16 +17,10 @@ use crate::manifest::Manifest;
 use crate::trust::{Foreign, Trust};
 
 /// Builds the native part of the package in `dir` (named `name`), if it has
-/// one: its library, manifest and declarations, checked to parse.
+/// one: its library, manifest and declarations (written only once they parse).
 pub fn build(name: &str, dir: &Path) -> Result<Option<Installed>, String> {
     let Some(native) = Manifest::load(dir)?.native else { return Ok(None) };
     let installed = install(name, dir, &native.path, None).map_err(|e| format!("facet `{name}`: native code: {e}"))?;
-    let declarations = Layout::new(name, dir).declarations();
-    let text =
-        std::fs::read_to_string(&declarations).map_err(|e| format!("cannot read {}: {e}", declarations.display()))?;
-    if let Some(d) = grenat_parser::parse(&text).diagnostics.first() {
-        return Err(format!("facet `{name}`: the declarations of its library do not parse: {}", d.message));
-    }
     Ok(Some(installed))
 }
 
