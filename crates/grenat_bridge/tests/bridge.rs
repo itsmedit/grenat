@@ -122,7 +122,7 @@ fn errors_name_their_grenat_type() {
         other => panic!("`{name}`: {other:?}"),
     };
     if let Some(texts) = registry(RUBY) {
-        assert_eq!(raised(&texts, "refuse", json!(["no"])), ("Refused".into(), "no".into()));
+        assert_eq!(raised(&texts, "refuse", json!(["no"])), ("RefusalError".into(), "no".into()));
         let (ty, message) = raised(&texts, "read_text", json!(["/nowhere/at/all"]));
         assert_eq!(ty, "TextError");
         assert!(message.contains("/nowhere/at/all"), "{message}");
@@ -132,7 +132,7 @@ fn errors_name_their_grenat_type() {
         assert_eq!(returned(&texts, "add", json!([1, 1])), json!(2));
     }
     if let Some(numbers) = registry(PYTHON) {
-        assert_eq!(raised(&numbers, "odd", json!([2])), ("NotOdd".into(), "2 is even".into()));
+        assert_eq!(raised(&numbers, "odd", json!([2])), ("BridgeError".into(), "2 is even".into()));
         let (ty, message) = raised(&numbers, "ratio", json!([1.0, 0.0]));
         assert_eq!(ty, "MathError");
         assert!(message.contains("division by zero"), "{message}");

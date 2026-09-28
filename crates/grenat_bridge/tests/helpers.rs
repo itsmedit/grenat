@@ -216,6 +216,7 @@ fn what_cannot_cross_is_refused_when_exported() {
         ("Grenat::Bridge.export(:f, returns: :text) { 1 }", "unknown type `:text`"),
         ("Grenat::Bridge.export(:f, returns: {int: :int}) { 1 }", "a hash type has string keys"),
         ("Grenat::Bridge.export(:f, returns: [:int, :int]) { 1 }", "an array type has one element type"),
+        ("Grenat::Bridge.export(:f, error: \"Refused\") { 1 }", "`f` raises `Refused`: an error type is"),
     ] {
         if let Some(stderr) = ruby(code) {
             assert!(stderr.contains(message), "{code}: {stderr}");
@@ -229,6 +230,7 @@ fn what_cannot_cross_is_refused_when_exported() {
         ("@export\ndef f(x) -> int: return 1", "give the type of x"),
         ("@export\ndef f() -> bytes: return b''", "unknown type"),
         ("@export\ndef f() -> Dict[int, int]: return {}", "a dict type has string keys"),
+        ("@export(error='Refused')\ndef f() -> int: return 1", "`f` raises `Refused`: an error type is"),
     ] {
         if let Some(stderr) = python(code) {
             assert!(stderr.contains(message), "{code}: {stderr}");

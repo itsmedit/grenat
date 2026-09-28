@@ -37,6 +37,8 @@ import typing
 PROTOCOL = 1
 
 _NAME = re.compile(r"\A[a-z_][a-z0-9_]*\Z")
+# An error type Grenat code can rescue: `SheetError`.
+_ERROR_NAME = re.compile(r"\A[A-Z][A-Za-z0-9]*Error\Z")
 _SCALARS = {str: "String", int: "Int", float: "Float", bool: "Bool", type(None): "Nil"}
 
 _functions = {}
@@ -45,8 +47,9 @@ _structs = []
 
 class BridgeError(Exception):
     """An error a function raises to Grenat with a type of its choosing:
-    `raise BridgeError("no such sheet", type="SheetError")`. Any other
-    exception raises the function's `error=` type."""
+    `raise BridgeError("no such sheet", type="SheetError")` (a name ending
+    in `Error`, else Grenat raises a `BridgeError`). Any other exception
+    raises the function's `error=` type."""
 
     def __init__(self, message, type=None):
         super().__init__(message)
@@ -100,6 +103,8 @@ def export(function=None, *, name=None, params=None, returns=None, effects=(), p
             raise ValueError("`%s` is not a Grenat function name" % exported)
         if pure and effects:
             raise ValueError("`%s` is pure, and has effects: a pure function has none" % exported)
+        if not _ERROR_NAME.match(str(error)):
+            raise ValueError("`%s` raises `%s`: an error type is a capitalized name ending in `Error`" % (exported, error))
         hints = _annotations(function)
         if params is None:
             names = list(inspect.signature(function).parameters)

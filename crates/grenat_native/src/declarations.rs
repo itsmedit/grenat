@@ -56,6 +56,12 @@ fn declare_struct(out: &mut String, s: &Struct) -> Result<(), String> {
 
 fn declare_function(out: &mut String, f: &Function) -> Result<(), String> {
     let line = signature(f)?;
+    if !is_error_name(&f.error) {
+        return Err(format!(
+            "`{}` raises `{}`: an error type is a capitalized name ending in `Error`, which Grenat code can rescue",
+            f.name, f.error
+        ));
+    }
     doc(out, f.doc.as_deref(), "");
     out.push_str(&line);
     out.push('\n');
@@ -129,6 +135,12 @@ fn is_name(name: &str) -> bool {
 /// A Grenat type name: `Cell`, `SheetError`.
 pub fn is_type_name(name: &str) -> bool {
     name.starts_with(|c: char| c.is_ascii_uppercase()) && name.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
+/// A Grenat error type a facet may raise: `SheetError` (Grenat code rescues
+/// only a type it knows, and it knows every name ending in `Error`).
+pub fn is_error_name(name: &str) -> bool {
+    is_type_name(name) && name.ends_with("Error")
 }
 
 /// A Grenat type: `Int`, `Cell?`, `Array(Array(String))`, `Hash(String, Float)`.
@@ -254,6 +266,12 @@ native def tick uses time, net(\"api.x.com\")
         assert!(err(function("f", vec![], "Int", &["fs read"], false)).contains("not a Grenat effect"));
         assert!(err(function("f", vec![], "Int", &["net(\"a\")\nx"], false)).contains("not a Grenat effect"));
         assert!(err(function("f", vec![], "Int", &["net"], true)).contains("a pure function has none"));
+        let refused = Function { error: "Refused".into(), ..function("f", vec![], "Int", &[], true) };
+        assert_eq!(
+            err(refused),
+            "`f` raises `Refused`: an error type is a capitalized name ending in `Error`, which Grenat code can rescue"
+        );
+        assert!(is_error_name("SheetError") && !is_error_name("Error\nx") && !is_error_name("sheetError"));
         let bad_struct = Struct { name: "cell".into(), doc: None, fields: vec![] };
         assert!(declarations("x", &manifest(vec![], vec![bad_struct])).unwrap_err().contains("not a Grenat type name"));
     }

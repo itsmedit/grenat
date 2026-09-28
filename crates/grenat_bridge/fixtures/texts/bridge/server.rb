@@ -27,7 +27,7 @@ Bridge.export(:read_text, params: {path: :string}, returns: :string, effects: ["
 end
 
 Bridge.export(:refuse, params: {reason: :string}) do |reason:|
-  raise Grenat::Bridge::Error.new(reason, type: "Refused")
+  raise Grenat::Bridge::Error.new(reason, type: "RefusalError")
 end
 
 Bridge.export(:greeting, returns: "String?") { ENV["TEXTS_GREETING"] }

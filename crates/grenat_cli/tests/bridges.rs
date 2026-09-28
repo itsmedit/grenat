@@ -68,6 +68,16 @@ fn an_application_runs_and_checks_its_bridge_functions() {
     let err = text(&out.stderr);
     assert!(err.contains("[bridge] texts: chatter\n") && err.contains("[bridge] texts: warned x\n"), "{err}");
 
+    // an error the facet names is rescued by name
+    write(
+        &app.join("src/rescue.grn"),
+        "require \"texts\"\n\ndef main\n  begin\n    refuse(\"no\")\n  rescue RefusalError => e\n    puts \"rescued #{e.message}\"\n  end\nend\n",
+    );
+    let out = grenat_in(&app, &["check", "src/rescue.grn"], &[]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let out = grenat_in(&app, &["run", "src/rescue.grn"], &[]);
+    assert_eq!(text(&out.stdout), "rescued no\n", "{}", text(&out.stderr));
+
     // an effect not declared: a checker error, before running
     write(&app.join("src/bad.grn"), "require \"texts\"\n\ndef main uses net\n  read_text(\"x\")\nend\n");
     let out = grenat_in(&app, &["check", "src/bad.grn"], &[]);

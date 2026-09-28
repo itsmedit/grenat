@@ -41,6 +41,7 @@ def ratio(a: float, b: float) -> float:
 
 @export
 def odd(n: int) -> int:
+    # not an error type's name: Grenat raises a BridgeError
     if n % 2 == 0:
         raise BridgeError("%d is even" % n, type="NotOdd")
     return n

@@ -31,8 +31,9 @@ module Grenat
     PROTOCOL = 1
 
     # An error a function raises to Grenat with a type of its choosing:
-    # `raise Grenat::Bridge::Error.new("no such sheet", type: "SheetError")`.
-    # Any other exception raises the function's `error:` type.
+    # `raise Grenat::Bridge::Error.new("no such sheet", type: "SheetError")`
+    # (a name ending in `Error`, else Grenat raises a `BridgeError`). Any
+    # other exception raises the function's `error:` type.
     class Error < StandardError
       attr_reader :type
 
@@ -61,6 +62,9 @@ module Grenat
 
     NAME = /\A[a-z_][a-z0-9_]*\z/.freeze
 
+    # An error type Grenat code can rescue: `SheetError`.
+    ERROR_NAME = /\A[A-Z][A-Za-z0-9]*Error\z/.freeze
+
     @functions = {}
     @structs = []
 
@@ -74,6 +78,9 @@ module Grenat
         raise ArgumentError, "`#{name}` is not a Grenat function name" unless NAME.match?(name)
         raise ArgumentError, "`#{name}` needs a block: the function itself" unless block
         raise ArgumentError, "`#{name}` is pure, and has effects: a pure function has none" if pure && !effects.empty?
+        unless ERROR_NAME.match?(error.to_s)
+          raise ArgumentError, "`#{name}` raises `#{error}`: an error type is a capitalized name ending in `Error`"
+        end
 
         params = params.to_h { |param, type| [param.to_sym, grenat_type(type)] }
         @functions[name] = Function.new(

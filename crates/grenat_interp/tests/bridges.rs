@@ -180,7 +180,7 @@ fn a_declaration_written_by_hand_cannot_drop_effects_or_taint() {
 #[test]
 fn errors_are_grenat_errors() {
     if let Some(e) = error(RUBY, "refuse(\"not today\")\n") {
-        assert_eq!((e.ty.as_str(), e.message.as_str()), ("Refused", "not today"));
+        assert_eq!((e.ty.as_str(), e.message.as_str()), ("RefusalError", "not today"));
         assert_eq!(e.trace[0].0, "refuse");
         assert_eq!(error(RUBY, "read_text(\"/nowhere/at/all\")\n").unwrap().ty, "TextError");
         let out = ok(
@@ -188,7 +188,7 @@ fn errors_are_grenat_errors() {
             "\
 begin
   refuse(\"no\")
-rescue Refused => e
+rescue RefusalError => e
   puts \"refused: #{e.message}\"
 end
 puts add(1, 1)
@@ -199,7 +199,7 @@ puts add(1, 1)
     if let Some(e) = error(PYTHON, "ratio(1.0, 0.0)\n") {
         assert_eq!(e.ty, "MathError");
         assert!(e.message.contains("division by zero"), "{}", e.message);
-        assert_eq!(error(PYTHON, "odd(2)\n").unwrap().ty, "NotOdd");
+        assert_eq!(error(PYTHON, "odd(2)\n").unwrap().ty, "BridgeError");
     }
 }
 

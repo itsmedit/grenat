@@ -12,7 +12,7 @@
 //! `describe` answers the manifest of a native library (`grenat_ext`), its
 //! `abi` being this protocol's version; `call` runs a function with its
 //! arguments (a JSON array, in order). An error raises the Grenat error its
-//! `data.type` names, else a `BridgeError`.
+//! `data.type` names if it ends in `Error`, else a `BridgeError`.
 
 use serde_json::{Value as Json, json};
 
@@ -52,11 +52,12 @@ pub struct RpcError {
 }
 
 impl RpcError {
-    /// The Grenat error to raise: the one the server named, if it is a type
-    /// name, else a `BridgeError`.
+    /// The Grenat error to raise: the one the server named, if it is an
+    /// error type's name (`SheetError`, which Grenat code can rescue), else
+    /// a `BridgeError`.
     pub fn grenat_type(&self) -> String {
         match &self.ty {
-            Some(ty) if grenat_native::declarations::is_type_name(ty) => ty.clone(),
+            Some(ty) if grenat_native::declarations::is_error_name(ty) => ty.clone(),
             _ => BRIDGE_ERROR.to_string(),
         }
     }
@@ -114,8 +115,10 @@ mod tests {
         };
         assert_eq!(e.grenat_type(), "BridgeError");
         // a type that is not a Grenat type name is not raised as such
-        let e = RpcError { code: 0, message: String::new(), ty: Some("Error\nraise".into()) };
-        assert_eq!(e.grenat_type(), "BridgeError");
+        for ty in ["Error\nraise", "Refused", "sheetError"] {
+            let e = RpcError { code: 0, message: String::new(), ty: Some(ty.into()) };
+            assert_eq!(e.grenat_type(), "BridgeError", "{ty}");
+        }
         for other in ["hello", "{}", r#"{"id":1,"result":1}"#, r#"{"jsonrpc":"2.0","id":"x","result":1}"#] {
             assert_eq!(response(other), None, "{other}");
         }
