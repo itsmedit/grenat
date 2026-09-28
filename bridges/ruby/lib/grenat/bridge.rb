@@ -145,8 +145,10 @@ module Grenat
 
       # Serves requests until Grenat closes standard input.
       def run
-        input = $stdin.dup
-        output = $stdout.dup
+        # the protocol is UTF-8 whatever the locale: a server often runs without one (US-ASCII then)
+        Encoding.default_external = Encoding::UTF_8
+        input = $stdin.dup.set_encoding(Encoding::UTF_8)
+        output = $stdout.dup.set_encoding(Encoding::UTF_8)
         # standard output is the protocol's: what the functions print goes to standard error
         $stdin.reopen(File::NULL)
         $stdout.reopen($stderr)

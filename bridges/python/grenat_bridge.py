@@ -222,7 +222,11 @@ def _failure(request_id, error):
 
 def _encode(response):
     try:
-        return json.dumps(response, allow_nan=False)
+        text = json.dumps(response, allow_nan=False, ensure_ascii=False)
+        # a lone surrogate (a file name that is not UTF-8, from os.listdir) is not JSON Grenat reads:
+        # refused here (UnicodeEncodeError), rather than a response Grenat drops
+        text.encode("utf-8")
+        return text
     except (TypeError, ValueError) as e:
         failure = BridgeError("the result cannot be sent as JSON: %s" % e, type="BridgeError")
         return json.dumps(_failure(response.get("id"), failure))

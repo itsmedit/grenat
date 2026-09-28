@@ -145,6 +145,56 @@ fn the_python_helper_speaks_json_rpc() {
     check(PYTHON, PYTHON_SERVER);
 }
 
+#[test]
+fn text_is_utf8_without_a_locale() {
+    // `serve` gives the server no `LANG`: Ruby's default encoding is then US-ASCII
+    let ruby = r#"
+require "grenat/bridge"
+Grenat::Bridge.export(:shout, params: {text: :string}, returns: :string) { |text:| warn "got #{text}"; text.upcase }
+Grenat::Bridge.run
+"#;
+    let python = r#"
+from grenat_bridge import export, run
+@export
+def shout(text: str) -> str:
+    print("got " + text)
+    return text.upper()
+run()
+"#;
+    let request = r#"{"jsonrpc":"2.0","id":1,"method":"call","params":{"name":"shout","args":["hé 你好"]}}"#;
+    for (facet, script) in [(RUBY, ruby), (PYTHON, python)] {
+        let raw = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"call\",\"params\":{\"name\":\"shout\",\"args\":[\"é\"]}}";
+        let Some((responses, stderr)) = serve(facet, script, &[request, raw]) else { continue };
+        assert_eq!(responses[0]["result"], json!("HÉ 你好"), "{facet}: {stderr}");
+        assert_eq!(responses[1]["result"], json!("É"), "{facet}: {stderr}");
+        assert!(stderr.contains("got hé 你好"), "{facet}: {stderr}");
+    }
+}
+
+#[test]
+fn a_string_that_is_not_utf8_is_an_error_not_a_lost_response() {
+    let python = r#"
+from grenat_bridge import export, run
+@export
+def listed() -> str:
+    return "a\udcffb"
+run()
+"#;
+    let ruby = r#"
+require "grenat/bridge"
+Grenat::Bridge.export(:listed, returns: :string) { "a\xFFb".dup.force_encoding("UTF-8") }
+Grenat::Bridge.run
+"#;
+    let request = r#"{"jsonrpc":"2.0","id":1,"method":"call","params":{"name":"listed","args":[]}}"#;
+    for (facet, script) in [(PYTHON, python), (RUBY, ruby)] {
+        let Some((responses, stderr)) = serve(facet, script, &[request]) else { continue };
+        assert_eq!(responses[0]["id"], json!(1), "{facet}: {stderr}");
+        assert_eq!(responses[0]["error"]["data"]["type"], json!("BridgeError"), "{facet}");
+        let message = responses[0]["error"]["message"].as_str().unwrap();
+        assert!(message.starts_with("the result cannot be sent as JSON"), "{facet}: {message}");
+    }
+}
+
 /// The error a server raises while it declares its functions.
 fn refused(facet: &str, script: &str) -> Option<String> {
     if fixture::missing(facet).is_some() {
