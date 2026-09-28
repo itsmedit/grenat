@@ -4,13 +4,16 @@
 //! [bridge]
 //! command = ["ruby", "bridge/server.rb"]   # run in the facet's directory
 //! env = ["SHEETS_API_URL"]                 # passed on from Grenat's environment
-//! timeout = 30                             # seconds, per call (the default)
+//! timeout = 30                             # seconds, per call (the default; a day at most)
 //! ```
 
 use std::time::Duration;
 
 /// Each call's limit, unless the facet sets its own.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The longest limit a facet may set: a day.
+pub const MAX_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Spec {

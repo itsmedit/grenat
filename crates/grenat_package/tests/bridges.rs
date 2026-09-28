@@ -161,5 +161,17 @@ fn the_bridge_section_of_a_manifest() {
     );
     assert!(err("[bridge]\ncommand = [\"x\"]\ntimeout = 0\n").contains("more than 0"));
     assert!(err("[bridge]\ncommand = [\"x\"]\ntimeout = \"1s\"\n").contains("more than 0"));
+    // too long to be a timeout: refused, never a panic
+    for long in ["1e300", "1e30", "9223372036854775807", "86401", "86400.5", "inf", "nan"] {
+        assert_eq!(
+            err(&format!("[bridge]\ncommand = [\"x\"]\ntimeout = {long}\n")),
+            "`bridge.timeout` is a number of seconds, more than 0 and at most 86400 (a day)",
+            "{long}"
+        );
+    }
+    assert_eq!(
+        parse("[bridge]\ncommand = [\"x\"]\ntimeout = 86400\n").unwrap().bridge.unwrap().timeout.as_secs(),
+        86400
+    );
     assert!(err("[native]\n[bridge]\ncommand = [\"x\"]\n").contains("not both"));
 }

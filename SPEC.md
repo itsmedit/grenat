@@ -677,7 +677,7 @@ A facet can also ship functions written in Ruby or Python. **No Ruby or Python i
 [bridge]
 command = ["ruby", "bridge/server.rb"]   # or ["python3", "bridge/server.py"]: run in the facet's directory
 env = ["TEXTS_API_URL"]                  # variables passed on from Grenat's environment, if set
-timeout = 30                             # seconds per call (the default)
+timeout = 30                             # seconds per call (the default; a day at most)
 ```
 
 The server uses a helper library Grenat ships (`bridges/` in the repository), standard library only — no gem, no pip package: Grenat writes it into the installed facet and puts it on the server's load path (`RUBYLIB`, `PYTHONPATH`).

@@ -16,7 +16,7 @@
 //! [bridge]                # or its Ruby or Python code, served by a process: see `grenat_bridge`
 //! command = ["ruby", "bridge/server.rb"]
 //! env = ["SHEETS_API_URL"]  # variables passed on (the environment is clean otherwise)
-//! timeout = 30            # seconds per call, the default
+//! timeout = 30            # seconds per call, the default (a day at most)
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -201,11 +201,15 @@ fn bridge(spec: &Value) -> Result<Spec, String> {
         Spec::check_variable(name).map_err(|e| format!("`bridge.env`: {e}"))?;
     }
     let timeout = match spec.get("timeout") {
-        None => grenat_bridge::spec::DEFAULT_TIMEOUT,
-        Some(Value::Integer(n)) if *n > 0 => Duration::from_secs(*n as u64),
-        Some(Value::Float(f)) if *f > 0.0 && f.is_finite() => Duration::from_secs_f64(*f),
-        Some(_) => return Err("`bridge.timeout` is a number of seconds, more than 0".into()),
+        None => Some(grenat_bridge::spec::DEFAULT_TIMEOUT),
+        Some(Value::Integer(n)) if *n > 0 => u64::try_from(*n).ok().map(Duration::from_secs),
+        Some(Value::Float(f)) if *f > 0.0 => Duration::try_from_secs_f64(*f).ok(),
+        Some(_) => None,
     };
+    let max = grenat_bridge::spec::MAX_TIMEOUT;
+    let timeout = timeout.filter(|t| *t <= max).ok_or_else(|| {
+        format!("`bridge.timeout` is a number of seconds, more than 0 and at most {} (a day)", max.as_secs())
+    })?;
     Ok(Spec { command, env, timeout })
 }
 
