@@ -1215,6 +1215,7 @@ dependencies = [
  "grenat_native",
  "grenat_parser",
  "grenat_sandbox",
+ "libc",
  "serde_json",
 ]
 

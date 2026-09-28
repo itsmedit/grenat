@@ -16,6 +16,9 @@ grenat_native.workspace = true
 grenat_sandbox.workspace = true
 serde_json.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 grenat_bridge = { path = ".", features = ["fixture"] }
 grenat_parser.workspace = true

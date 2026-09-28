@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
@@ -37,6 +38,9 @@ pub(crate) struct Shared {
     task_stack: usize,
     /// Stacks of finished tasks, reused.
     stacks: Mutex<Vec<DefaultStack>>,
+    /// The first panic of a task: raised again by [`run`] once every task
+    /// has finished, rather than leaving the others waiting for a worker.
+    panic: Mutex<Option<Box<dyn std::any::Any + Send>>>,
 }
 
 impl Shared {
@@ -162,6 +166,7 @@ pub fn run<'env, T: Send + 'env>(config: Config, f: impl FnOnce(&Spawner<'env>) 
         live: AtomicUsize::new(0),
         task_stack: config.task_stack,
         stacks: Mutex::new(Vec::new()),
+        panic: Mutex::new(None),
     });
     let result = Arc::new(Mutex::new(None));
     let spawner = Spawner { shared: shared.clone(), _env: PhantomData };
@@ -181,6 +186,9 @@ pub fn run<'env, T: Send + 'env>(config: Config, f: impl FnOnce(&Spawner<'env>) 
                 .expect("starting a worker");
         }
     });
+    if let Some(panic) = shared.panic.lock().unwrap_or_else(PoisonError::into_inner).take() {
+        resume_unwind(panic);
+    }
     let value = result.lock().unwrap_or_else(PoisonError::into_inner).take();
     value.expect("the first task finished")
 }
@@ -203,26 +211,27 @@ fn work(shared: &Arc<Shared>) {
         set_current(Some(task.clone()));
         // SAFETY: this worker alone runs the task (it took it from the queue)
         let co = unsafe { (*task.co.get()).as_mut().expect("a coroutine") };
-        let outcome = co.resume(());
+        // a task that panics is finished: the panic is `run`'s
+        let outcome = catch_unwind(AssertUnwindSafe(|| co.resume(())));
         set_current(None);
         match outcome {
-            CoroutineResult::Return(()) => {
+            Ok(CoroutineResult::Return(())) => {
                 // SAFETY: as above; the task is finished
                 let co = unsafe { (*task.co.get()).take().expect("a coroutine") };
-                task.state.store(DONE, Ordering::Release);
-                let stack = co.into_stack();
-                shared.stacks.lock().unwrap_or_else(PoisonError::into_inner).push(stack);
-                if shared.live.fetch_sub(1, Ordering::AcqRel) == 1 {
-                    // the last task: wake every idle worker so that they stop
-                    let _queue = shared.queue.lock().unwrap_or_else(PoisonError::into_inner);
-                    shared.ready.notify_all();
-                }
+                shared.stacks.lock().unwrap_or_else(PoisonError::into_inner).push(co.into_stack());
+                finish(shared, &task);
             }
-            CoroutineResult::Yield(Suspend::Yield) => {
+            Err(panic) => {
+                // SAFETY: as above; the task is finished, its stack not reused
+                drop(unsafe { (*task.co.get()).take() });
+                shared.panic.lock().unwrap_or_else(PoisonError::into_inner).get_or_insert(panic);
+                finish(shared, &task);
+            }
+            Ok(CoroutineResult::Yield(Suspend::Yield)) => {
                 task.state.store(QUEUED, Ordering::Release);
                 shared.push(task);
             }
-            CoroutineResult::Yield(Suspend::Park) => {
+            Ok(CoroutineResult::Yield(Suspend::Park)) => {
                 // woken meanwhile: it must run again
                 if task.state.compare_exchange(RUNNING, PARKED, Ordering::AcqRel, Ordering::Acquire).is_err() {
                     debug_assert_eq!(task.state.load(Ordering::Acquire), NOTIFIED);
@@ -231,5 +240,15 @@ fn work(shared: &Arc<Shared>) {
                 }
             }
         }
+    }
+}
+
+/// `task` is done: the workers stop once it was the last one.
+fn finish(shared: &Shared, task: &Task) {
+    task.state.store(DONE, Ordering::Release);
+    if shared.live.fetch_sub(1, Ordering::AcqRel) == 1 {
+        // the last task: wake every idle worker so that they stop
+        let _queue = shared.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        shared.ready.notify_all();
     }
 }

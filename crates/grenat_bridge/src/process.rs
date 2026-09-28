@@ -1,20 +1,26 @@
 //! A bridge's server, running: started in Grenat's sandbox
-//! (`grenat_sandbox`) in the facet's directory, requests written on its
-//! standard input, responses read from its standard output by a thread of
-//! their own, and its standard error sent to the log, its last lines kept
-//! to explain a death.
+//! (`grenat_sandbox`) in the facet's directory and in a process group of
+//! its own ([`crate::group`]), requests written on its standard input by a
+//! thread of their own, responses read from its standard output by
+//! another, and its standard error sent to the log, its last lines kept to
+//! explain a death.
+//!
+//! A request's timeout covers writing it as well as waiting for its
+//! response: a server that stops reading cannot block a call.
 
 use std::collections::VecDeque;
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Stdio};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use grenat_sandbox::Sandboxed;
 use serde_json::Value as Json;
 
+use crate::group;
+use crate::lines::lossy_lines;
 use crate::protocol::{self, Reply};
 
 /// Where the lines a server writes on its standard error go: `--log`.
@@ -46,7 +52,10 @@ pub enum Failure {
 
 pub struct Process {
     child: Child,
-    stdin: Option<ChildStdin>,
+    /// The lines to write on the server's standard input; dropped, it is closed.
+    requests: Option<Sender<String>>,
+    /// Whether each line was written.
+    written: Receiver<bool>,
     responses: Receiver<(u64, Reply)>,
     stderr: Arc<Mutex<VecDeque<String>>>,
     /// Closed when the thread reading standard error is done.
@@ -60,21 +69,22 @@ impl Process {
         let sandboxed = Sandboxed { argv: &argv, cwd: Some(launch.dir), env: &launch.env, network: launch.network };
         let mut command = sandboxed.command()?;
         command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        group::lead(&mut command);
         let mut child = command
             .spawn()
             .map_err(|e| format!("cannot start the process of facet `{}` (`{}`): {e}", launch.facet, argv.join(" ")))?;
+        let stdin = child.stdin.take().expect("piped");
         let (stdout, stderr) = (child.stdout.take().expect("piped"), child.stderr.take().expect("piped"));
+        let (requests, written) = writer(stdin);
         let (send, responses) = channel();
         let facet = launch.facet.to_string();
         let log = launch.log.clone();
         std::thread::spawn(move || {
-            for line in BufReader::new(stdout).lines() {
-                let Ok(line) = line else { break };
+            for line in lossy_lines(stdout) {
                 match protocol::response(&line) {
                     Some(response) => {
-                        if send.send(response).is_err() {
-                            break;
-                        }
+                        // the process is gone: its output is drained, unread
+                        let _ = send.send(response);
                     }
                     None => {
                         if let Some(log) = &log {
@@ -88,8 +98,7 @@ impl Process {
         let (done, stderr_done) = channel::<()>();
         let (lines, facet, log) = (tail.clone(), launch.facet.to_string(), launch.log);
         std::thread::spawn(move || {
-            for line in BufReader::new(stderr).lines() {
-                let Ok(line) = line else { break };
+            for line in lossy_lines(stderr) {
                 if let Some(log) = &log {
                     log(&format!("[bridge] {facet}: {line}\n"));
                 }
@@ -101,7 +110,7 @@ impl Process {
             }
             drop(done);
         });
-        Ok(Process { stdin: child.stdin.take(), child, responses, stderr: tail, stderr_done, next_id: 1 })
+        Ok(Process { child, requests: Some(requests), written, responses, stderr: tail, stderr_done, next_id: 1 })
     }
 
     /// Whether the server still runs.
@@ -109,20 +118,26 @@ impl Process {
         matches!(self.child.try_wait(), Ok(None))
     }
 
-    /// Sends a request, and waits `timeout` at most for its response; a
-    /// server that does not answer in time is killed.
+    /// Sends a request, and waits `timeout` at most for it to be written
+    /// and answered; a server that does not answer in time is killed.
     pub fn request(&mut self, method: &str, params: Option<Json>, timeout: Duration) -> Result<Reply, Failure> {
         let id = self.next_id;
         self.next_id += 1;
-        let line = protocol::request(id, method, params);
-        let sent =
-            self.stdin.as_mut().is_some_and(|stdin| writeln!(stdin, "{line}").and_then(|()| stdin.flush()).is_ok());
-        if !sent {
-            return Err(Failure::NotDelivered(self.death()));
+        // a timeout too long to be a date is no timeout
+        let deadline = Instant::now().checked_add(timeout);
+        let queued =
+            self.requests.as_ref().is_some_and(|requests| requests.send(protocol::request(id, method, params)).is_ok());
+        let written = if queued { receive(&self.written, deadline) } else { Ok(false) };
+        match written {
+            Ok(true) => {}
+            Ok(false) | Err(RecvTimeoutError::Disconnected) => return Err(Failure::NotDelivered(self.death())),
+            Err(RecvTimeoutError::Timeout) => {
+                self.kill();
+                return Err(Failure::TimedOut);
+            }
         }
-        let deadline = Instant::now() + timeout;
         loop {
-            match self.responses.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            match receive(&self.responses, deadline) {
                 Ok((answered, reply)) if answered == id => return Ok(reply),
                 // the answer to an older request, given up on
                 Ok(_) => {}
@@ -163,24 +178,49 @@ impl Process {
         }
     }
 
+    /// Kills the server, and whatever it started.
     fn kill(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        group::kill(&mut self.child);
     }
 }
 
 impl Drop for Process {
     /// Standard input closed, the server ends by itself (the helper
-    /// libraries do); one that does not is killed. Its standard error is
-    /// logged to the end.
+    /// libraries do); one that does not is killed, with what it started.
+    /// Its standard error is logged to the end.
     fn drop(&mut self) {
-        drop(self.stdin.take());
+        drop(self.requests.take());
         let deadline = Instant::now() + Duration::from_millis(500);
         while matches!(self.child.try_wait(), Ok(None)) && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(5));
         }
         self.kill();
         let _ = self.stderr_done.recv_timeout(Duration::from_secs(1));
+    }
+}
+
+/// The thread that writes requests on `stdin`, a line each: the lines to
+/// write, and whether each was. It ends at the first that is not, or when
+/// the lines' sender is dropped, closing `stdin`.
+fn writer(mut stdin: ChildStdin) -> (Sender<String>, Receiver<bool>) {
+    let (requests, lines) = channel::<String>();
+    let (report, written) = channel();
+    std::thread::spawn(move || {
+        for line in lines {
+            let ok = writeln!(stdin, "{line}").and_then(|()| stdin.flush()).is_ok();
+            if report.send(ok).is_err() || !ok {
+                break;
+            }
+        }
+    });
+    (requests, written)
+}
+
+/// The next message of `from`, waited for until `deadline` (forever without one).
+fn receive<T>(from: &Receiver<T>, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
+    match deadline {
+        Some(deadline) => from.recv_timeout(deadline.saturating_duration_since(Instant::now())),
+        None => from.recv().map_err(|_| RecvTimeoutError::Disconnected),
     }
 }
 
@@ -255,6 +295,60 @@ mod tests {
         assert_eq!(process.request("call", None, Duration::from_millis(200)), Err(Failure::TimedOut));
         assert!(started.elapsed() < Duration::from_secs(5));
         assert!(!process.is_running());
+    }
+
+    #[test]
+    fn writing_a_request_is_bounded_by_the_timeout() {
+        // never reads: a request bigger than the pipe's buffer cannot be written
+        let mut process = sh("sleep 30", None);
+        let big = Json::from("x".repeat(1 << 20));
+        let started = Instant::now();
+        assert_eq!(process.request("call", Some(big), Duration::from_millis(300)), Err(Failure::TimedOut));
+        assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
+        assert!(!process.is_running());
+    }
+
+    #[test]
+    fn a_timeout_too_long_to_be_a_date_is_no_timeout() {
+        let mut process = sh(r#"read line; echo '{"jsonrpc":"2.0","id":1,"result":7}'; sleep 5"#, None);
+        assert_eq!(process.request("call", None, Duration::MAX), Ok(Reply::Result(Json::from(7))));
+    }
+
+    #[test]
+    fn standard_error_is_read_to_the_end_whatever_its_bytes() {
+        let logged = Arc::new(Mutex::new(String::new()));
+        let sink = logged.clone();
+        // a byte that is not UTF-8, then more than a pipe holds: the server must not block, nor get EPIPE
+        let script = r#"read line; printf 'caf\351\n' >&2; i=0; while [ $i -lt 20000 ]; do echo "line $i" >&2; i=$((i+1)); done; echo '{"jsonrpc":"2.0","id":1,"result":1}'; read line"#;
+        let mut process = sh(script, Some(Arc::new(move |line: &str| sink.lock().unwrap().push_str(line))));
+        assert_eq!(process.request("call", None, Duration::from_secs(20)), Ok(Reply::Result(Json::from(1))));
+        drop(process);
+        let logged = logged.lock().unwrap();
+        assert!(logged.starts_with("[bridge] t: caf\u{fffd}\n[bridge] t: line 0\n"), "{}", &logged[..100]);
+        assert!(logged.ends_with("[bridge] t: line 19999\n"));
+    }
+
+    #[test]
+    fn a_server_killed_takes_what_it_started_along() {
+        let pidfile = std::env::temp_dir().join(format!("grenat-bridge-wrapped-{}", std::process::id()));
+        let _ = std::fs::remove_file(&pidfile);
+        // a wrapper that does not `exec` its server
+        let mut process = sh(&format!("sh -c 'echo $$ > {}; exec sleep 30'; true", pidfile.display()), None);
+        assert_eq!(process.request("call", None, Duration::from_millis(300)), Err(Failure::TimedOut));
+        let pid = std::fs::read_to_string(&pidfile).unwrap();
+        let alive = || {
+            std::process::Command::new("kill")
+                .args(["-0", pid.trim()])
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success())
+        };
+        let killed = Instant::now();
+        while alive() && killed.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!alive(), "the server started by the wrapper still runs");
+        let _ = std::fs::remove_file(&pidfile);
     }
 
     #[test]

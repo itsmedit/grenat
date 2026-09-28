@@ -1,5 +1,6 @@
 //! Scheduling, parking and waking, at scale and in both worlds (tasks, threads).
 
+use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
@@ -111,6 +112,33 @@ fn blocking_calls_leave_their_worker_free() {
     assert_eq!(results.len(), 50);
     assert_eq!(results.iter().sum::<i32>(), (0..50).map(|i| i * 2).sum::<i32>());
     assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+}
+
+#[test]
+fn a_panic_in_a_blocking_call_is_the_tasks_and_ends_the_run() {
+    let panicked = std::panic::catch_unwind(|| {
+        run(config(2), |spawner| {
+            spawner.spawn(|| {
+                yield_now();
+            });
+            blocking(|| -> i32 { panic!("on fire") })
+        })
+    });
+    let payload = panicked.expect_err("the panic reaches `run`'s caller");
+    assert_eq!(payload.downcast_ref::<&str>(), Some(&"on fire"));
+    // and a spawned task's panic too, once the others are done
+    let done = AtomicUsize::new(0);
+    let panicked = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        run(config(2), |spawner| {
+            spawner.spawn(|| panic!("in a task"));
+            spawner.spawn(|| {
+                done.fetch_add(1, Ordering::SeqCst);
+            });
+            1
+        })
+    }));
+    assert!(panicked.is_err());
+    assert_eq!(done.load(Ordering::SeqCst), 1);
 }
 
 #[test]

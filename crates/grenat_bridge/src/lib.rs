@@ -16,7 +16,7 @@
 //!   standard error sent to the log;
 //! - [`bridge`]: one process per facet, started on first use and kept alive,
 //!   one call at a time, each within a timeout; a process that died is
-//!   started again;
+//!   started again, and one killed is killed with its process group;
 //! - [`registry`]: the bridge functions of a program, by name (what the
 //!   interpreter holds next to native libraries).
 //!
@@ -27,9 +27,11 @@
 pub mod bridge;
 #[cfg(feature = "fixture")]
 pub mod fixture;
+mod group;
 pub mod helpers;
 pub mod install;
 pub mod layout;
+mod lines;
 pub mod process;
 pub mod protocol;
 pub mod registry;
