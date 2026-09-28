@@ -1,0 +1,4 @@
+## The total of the numbers of a column, computed natively.
+def total(column: Array(Int)) -> Int
+  sum(column)
+end

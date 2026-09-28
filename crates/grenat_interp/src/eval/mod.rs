@@ -16,6 +16,7 @@ pub(crate) use doubles::{HttpStub, ShellStub};
 mod errors;
 pub(crate) mod exposed;
 mod expr;
+mod foreign;
 mod human;
 mod jobs;
 mod ledger;

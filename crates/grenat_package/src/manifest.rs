@@ -9,6 +9,9 @@
 //! [dependencies]
 //! utils = { path = "../utils" }
 //! http = { git = "https://github.com/grenat-lang/http", tag = "v0.2.0" }
+//!
+//! [native]                # a facet's Rust code (a crate): see `grenat_native`
+//! path = "native"         # the default
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -24,6 +27,15 @@ pub struct Manifest {
     /// What `require "<name>"` loads (relative to the package).
     pub lib: PathBuf,
     pub dependencies: Vec<Dependency>,
+    /// The Rust code the package ships, if it is a native facet.
+    pub native: Option<Native>,
+}
+
+/// `[native]`: the crate of a native facet.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Native {
+    /// The crate's directory, relative to the package.
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +111,7 @@ impl Manifest {
             main: field("main")?.unwrap_or_else(|| "src/main.grn".into()).into(),
             lib: field("lib")?.unwrap_or_else(|| "src/lib.grn".into()).into(),
             dependencies,
+            native: table.get("native").map(native).transpose()?,
         })
     }
 
@@ -134,6 +147,19 @@ fn dependency(name: &str, spec: &Value) -> Result<Dependency, String> {
         _ => return Err(format!("dependency `{name}`: give either `path` or `git`")),
     };
     Ok(Dependency { name: name.to_string(), source })
+}
+
+fn native(spec: &Value) -> Result<Native, String> {
+    let spec = spec.as_table().ok_or("`native` must be a table: `[native]`")?;
+    if let Some(key) = spec.keys().find(|k| k.as_str() != "path") {
+        return Err(format!("`native`: unknown key `{key}`"));
+    }
+    let path = match spec.get("path") {
+        None => "native",
+        Some(Value::String(path)) if !path.is_empty() && !Path::new(path).is_absolute() => path.as_str(),
+        Some(_) => return Err("`native.path` is the crate's directory, relative to the package".into()),
+    };
+    Ok(Native { path: path.into() })
 }
 
 pub(crate) fn valid_name(name: &str) -> bool {

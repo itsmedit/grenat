@@ -1222,6 +1222,7 @@ dependencies = [
  "grenat_lexer",
  "grenat_lsp",
  "grenat_mcp",
+ "grenat_native",
  "grenat_ops",
  "grenat_package",
  "grenat_parser",
@@ -1288,6 +1289,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "grenat_ext"
+version = "0.1.2"
+dependencies = [
+ "grenat_ext_macros",
+ "inventory",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "grenat_ext_macros"
+version = "0.1.2"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "grenat_fmt"
 version = "0.1.2"
 dependencies = [
@@ -1333,6 +1353,7 @@ dependencies = [
  "grenat_green",
  "grenat_llm",
  "grenat_mcp",
+ "grenat_native",
  "grenat_ops",
  "grenat_parser",
  "grenat_runtime",
@@ -1389,6 +1410,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "grenat_native"
+version = "0.1.2"
+dependencies = [
+ "grenat_ext",
+ "grenat_native",
+ "grenat_parser",
+ "libloading",
+ "serde_json",
+]
+
+[[package]]
 name = "grenat_ops"
 version = "0.1.2"
 dependencies = [
@@ -1402,6 +1434,7 @@ version = "0.1.2"
 dependencies = [
  "grenat_ast",
  "grenat_config",
+ "grenat_native",
  "grenat_parser",
  "grenat_report",
  "toml",
@@ -1439,6 +1472,7 @@ dependencies = [
 name = "grenat_setter"
 version = "0.1.2"
 dependencies = [
+ "grenat_native",
  "grenat_package",
 ]
 
@@ -1786,6 +1820,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "inventory"
+version = "0.3.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1851,6 +1894,16 @@ name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+
+[[package]]
+name = "libloading"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
 
 [[package]]
 name = "libm"

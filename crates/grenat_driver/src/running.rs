@@ -17,20 +17,24 @@ pub fn render_runtime_error(sources: &Sources, error: &grenat_interp::RuntimeErr
 }
 
 /// Options to run the program at `path`: its directory holds `cassettes/`,
-/// `fixtures/` and datasets.
+/// `fixtures/` and datasets; its package's trusted native facets give their
+/// libraries (loading the program refused the others already).
 pub fn options_for(path: &str) -> grenat_interp::Options {
     let dir = Path::new(path).parent().map(Path::to_path_buf);
     // the application's credentials: those of its package, else next to the program
     let package = dir.as_deref().map(|d| if d.as_os_str().is_empty() { Path::new(".") } else { d });
-    let credentials_root = match package.map(grenat_package::find_package) {
+    let root = match package.map(grenat_package::find_package) {
         Some(Ok(Some(package))) => Some(package.root),
-        _ => package.map(Path::to_path_buf),
+        _ => None,
     };
+    let natives = root.as_deref().map(grenat_package::native::libraries).and_then(Result::ok).unwrap_or_default();
+    let credentials_root = root.or_else(|| package.map(Path::to_path_buf));
     grenat_interp::Options {
         dir,
         credentials_root,
         record: record_from_env(),
         log: log_from_env(),
+        natives,
         ..Default::default()
     }
 }

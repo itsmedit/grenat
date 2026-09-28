@@ -14,7 +14,9 @@
 //!   body does, and both `main` and `tool`s must declare theirs (E0300);
 //! - **names and types**: variables, fields, methods, arity, named
 //!   arguments, incompatible types (E0100, E0200);
-//! - **declarations**: well-formed `prompt`s, agents and tools (E0413, E0500).
+//! - **declarations**: well-formed `prompt`s, agents, tools and `native def`s (E0413, E0500);
+//! - **native code**: a `native def`'s result is untrusted unless it is `pure`, and no
+//!   secret reaches it (E0414).
 //!
 //! The interpreter keeps its runtime checks: defense in depth.
 
@@ -31,6 +33,7 @@ mod expr;
 mod functions;
 mod methods;
 mod names;
+mod natives;
 mod ops;
 mod pattern;
 mod resolve;

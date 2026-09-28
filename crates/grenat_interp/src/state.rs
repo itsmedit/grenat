@@ -127,6 +127,8 @@ pub(crate) struct Shared<'p> {
     /// Native code for the eligible functions: compiled by the JIT, or
     /// linked into the executable (`grenat build`).
     pub jit: Option<grenat_codegen::Native>,
+    /// The functions of native facets (`native def`), by name.
+    pub natives: grenat_native::Registry,
 }
 
 /// An execution task: its call stack, budgets and capabilities.
@@ -222,6 +224,7 @@ impl<'p> Interp<'p> {
             active: grenat_green::Mutex::new(0),
             idle: grenat_green::Condvar::new(),
             jit: None,
+            natives: grenat_native::Registry::new(&options.natives),
             journal_dir: Mutex::new(options.journal.clone().unwrap_or_else(|| ".grenat/journal".into())),
         };
         let loaded = shared.load();

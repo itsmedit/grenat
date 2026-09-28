@@ -206,6 +206,9 @@ impl<'p> Interp<'p> {
                 );
             }
         }
+        if def.kind == FnKind::Native {
+            self.check_native_effects(def)?;
+        }
         let caps = self.declared_capabilities(def)?;
         let workflow = if def.kind == FnKind::Workflow { Some(self.open_workflow(def, &args)?) } else { None };
         self.push_frame(self_val, new_scope(None))?;
@@ -214,6 +217,7 @@ impl<'p> Interp<'p> {
         }
         let result = self.bind_params(&def.params, args, &def.name.name).and_then(|()| match (def.kind, workflow) {
             (FnKind::Prompt, _) => self.run_prompt(def),
+            (FnKind::Native, _) => self.call_foreign(def),
             (FnKind::Workflow, Some(run)) => self.run_workflow(def, run),
             _ => self.eval_body(&def.body),
         });

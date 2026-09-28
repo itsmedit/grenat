@@ -1,4 +1,4 @@
-//! Declarations: functions, `prompt`, `tool`, types, agents, supervisors, models.
+//! Declarations: functions, `prompt`, `tool`, `native def`, types, agents, supervisors, models.
 
 use grenat_ast::*;
 use grenat_lexer::{Keyword as K, TokenKind as T};
@@ -37,6 +37,9 @@ impl<'d> Parser<'d> {
             T::Kw(K::Def | K::Abstract | K::Prompt | K::Tool | K::Workflow) => {
                 self.fn_def(doc).map(|f| Item::Fn(Box::new(f)))
             }
+            T::Ident(name) if name == "native" && *self.nth(1) == T::Kw(K::Def) => {
+                self.fn_def(doc).map(|f| Item::Fn(Box::new(f)))
+            }
             T::Kw(K::Struct) => self.type_def(TypeKind::Struct, doc).map(Item::Type),
             T::Kw(K::Class) => self.type_def(TypeKind::Class, doc).map(Item::Type),
             T::Kw(K::Module) => self.type_def(TypeKind::Module, doc).map(Item::Type),
@@ -60,8 +63,14 @@ impl<'d> Parser<'d> {
 
     pub(crate) fn fn_def(&mut self, doc: Option<String>) -> PResult<FnDef> {
         let start = self.span();
-        let is_abstract = self.eat_kw(K::Abstract);
+        // `native def`: implemented in Rust by a native facet, without a body
+        let native = self.at_ident("native") && *self.nth(1) == T::Kw(K::Def);
+        if native {
+            self.bump();
+        }
+        let is_abstract = !native && self.eat_kw(K::Abstract);
         let (kind, keyword) = match self.kind() {
+            T::Kw(K::Def) if native => (FnKind::Native, "def"),
             T::Kw(K::Def) => (FnKind::Def, "def"),
             T::Kw(K::Prompt) => (FnKind::Prompt, "prompt"),
             T::Kw(K::Tool) => (FnKind::Tool, "tool"),
@@ -72,6 +81,9 @@ impl<'d> Parser<'d> {
 
         let on_self = self.at_kw(K::SelfKw) && *self.nth(1) == T::Dot;
         if on_self {
+            if native {
+                return self.fail(self.span(), "a `native def` is a function, declared at the top level");
+            }
             self.bump();
             self.bump();
         }
@@ -81,6 +93,7 @@ impl<'d> Parser<'d> {
 
         let mut effects = Vec::new();
         let mut model = None;
+        let mut pure = false;
         loop {
             if self.at_ident("uses") {
                 self.bump();
@@ -88,12 +101,20 @@ impl<'d> Parser<'d> {
             } else if self.at_ident("using") {
                 self.bump();
                 model = Some(self.unary()?);
+            } else if native && self.at_ident("pure") {
+                self.bump();
+                pure = true;
             } else {
                 break;
             }
         }
 
-        let (body, short) = if self.eat(&T::Eq) {
+        let (body, short) = if native {
+            if self.at(&T::Eq) {
+                return self.fail(self.span(), "a `native def` has no body: its facet's Rust code implements it");
+            }
+            (Body::new(Vec::new(), self.prev_span()), false)
+        } else if self.eat(&T::Eq) {
             self.skip_newlines();
             let e = self.stmt()?;
             let span = e.span;
@@ -118,6 +139,7 @@ impl<'d> Parser<'d> {
             model,
             body,
             short,
+            pure,
             span: start.to(self.prev_span()),
         })
     }
@@ -161,6 +183,7 @@ impl<'d> Parser<'d> {
             model: None,
             body: Body::new(vec![value], span),
             short: true,
+            pure: false,
             span: start.to(self.prev_span()),
         })
     }
@@ -318,6 +341,9 @@ impl<'d> Parser<'d> {
                 Ok(Member::Field(Field { doc, name: Ident { name, span: start }, is_ivar: true, ty, default, span }))
             }
             T::Kw(K::Def | K::Abstract | K::Prompt | K::Tool | K::Workflow) => self.fn_def(doc).map(Member::Method),
+            T::Ident(name) if name == "native" && *self.nth(1) == T::Kw(K::Def) => {
+                self.fail(start, "a `native def` is a function, declared at the top level (not in a type)")
+            }
             T::Ident(name) if name == "include" => {
                 self.bump();
                 self.ty().map(Member::Include)

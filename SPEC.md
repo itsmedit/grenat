@@ -614,6 +614,61 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 12 status: native facets (Rust)
+
+A facet can ship Rust code that Grenat programs call as ordinary functions, as a Ruby gem ships C: a crate (a `cdylib`) depending on `grenat_ext`, the SDK, named by `[native]` in the facet's `grenat.toml` (`path = "native"`, the default).
+
+```rust
+use grenat_ext::{GrenatType, export};
+use serde::{Deserialize, Serialize};
+
+/// A cell of a sheet.
+#[derive(Serialize, Deserialize, GrenatType)]
+pub struct Cell { pub row: i64, pub text: String }
+
+/// Reads a sheet: a line per row, cells separated by commas.
+#[export(effects = "fs.read", error = "SheetError")]
+pub fn read_sheet(path: String) -> Result<Vec<Vec<String>>, String> { … }
+
+/// Adds two integers.
+#[export(pure)]
+pub fn add(a: i64, b: i64) -> i64 { a + b }
+```
+
+```ruby
+# the application's Facetfile: its Rust code runs outside Grenat's sandbox, so it is trusted explicitly
+facet "sheets", "~> 0.1", native: true
+```
+
+```ruby
+# .grenat/native/native.grn in the installed facet, written by `setter install` from the library's manifest
+## A cell of a sheet.
+struct Cell
+  row: Int
+  text: String
+end
+
+## Reads a sheet: a line per row, cells separated by commas.
+native def read_sheet(path: String) -> ~Array(Array(String)) uses fs.read
+
+## Adds two integers.
+native def add(a: Int, b: Int) -> Int pure
+
+# the application calls them as any function
+def main uses fs.read
+  rows = read_sheet("sales.csv").trust!
+  puts add(rows.size, 1)
+end
+```
+
+- **The facet's side.** `#[grenat_ext::export]` on a plain Rust function — `#[export(effects = "fs.read, net")]`, `#[export(pure)]`, `#[export(error = "SheetError")]` — whose parameters and result are `String`, integers (`Int`), `f64` (`Float`), `bool`, `Vec<T>` (`Array(T)`), `Option<T>` (`T?`), `HashMap<String, T>` (`Hash(String, T)`) or structs deriving serde's `Serialize`/`Deserialize` and `GrenatType` (their fields and `///` comments declared too). A function returning `Result<T, E: Display>` raises its `Err` as a Grenat error (`NativeError`, or the type `error:` names). The macro refuses at compile time what cannot cross: references, generics, `async`, methods, a `pure` function with effects.
+- **A stable ABI.** No Rust type crosses the boundary, whose layout changes with the compiler: each function gets a C entry point `grenat_ext_v1_<name>` that takes its arguments as a JSON array (bytes the caller owns) and writes its result — or an error — as JSON into a buffer the library owns and frees (`grenat_ext_free`). A panic is caught in the library and never unwinds into Grenat. `grenat_ext_abi_version` is asked before anything else: a library built for another version of the ABI is refused, with the advice to rebuild it. `grenat_ext_manifest` describes the library — the ABI version, each function (name, documentation, parameters and result as Grenat types, effects, purity, error type) and the structs they use.
+- **Installing.** `setter install` builds each trusted native facet (`cargo build --release`: a Rust toolchain is needed), or takes the library the facet ships for this platform (`<crate>/prebuilt/<arch>-<os>/lib<facet>.so|.dylib`: prebuilt binaries drop in there), copies it into the installed facet (`.grenat/native/<arch>-<os>/`), loads it once to read its manifest (`manifest.json`), and writes the declarations it stands for (`native.grn`, checked to parse). A program that requires the facet loads them first: the checker, the language server and the interpreter see ordinary declarations. A native facet's own tests see its functions once `setter install` has run in its directory.
+- **`native def`.** A function implemented natively, declared without a body, at the top level: `native def name(params) -> T uses effects`, or `… -> T pure`. The checker takes the declaration at its word: parameters and result must be types that cross (E0500); the result of a function that is not `pure` comes from outside Grenat and is declared untrusted, `~T`, and a `pure` one's is not (E0413); a `pure` function has no effects (E0500); a wrong argument is an E0200, and the declared effects are the callers', which must cover them (E0300).
+- **Trust.** Native code escapes Grenat's sandbox — no capability checked inside it, no taint tracked — so the application says which facets may ship some, in its own `Facetfile`: `native: true`. Without it, `setter install` refuses before building anything (building runs the crate's code) and loading a program that requires the facet refuses too, each saying why and how to trust it. A facet that another facet requires is trusted by the application the same way. A package's own native part is its author's, trusted.
+- **Calls.** The library is loaded once, at the first call of one of its functions, and never unloaded. The arguments are encoded as JSON, the result decoded into the declared type (another type is a `NativeError`). The function's effects are checked against the capabilities of its callers before it runs, by name — a restriction such as `fs.read("./docs")` cannot bound what Rust code does. Its result is untrusted, unless it is `pure`, whose result is as trusted as its arguments; an untrusted argument cannot reach a native function with a dangerous effect (E0412, `TaintError`). **No secret is handed to native code** (E0414, `SecretError`), with no way around it for now: a secret serves where Grenat's own connectors reveal it. An `Err` raises the facet's error type; a panic, a `NativeError` (`` `explode` panicked: on fire (at src/lib.rs:98) ``); `--log` shows each call (`[native] sheets: read_sheet`).
+- **Limits.** `grenat build` refuses a program that calls native code, and says so: the facets' libraries are not linked into executables yet. Enums, callbacks into Grenat and asynchronous functions do not cross.
+
 ### Phase 11 status: proxies for Http
 
 `Http.get(url, proxy: "socks5://user:pass@127.0.0.1:1080")` sends a request through a proxy, with every `Http` method: `socks5://` (the host is resolved here), `socks5h://` (resolved by the proxy), `socks4://`, `socks4a://`, and HTTP proxies (`http://`, `https://`, which tunnel with `CONNECT`); credentials go in the URL. Without `proxy:` (or with `proxy: nil`), the environment's proxy is used as curl chooses it — `no_proxy` exempts hosts and their subdomains, then `https_proxy` for an https URL or `http_proxy` for an http one (never `HTTP_PROXY` in capitals, which a CGI request header can set), then `all_proxy` — and `proxy: false` goes direct whatever the environment says. An invalid proxy URL is an `ArgumentError` (an invalid one in the environment, an `HttpError` naming the variable, not its value); an unreachable proxy or a refused password is an `HttpError`. A proxy URL may be a secret (`proxy: Credentials.fetch(:proxy, :url)`): it is revealed to the transport only, and neither an error nor the `--log` line (`[http] GET … via [secret] → 200`) names it; a plain proxy URL is logged without its credentials.

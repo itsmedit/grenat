@@ -81,6 +81,9 @@ impl<'p> Checker<'p> {
                 }
             }
         }
+        if def.kind == FnKind::Native {
+            self.check_native_decl(def);
+        }
         if def.kind == FnKind::Prompt {
             if let Some(ret) = &def.ret {
                 if !is_tainted_decl(ret) {

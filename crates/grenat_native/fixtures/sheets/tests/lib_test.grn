@@ -1,0 +1,6 @@
+require "../src/lib"
+
+test "a column adds up natively" do
+  assert_equal 6, total([1, 2, 3])
+  assert_equal "HI", shout("hi").trust!
+end

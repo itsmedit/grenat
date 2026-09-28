@@ -11,6 +11,10 @@
 //! Dependencies are local directories (`path = "../utils"`) or git
 //! repositories (`git = "…"`, with a `tag`, `branch` or `rev`), fetched into
 //! the root package's `.grenat/deps/` and pinned in its `grenat.lock`.
+//!
+//! A facet may ship Rust code (`[native]`, see [`native`]): installed only
+//! when the application trusts it (`facet "sheets", native: true`), and
+//! loaded with the Grenat declarations generated from its library.
 
 mod bundle;
 pub mod facetfile;
@@ -18,6 +22,7 @@ pub mod facets;
 mod git;
 mod lock;
 mod manifest;
+pub mod native;
 mod requires;
 mod resolve;
 mod scaffold;
@@ -25,7 +30,7 @@ pub mod version;
 
 pub use bundle::{Bundle, LoadError, load, load_with};
 pub use lock::Lock;
-pub use manifest::{Dependency, Manifest, Reference, Source};
+pub use manifest::{Dependency, Manifest, Native, Reference, Source};
 pub use requires::{is_require, strip_requires};
 pub use resolve::{Package, find_package};
 pub use scaffold::{create, create_facet};

@@ -1,0 +1,11 @@
+[package]
+name = "old_abi"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+# a crate of its own, not a member of Grenat's workspace
+[workspace]

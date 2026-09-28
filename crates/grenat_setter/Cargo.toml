@@ -13,3 +13,6 @@ path = "src/main.rs"
 
 [dependencies]
 grenat_package.workspace = true
+
+[dev-dependencies]
+grenat_native = { workspace = true, features = ["fixture"] }

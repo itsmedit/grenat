@@ -33,6 +33,8 @@ impl<'p> Checker<'p> {
         let mut ret = cx.returns.iter().fold(body, |acc, r| join_v(&acc, r));
 
         match (&declared_ret, def.kind) {
+            // Rust code: its declaration is all there is
+            (_, FnKind::Native) => ret = self.native_result(def, &taints, self_taint),
             (_, FnKind::Prompt) => {
                 ret = V { ty: declared_ret.map_or(Ty::Str, |r| r.0), taint: Some(def.span) };
             }

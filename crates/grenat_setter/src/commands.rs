@@ -75,20 +75,22 @@ pub fn add(args: &[String]) -> Result<String, String> {
     let separator = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
     std::fs::write(&path, format!("{text}{separator}{line}\n")).map_err(|e| e.to_string())?;
     let facets = install_facets(&root, false)?;
-    Ok(format!("✓ added `{line}`\n{}", describe(&facets)))
+    Ok(format!("✓ added `{line}`\n{}", describe(&root, &facets)))
 }
 
 pub fn install(update: bool) -> Result<String, String> {
-    let facets = install_facets(&root()?, update)?;
-    Ok(describe(&facets))
+    let root = root()?;
+    let facets = install_facets(&root, update)?;
+    Ok(describe(&root, &facets))
 }
 
 pub fn list() -> Result<String, String> {
-    let facets = installed(&root()?)?;
+    let root = root()?;
+    let facets = installed(&root)?;
     if facets.is_empty() {
         return Ok("no facet installed".into());
     }
-    Ok(describe(&facets))
+    Ok(describe(&root, &facets))
 }
 
 /// Tags the current version (`v1.2.3`): what indexes list as a version.
@@ -116,11 +118,17 @@ pub fn publish() -> Result<String, String> {
     ))
 }
 
-fn describe(facets: &[Installed]) -> String {
+/// The facets, and the native code of those that ship some.
+fn describe(root: &Path, facets: &[Installed]) -> String {
     let mut lines = vec![format!("✓ {} facet(s):", facets.len())];
     for f in facets {
         let version = f.version.map(|v| v.to_string()).unwrap_or_else(|| "-".into());
-        lines.push(format!("  {} {version} ({})", f.name, f.source));
+        let dir = if f.dir.is_absolute() { f.dir.clone() } else { root.join(&f.dir) };
+        let native = match grenat_package::native::functions(&f.name, &dir) {
+            Some(n) => format!(", native: {n} Rust function(s)"),
+            None => String::new(),
+        };
+        lines.push(format!("  {} {version} ({}{native})", f.name, f.source));
     }
     lines.join("\n")
 }

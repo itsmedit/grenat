@@ -73,6 +73,11 @@ impl Resolver {
         })
     }
 
+    /// The root package's directory, if the program is in a package.
+    pub(crate) fn root(&self) -> Option<&Path> {
+        self.root.as_deref()
+    }
+
     /// The package of a file, loaded once.
     pub(crate) fn package_of(&mut self, file: &Path) -> Result<Option<Package>, String> {
         let dir = file.parent().unwrap_or(Path::new("."));

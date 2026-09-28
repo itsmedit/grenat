@@ -195,3 +195,34 @@ fn negative_literals_bind_before_method_calls() {
     assert!(matches!(stmt("-2 ** 2"), ExprKind::Unary { op: UnOp::Neg, .. }));
     assert!(matches!(stmt("x -1"), ExprKind::Binary { op: BinOp::Sub, .. }));
 }
+
+#[test]
+fn native_functions_have_no_body() {
+    let src = "## Reads a sheet.\nnative def read_sheet(path: String) -> ~Array(Array(String)) uses fs.read\nnative def add(a: Int, b: Int) -> Int pure\nnative def tick\nnative = 1\n";
+    let mut items = program(src).items;
+    let Item::Fn(read) = items.remove(0) else { panic!() };
+    assert_eq!(read.kind, FnKind::Native);
+    assert_eq!(read.doc.as_deref(), Some("Reads a sheet."));
+    assert_eq!((read.params.len(), read.effects.len(), read.pure), (1, 1, false));
+    assert!(read.body.stmts.is_empty() && !read.is_abstract);
+    let Item::Fn(add) = items.remove(0) else { panic!() };
+    assert!(add.pure && add.effects.is_empty());
+    assert_eq!(&src[add.span.range()], "native def add(a: Int, b: Int) -> Int pure");
+    let Item::Fn(tick) = items.remove(0) else { panic!() };
+    assert_eq!((tick.kind, tick.params.len()), (FnKind::Native, 0));
+    // `native` is still a name
+    assert!(matches!(&items[0], Item::Stmt(Expr { kind: ExprKind::Assign { .. }, .. })));
+    // `pure` belongs to native functions
+    assert!(matches!(program("def f\n  pure\nend\n").items[0], Item::Fn(ref f) if !f.pure));
+}
+
+#[test]
+fn a_native_function_is_declared_at_the_top_level_without_a_body() {
+    let error = |src: &str| parse(src).diagnostics.first().map(|d| d.message.clone()).unwrap_or_default();
+    assert_eq!(error("native def f = 1\n"), "a `native def` has no body: its facet's Rust code implements it");
+    assert_eq!(error("native def self.f\n"), "a `native def` is a function, declared at the top level");
+    assert_eq!(
+        error("module Sheets\n  native def f\nend\n"),
+        "a `native def` is a function, declared at the top level (not in a type)"
+    );
+}

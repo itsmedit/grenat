@@ -208,3 +208,11 @@ fn chains_break_as_a_rubyist_would() {
         "total = orders\n  .select { |o| o.paid? && o.shipped? }\n  .map { |o| o.amount_with_taxes_and_fees }\n  .sum\n  .round(2)\n"
     );
 }
+
+#[test]
+fn native_functions_are_one_line_declarations() {
+    let messy = "##  Adds.\nnative   def add( a: Int,b: Int )->Int   pure\nnative def read(path:String)->~String uses  fs.read   # Rust\nnative def tick\n";
+    let canonical = "##  Adds.\nnative def add(a: Int, b: Int) -> Int pure\nnative def read(path: String) -> ~String uses fs.read  # Rust\nnative def tick\n";
+    assert_eq!(fmt(messy), canonical);
+    assert_eq!(fmt(canonical), canonical);
+}

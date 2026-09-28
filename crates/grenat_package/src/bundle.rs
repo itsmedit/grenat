@@ -42,7 +42,16 @@ pub fn load_with(entry: &Path, update: bool, overlay: &HashMap<PathBuf, String>)
         seen: HashSet::new(),
         files: Vec::new(),
         overlay,
+        trusted: None,
     };
+    // a native facet's own programs (its tests) see its native functions
+    if let Some(package) = &package
+        && package.manifest.native.is_some()
+    {
+        let declarations =
+            crate::native::declarations(&package.manifest.name, &package.root).map_err(LoadError::Message)?;
+        loader.visit(&declarations, display(&declarations))?;
+    }
     loader.visit(entry, entry.to_string_lossy().into_owned())?;
     loader.resolver.save_lock().map_err(LoadError::Message)?;
     // the application's models (`config/models.yml`), declared first
@@ -67,6 +76,8 @@ struct Loader<'o> {
     seen: HashSet<PathBuf>,
     /// (displayed path, text), in load order.
     files: Vec<(String, String)>,
+    /// The facets whose native code the root package trusts, read once.
+    trusted: Option<HashSet<String>>,
 }
 
 impl Loader<'_> {
@@ -94,7 +105,12 @@ impl Loader<'_> {
         for require in requires(&parsed.program) {
             let target = require.target.map_err(|e| e.to_string()).and_then(|t| self.target(&canonical, &t));
             match target {
-                Ok(file) => {
+                Ok((file, native)) => {
+                    // a native facet's declarations, generated from its library
+                    if let Some(declarations) = native {
+                        let shown = display(&declarations);
+                        self.visit(&declarations, shown)?;
+                    }
                     let shown = display(&file);
                     self.visit(&file, shown)?;
                 }
@@ -105,15 +121,16 @@ impl Loader<'_> {
         Ok(())
     }
 
-    /// The file `require "<target>"` in `file` loads.
-    fn target(&mut self, file: &Path, target: &str) -> Result<PathBuf, String> {
-        let path = if target.starts_with("./") || target.starts_with("../") {
-            with_extension(file.parent().unwrap_or(Path::new(".")).join(target))
+    /// The file `require "<target>"` in `file` loads, and the native
+    /// declarations of its package if it is a native facet.
+    fn target(&mut self, file: &Path, target: &str) -> Result<(PathBuf, Option<PathBuf>), String> {
+        let (path, native) = if target.starts_with("./") || target.starts_with("../") {
+            (with_extension(file.parent().unwrap_or(Path::new(".")).join(target)), None)
         } else {
             self.package_file(file, target)?
         };
         if path.is_file() || self.overlay.contains_key(&path) {
-            Ok(path)
+            Ok((path, native))
         } else {
             Err(format!("cannot find `{target}` (no file {})", display(&path)))
         }
@@ -121,7 +138,7 @@ impl Loader<'_> {
 
     /// `require "name"` or `"name/sub"`: a file of the package `name`, a
     /// dependency of the requiring file's package (or that package itself).
-    fn package_file(&mut self, file: &Path, target: &str) -> Result<PathBuf, String> {
+    fn package_file(&mut self, file: &Path, target: &str) -> Result<(PathBuf, Option<PathBuf>), String> {
         let (name, rest) = target.split_once('/').map_or((target, None), |(n, r)| (n, Some(r)));
         let package = self.resolver.package_of(file)?.ok_or_else(|| {
             format!(
@@ -141,10 +158,34 @@ impl Loader<'_> {
                 display(&package.root.join(crate::MANIFEST))
             ));
         };
-        Ok(match rest {
+        let native = self.native_declarations(&owner)?;
+        let path = match rest {
             Some(rest) => with_extension(owner.root.join("src").join(rest)),
             None => owner.lib(),
-        })
+        };
+        Ok((path, native))
+    }
+
+    /// The declarations of `owner`'s native code, if it has some: only for
+    /// the root package itself, or a facet the root package trusts.
+    fn native_declarations(&mut self, owner: &Package) -> Result<Option<PathBuf>, String> {
+        if owner.manifest.native.is_none() {
+            return Ok(None);
+        }
+        let root = self.resolver.root().map(Path::to_path_buf);
+        if root.as_deref() != Some(owner.root.as_path()) {
+            let trusted = match (&self.trusted, &root) {
+                (Some(trusted), _) => trusted.clone(),
+                (None, Some(root)) => crate::native::trusted(root)?,
+                (None, None) => HashSet::new(),
+            };
+            let allowed = trusted.contains(&owner.manifest.name);
+            self.trusted = Some(trusted);
+            if !allowed {
+                return Err(crate::native::refusal(&owner.manifest.name));
+            }
+        }
+        crate::native::declarations(&owner.manifest.name, &owner.root).map(Some)
     }
 }
 

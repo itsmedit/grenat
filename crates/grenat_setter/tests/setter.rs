@@ -91,3 +91,37 @@ fn a_facet_is_created_published_listed_and_added() {
     assert!(text(&missing.stderr).contains("in none of the indexes"), "{}", text(&missing.stderr));
     assert_eq!(setter(&app, &["frobnicate"]).status.code(), Some(2));
 }
+
+#[test]
+fn a_trusted_native_facet_is_built_at_install() {
+    let dir = temp_dir("native");
+    let facet = grenat_native::fixture::copy_facet(&dir);
+    let app = dir.join("app");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::write(app.join("grenat.toml"), "[package]\nname = \"app\"\n").unwrap();
+    let install = |facetfile: &str| {
+        std::fs::write(app.join("Facetfile"), facetfile).unwrap();
+        // the fixtures' target directory: its dependencies are built already
+        Command::new(env!("CARGO_BIN_EXE_setter"))
+            .arg("install")
+            .current_dir(&app)
+            .env("CARGO_TARGET_DIR", grenat_native::fixture::target_dir())
+            .output()
+            .unwrap()
+    };
+    let refused = install("facet \"sheets\", path: \"../sheets\"\n");
+    assert!(!refused.status.success());
+    assert!(text(&refused.stderr).contains("trust it with `facet \"sheets\", native: true` in the Facetfile"));
+    let out = install("facet \"sheets\", path: \"../sheets\", native: true\n");
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stderr).contains("sheets 0.1.0 (path:../sheets, native: 12 Rust function(s))"),
+        "{}",
+        text(&out.stderr)
+    );
+    let declarations = std::fs::read_to_string(facet.join(".grenat/native/native.grn")).unwrap();
+    assert!(declarations.contains("native def read_sheet(path: String) -> ~Array(Array(String)) uses fs.read\n"));
+    assert!(facet.join(".grenat/native/manifest.json").is_file());
+    let list = setter(&app, &["list"]);
+    assert!(text(&list.stderr).contains("native: 12 Rust function(s)"), "{}", text(&list.stderr));
+}

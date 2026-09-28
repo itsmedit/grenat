@@ -204,6 +204,9 @@ impl<'p> Checker<'p> {
             self.walk_block(cx, block, &[]);
         }
         let mut taints = self.bind_args(&def.name.name, &Slot::params(&def.params), &argv, span);
+        if def.kind == FnKind::Native {
+            self.secrets_to_native(&argv, &def.name.name);
+        }
         let mut recv = recv;
         if let Some(effect) = dangerous_effect(def) {
             for arg in &argv {
@@ -226,10 +229,12 @@ impl<'p> Checker<'p> {
         for e in effects {
             cx.add_effect(Eff { origin: span, ..e });
         }
-        if def.kind == FnKind::Prompt {
-            return V { ty: ret.ty, taint: Some(span) };
+        match def.kind {
+            FnKind::Prompt => V { ty: ret.ty, taint: Some(span) },
+            // untrusted from the call on, as a prompt's answer
+            FnKind::Native if ret.taint == Some(def.span) => V { ty: ret.ty, taint: Some(span) },
+            _ => ret,
         }
-        ret
     }
 
     pub(crate) fn user_method(

@@ -158,6 +158,31 @@ target/debug/grenat eval examples/triage.grn # `eval` blocks: the real model, sc
 cargo test                                   # ~440 tests: unit, integration, CLI, HTTP, MCP, JIT, build
 ```
 
+## Native facets
+
+A facet can ship Rust code, as a gem ships C: a crate depending on `grenat_ext`, whose
+exported functions Grenat calls as ordinary ones. The application trusts it explicitly —
+it runs outside Grenat's sandbox — and `setter install` builds it and writes its declarations:
+
+```rust
+/// Reads a sheet: a line per row, cells separated by commas.
+#[grenat_ext::export(effects = "fs.read")]
+pub fn read_sheet(path: String) -> Result<Vec<Vec<String>>, String> { … }
+```
+
+```ruby
+# Facetfile
+facet "sheets", "~> 0.1", native: true
+
+# generated: native def read_sheet(path: String) -> ~Array(Array(String)) uses fs.read
+def main uses fs.read
+  puts read_sheet("sales.csv").trust!.size
+end
+```
+
+Types and effects are checked like any call's; the result is untrusted unless the function is
+`pure`, and no secret is ever handed to native code (see `SPEC.md`, phase 12).
+
 ## Editors
 
 `grenat lsp` is a language server (diagnostics as you type, formatting, hover, go to
@@ -194,7 +219,10 @@ end })
 | `grenat_console` | `grenat console`: pages and actions of the operations console, and who may use it |
 | `grenat_config` | the application's configuration: encrypted credentials per environment, `config/*.yml` |
 | `grenat_setter` | `setter`: creates, adds, installs and publishes facets (libraries) |
-| `grenat_package` | `grenat.toml`, `require`, facets (`Facetfile`, versions, indexes), path and git dependencies |
+| `grenat_package` | `grenat.toml`, `require`, facets (`Facetfile`, versions, indexes, trusted native code), path and git dependencies |
+| `grenat_ext` | the SDK of native facets: Rust functions exported to Grenat behind a versioned JSON ABI, and their manifest |
+| `grenat_ext_macros` | `#[grenat_ext::export]` and `#[derive(GrenatType)]` |
+| `grenat_native` | native facets, Grenat's side: building a facet's library, loading it (ABI checked), declaring and calling its functions |
 | `grenat_fmt` | the formatter |
 | `grenat_lsp` | the language server |
 | `grenat_macros` | macro expansion: templates of declarations |

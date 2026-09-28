@@ -10,6 +10,9 @@
 //!
 //! With `--native`, the whole program is compiled (`grenat_codegen::standalone`)
 //! and linked with `libgrenat_standalone.a` only: no interpreter inside.
+//!
+//! A program that calls native facets (`native def`) is refused for now:
+//! their libraries are not linked into executables yet.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -72,6 +75,12 @@ fn compile(path: &str, output: &Path, standalone: bool, backend: Backend) -> Res
     // diagnostics are printed by `load`
     let loaded = load(path, false).ok_or_else(String::new)?;
     let (src, files, program) = (&loaded.sources.text, loaded.sources.table(), &loaded.program);
+    if let Some(name) = native_function(program) {
+        return Err(format!(
+            "{path} calls native code (`native def {name}`, from a native facet): `grenat build` cannot link \
+             native facets into an executable yet; run the program with `grenat run`"
+        ));
+    }
     let (object, library) = if standalone {
         let object = grenat_codegen::standalone::object(program, src, &files, backend).map_err(|reasons| {
             let list: Vec<String> = reasons.iter().map(|r| format!("  - {r}")).collect();
@@ -98,6 +107,14 @@ fn compile(path: &str, output: &Path, standalone: bool, backend: Backend) -> Res
     let kind = if standalone { "a native program of" } else { "with" };
     let optimizer = if backend == Backend::Llvm { ", LLVM -O3" } else { "" };
     Ok(format!("{kind} {native} native function(s){optimizer}, {:.1} MB", size as f64 / 1e6))
+}
+
+/// The first `native def` of the program, if any.
+fn native_function(program: &grenat_ast::Program) -> Option<&str> {
+    program.items.iter().find_map(|item| match item {
+        grenat_ast::Item::Fn(def) if def.kind == grenat_ast::FnKind::Native => Some(def.name.name.as_str()),
+        _ => None,
+    })
 }
 
 const HOST: &str = "libgrenat_host.a";

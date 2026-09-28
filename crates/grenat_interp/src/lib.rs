@@ -104,6 +104,9 @@ pub struct Options {
     /// No real model: a call neither mocked nor in a cassette is an error
     /// (set by [`run_tests`] when no provider is given).
     pub offline: bool,
+    /// The native facets the program may call (`native def`): their
+    /// libraries and manifests, trusted by the application.
+    pub natives: Vec<grenat_native::Installed>,
 }
 
 impl Default for Options {
@@ -120,6 +123,7 @@ impl Default for Options {
             credentials_root: None,
             record: false,
             offline: false,
+            natives: Vec::new(),
         }
     }
 }

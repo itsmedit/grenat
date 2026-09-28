@@ -41,6 +41,7 @@ impl Printer<'_> {
             FnKind::Prompt => "prompt ",
             FnKind::Tool => "tool ",
             FnKind::Workflow => "workflow ",
+            FnKind::Native => "native def ",
         });
         if def.on_self {
             self.write("self.");
@@ -66,7 +67,11 @@ impl Printer<'_> {
             self.write(" using ");
             self.expr(model);
         }
-        if def.is_abstract {
+        if def.pure {
+            self.write(" pure");
+        }
+        // Rust code implements a `native def`
+        if def.is_abstract || def.kind == FnKind::Native {
             return;
         }
         if def.short {

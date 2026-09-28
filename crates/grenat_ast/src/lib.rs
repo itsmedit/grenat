@@ -73,6 +73,9 @@ pub enum FnKind {
     Tool,
     /// Durable: every `step` is journaled.
     Workflow,
+    /// Implemented in Rust by a native facet, declared without a body:
+    /// `native def add(a: Int, b: Int) -> Int pure`.
+    Native,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -93,6 +96,9 @@ pub struct FnDef {
     pub body: Body,
     /// Short form `def name = expr`.
     pub short: bool,
+    /// `native def … pure`: its result depends on its arguments only, and
+    /// is trusted (a native function's result is untrusted otherwise).
+    pub pure: bool,
     pub span: Span,
 }
 

@@ -1,0 +1,21 @@
+[package]
+name = "grenat_native"
+description = "Native facets, Grenat's side: building a facet's Rust library, reading its manifest, declaring and calling its functions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[features]
+# a facet with a native library, built once per test binary (for the tests of other crates)
+fixture = []
+
+[dependencies]
+grenat_ext.workspace = true
+serde_json.workspace = true
+libloading = "0.8"
+
+[dev-dependencies]
+grenat_native = { path = ".", features = ["fixture"] }
+grenat_parser.workspace = true

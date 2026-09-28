@@ -5,6 +5,8 @@
 //! (`git = "<repository>"`); a facet's versions are its repository's tags
 //! (`v1.2.3`). A facet's own `Facetfile` adds its facets, all of them in
 //! one namespace: two requirements on a facet must agree on one version.
+//! A facet that ships Rust code is built too, if the application trusts it
+//! (see [`crate::native`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -70,7 +72,15 @@ pub fn install(root: &Path, update: bool) -> Result<Vec<Installed>, String> {
         chosen.insert(decl.name.clone(), facet);
     }
     let facets: Vec<Installed> = chosen.into_values().collect();
+    // native code: trusted by the application before anything is recorded or built
+    let dirs: Vec<(String, PathBuf)> = facets.iter().map(|f| (f.name.clone(), absolute(root, &f.dir))).collect();
+    crate::native::check_trust(root, &dirs)?;
     save(root, &facets)?;
+    for (name, dir) in &dirs {
+        crate::native::build(name, dir)?;
+    }
+    // the package's own native part, if it is a native facet
+    crate::native::build(&Manifest::load(root)?.name, root)?;
     Ok(facets)
 }
 

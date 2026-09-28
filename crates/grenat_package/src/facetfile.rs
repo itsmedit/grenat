@@ -5,6 +5,7 @@
 //! facet "http_tools", "~> 0.3"                     # from the index, by version
 //! facet "utils", path: "../utils"                  # a directory
 //! facet "greet", git: "https://github.com/x/greet", tag: "v1.0.0"
+//! facet "sheets", "~> 0.1", native: true           # trusted to ship Rust code
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -29,6 +30,9 @@ pub struct FacetDecl {
     pub name: String,
     pub requirement: Requirement,
     pub origin: Origin,
+    /// `native: true`: the application trusts its Rust code, which runs
+    /// outside Grenat's sandbox.
+    pub native: bool,
 }
 
 /// Where a facet comes from.
@@ -111,12 +115,26 @@ impl Facetfile {
                     if file.facets.iter().any(|f| f.name == facet) {
                         return Err(format!("facet `{facet}` is listed twice"));
                     }
-                    file.facets.push(FacetDecl { name: facet, requirement, origin });
+                    let native = flag(args, "native").map_err(|e| format!("facet `{facet}`: {e}"))?;
+                    file.facets.push(FacetDecl { name: facet, requirement, origin, native });
                 }
                 other => return Err(format!("unknown Facetfile directive `{other}`")),
             }
         }
         Ok(file)
+    }
+}
+
+/// `native: true` (or `false`): a literal boolean; `false` without it.
+fn flag(args: &[Arg], key: &str) -> Result<bool, String> {
+    let value = args.iter().find_map(|a| match a {
+        Arg::Named { name, value } if name.name == key => Some(value.as_ref()),
+        _ => None,
+    });
+    match value {
+        None => Ok(false),
+        Some(Some(Expr { kind: ExprKind::Bool(b), .. })) => Ok(*b),
+        Some(_) => Err(format!("`{key}:` is `true` or `false`")),
     }
 }
 
@@ -157,5 +175,17 @@ mod tests {
         assert_eq!(err("gem \"rails\"\n"), "unknown Facetfile directive `gem`");
         assert_eq!(err("facet \"a\", path: \"x\", git: \"y\"\n"), "facet `a`: give either `path:` or `git:`");
         assert!(err("facet \"a\", \"latest\"\n").contains("expected a version"));
+        assert_eq!(err("facet \"a\", native: \"yes\"\n"), "facet `a`: `native:` is `true` or `false`");
+    }
+
+    #[test]
+    fn a_facet_is_trusted_with_native_code_explicitly() {
+        let file = Facetfile::parse(
+            "facet \"sheets\", \"~> 0.1\", native: true\nfacet \"plain\"\nfacet \"no\", native: false\n",
+        )
+        .unwrap();
+        let native: Vec<bool> = file.facets.iter().map(|f| f.native).collect();
+        assert_eq!(native, [true, false, false]);
+        assert_eq!(file.facets[0].requirement.to_string(), "~> 0.1");
     }
 }
