@@ -1,0 +1,7 @@
+[package]
+name = "numbers"
+version = "0.1.0"
+
+# Python functions this facet ships: a process Grenat starts (see bridge/server.py)
+[bridge]
+command = ["python3", "bridge/server.py"]

@@ -1,0 +1,21 @@
+[package]
+name = "grenat_bridge"
+description = "Bridge facets, Grenat's side: a facet's Ruby or Python functions, served by a separate process over JSON-RPC 2.0"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[features]
+# facets served in Ruby and in Python, installed once per test binary (for the tests of other crates)
+fixture = []
+
+[dependencies]
+grenat_native.workspace = true
+grenat_sandbox.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+grenat_bridge = { path = ".", features = ["fixture"] }
+grenat_parser.workspace = true

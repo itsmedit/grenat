@@ -1,0 +1,4 @@
+## The mean of the values, or 0.
+def mean_or_zero(values: Array(Float)) -> Float
+  mean(values) || 0.0
+end

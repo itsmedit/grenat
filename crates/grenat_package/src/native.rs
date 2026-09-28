@@ -1,49 +1,20 @@
-//! Native facets in a package: which the application trusts, building them
-//! at install, and finding their libraries for a run.
+//! Native facets in a package: building them at install, and finding
+//! their libraries for a run.
 //!
 //! A facet ships Rust code with a `[native]` section in its `grenat.toml`.
-//! That code runs outside Grenat's sandbox — no capability, no taint
-//! tracking inside it — so the application must say it trusts it, in its
-//! own `Facetfile`: `facet "sheets", "~> 0.1", native: true`. Without it,
-//! neither `setter install` (which would build, and so run, its code) nor
-//! loading a program that requires it goes further. A package's own native
-//! part is its author's, trusted.
+//! That code runs outside Grenat's sandbox, so the application must trust
+//! it (`facet "sheets", "~> 0.1", native: true`, see [`crate::trust`])
+//! before it is built or loaded. A package's own native part is its
+//! author's, trusted.
 
-use std::collections::HashSet;
 use std::path::Path;
 
 use grenat_native::layout::Layout;
 use grenat_native::{Installed, install};
 
-use crate::facetfile::Facetfile;
 use crate::facets;
 use crate::manifest::Manifest;
-
-/// Why a native facet the application does not trust is refused, and how to trust it.
-pub fn refusal(name: &str) -> String {
-    format!(
-        "facet `{name}` ships native code (Rust), which runs outside Grenat's sandbox: \
-         trust it with `facet \"{name}\", native: true` in the Facetfile"
-    )
-}
-
-/// The facets whose native code the package in `root` trusts.
-pub fn trusted(root: &Path) -> Result<HashSet<String>, String> {
-    Ok(Facetfile::load(root)?
-        .map(|file| file.facets.into_iter().filter(|f| f.native).map(|f| f.name).collect())
-        .unwrap_or_default())
-}
-
-/// Refuses the native facets among `facets` (name, directory) that `root` does not trust.
-pub fn check_trust(root: &Path, facets: &[(String, std::path::PathBuf)]) -> Result<(), String> {
-    let trusted = trusted(root)?;
-    for (name, dir) in facets {
-        if Manifest::load(dir)?.native.is_some() && !trusted.contains(name) {
-            return Err(refusal(name));
-        }
-    }
-    Ok(())
-}
+use crate::trust::{Foreign, Trust};
 
 /// Builds the native part of the package in `dir` (named `name`), if it has
 /// one: its library, manifest and declarations, checked to parse.
@@ -79,11 +50,11 @@ pub fn libraries(root: &Path) -> Result<Vec<Installed>, String> {
     {
         libraries.push(Installed::read(&manifest.name, root)?);
     }
-    let trusted = trusted(root)?;
+    let trust = Trust::load(root)?;
     for facet in facets::installed(root)? {
         let dir = if facet.dir.is_absolute() { facet.dir.clone() } else { root.join(&facet.dir) };
         let native = Manifest::load(&dir).is_ok_and(|m| m.native.is_some());
-        if native && trusted.contains(&facet.name) && Layout::new(&facet.name, &dir).manifest().is_file() {
+        if native && trust.allows(&facet.name, Foreign::Native) && Layout::new(&facet.name, &dir).manifest().is_file() {
             libraries.push(Installed::read(&facet.name, &dir)?);
         }
     }

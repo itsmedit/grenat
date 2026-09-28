@@ -1,9 +1,12 @@
 //! Running a program: an argument vector (never a shell line), a clean
-//! environment, a working directory, a timeout, and optionally no network.
+//! environment, a working directory and optionally no network (all
+//! `grenat_sandbox`'s), its outputs read whole, within a timeout.
 
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
+
+use grenat_sandbox::Sandboxed;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ProcessRequest {
@@ -24,19 +27,10 @@ pub(crate) struct ProcessReply {
 
 /// Runs `request`; an error is a program that could not run or ran too long.
 pub(crate) fn run(request: &ProcessRequest) -> Result<ProcessReply, String> {
-    let mut argv = isolation(request.network)?;
-    argv.extend(request.argv.iter().cloned());
-    let mut command = Command::new(&argv[0]);
-    command.args(&argv[1..]).env_clear().stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    for kept in ["PATH", "HOME", "LANG"] {
-        if let Some(value) = std::env::var_os(kept) {
-            command.env(kept, value);
-        }
-    }
-    command.envs(request.env.iter().map(|(k, v)| (k, v)));
-    if let Some(dir) = &request.cwd {
-        command.current_dir(dir);
-    }
+    let cwd = request.cwd.as_deref().map(std::path::Path::new);
+    let sandboxed = Sandboxed { argv: &request.argv, cwd, env: &request.env, network: request.network };
+    let mut command = sandboxed.command()?;
+    command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = command.spawn().map_err(|e| format!("cannot run `{}`: {e}", request.argv[0]))?;
     let read = |stream: Option<Box<dyn Read + Send>>| {
         std::thread::spawn(move || {
@@ -68,22 +62,4 @@ pub(crate) fn run(request: &ProcessRequest) -> Result<ProcessReply, String> {
         stdout: stdout.join().unwrap_or_default(),
         stderr: stderr.join().unwrap_or_default(),
     })
-}
-
-/// The prefix that cuts the network off, if asked: `sandbox-exec` on macOS,
-/// `unshare` on Linux. Never runs without isolation when it was asked for.
-fn isolation(network: bool) -> Result<Vec<String>, String> {
-    if network {
-        return Ok(Vec::new());
-    }
-    let found = |program: &str| {
-        std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|d| d.join(program).is_file()))
-    };
-    if cfg!(target_os = "macos") && found("sandbox-exec") {
-        return Ok(["sandbox-exec", "-p", "(version 1)(allow default)(deny network*)"].map(String::from).to_vec());
-    }
-    if cfg!(target_os = "linux") && found("unshare") {
-        return Ok(["unshare", "--map-root-user", "--net", "--"].map(String::from).to_vec());
-    }
-    Err("network isolation is not available here (it needs sandbox-exec or unshare): use `network: true`".into())
 }

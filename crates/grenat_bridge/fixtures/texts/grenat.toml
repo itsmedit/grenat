@@ -1,0 +1,8 @@
+[package]
+name = "texts"
+version = "0.1.0"
+
+# Ruby functions this facet ships: a process Grenat starts (see bridge/server.rb)
+[bridge]
+command = ["ruby", "bridge/server.rb"]
+env = ["TEXTS_GREETING"]

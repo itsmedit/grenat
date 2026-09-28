@@ -5,8 +5,9 @@
 //! (`git = "<repository>"`); a facet's versions are its repository's tags
 //! (`v1.2.3`). A facet's own `Facetfile` adds its facets, all of them in
 //! one namespace: two requirements on a facet must agree on one version.
-//! A facet that ships Rust code is built too, if the application trusts it
-//! (see [`crate::native`]).
+//! A facet that ships Rust code is built too, and one that ships a bridge
+//! asked to describe itself, if the application trusts it (see
+//! [`crate::trust`], [`crate::native`], [`crate::bridge`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -72,15 +73,18 @@ pub fn install(root: &Path, update: bool) -> Result<Vec<Installed>, String> {
         chosen.insert(decl.name.clone(), facet);
     }
     let facets: Vec<Installed> = chosen.into_values().collect();
-    // native code: trusted by the application before anything is recorded or built
+    // code outside Grenat: trusted by the application before anything is recorded, built or started
     let dirs: Vec<(String, PathBuf)> = facets.iter().map(|f| (f.name.clone(), absolute(root, &f.dir))).collect();
-    crate::native::check_trust(root, &dirs)?;
+    crate::trust::check(root, &dirs)?;
     save(root, &facets)?;
     for (name, dir) in &dirs {
         crate::native::build(name, dir)?;
+        crate::bridge::install(name, dir)?;
     }
-    // the package's own native part, if it is a native facet
-    crate::native::build(&Manifest::load(root)?.name, root)?;
+    // the package's own native part or bridge, if it is such a facet
+    let name = Manifest::load(root)?.name;
+    crate::native::build(&name, root)?;
+    crate::bridge::install(&name, root)?;
     Ok(facets)
 }
 

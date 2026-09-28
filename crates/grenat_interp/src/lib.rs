@@ -107,6 +107,9 @@ pub struct Options {
     /// The native facets the program may call (`native def`): their
     /// libraries and manifests, trusted by the application.
     pub natives: Vec<grenat_native::Installed>,
+    /// The bridge facets the program may call (`native def` too): their
+    /// servers and manifests, trusted by the application.
+    pub bridges: Vec<grenat_bridge::Installed>,
 }
 
 impl Default for Options {
@@ -124,6 +127,7 @@ impl Default for Options {
             record: false,
             offline: false,
             natives: Vec::new(),
+            bridges: Vec::new(),
         }
     }
 }

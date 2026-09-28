@@ -118,17 +118,21 @@ pub fn publish() -> Result<String, String> {
     ))
 }
 
-/// The facets, and the native code of those that ship some.
+/// The facets, and the native code or bridge of those that ship one.
 fn describe(root: &Path, facets: &[Installed]) -> String {
     let mut lines = vec![format!("✓ {} facet(s):", facets.len())];
     for f in facets {
         let version = f.version.map(|v| v.to_string()).unwrap_or_else(|| "-".into());
         let dir = if f.dir.is_absolute() { f.dir.clone() } else { root.join(&f.dir) };
-        let native = match grenat_package::native::functions(&f.name, &dir) {
-            Some(n) => format!(", native: {n} Rust function(s)"),
-            None => String::new(),
+        let foreign = match (
+            grenat_package::native::functions(&f.name, &dir),
+            grenat_package::bridge::functions(&f.name, &dir),
+        ) {
+            (Some(n), _) => format!(", native: {n} Rust function(s)"),
+            (None, Some((n, command))) => format!(", bridge: {n} function(s) served by `{command}`"),
+            (None, None) => String::new(),
         };
-        lines.push(format!("  {} {version} ({}{native})", f.name, f.source));
+        lines.push(format!("  {} {version} ({}{foreign})", f.name, f.source));
     }
     lines.join("\n")
 }

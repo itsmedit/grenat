@@ -1,0 +1,4 @@
+## The words of a text, in capitals.
+def loud_words(text: String) -> Array(String)
+  words(text).map { |w| w.text.upcase }
+end

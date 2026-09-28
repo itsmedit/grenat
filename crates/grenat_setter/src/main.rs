@@ -13,8 +13,9 @@ Usage:
   setter new <name>              create a facet (a library to share)
   setter add <name> [\"~> 1.2\"]   use a facet from the indexes (the latest, by default)
   setter add <name> --path <dir> | --git <url> [--tag <tag>]
-  setter install                 install the facets of the Facetfile (Facetfile.lock), and build
-                                 the Rust code of the native ones it trusts (`native: true`)
+  setter install                 install the facets of the Facetfile (Facetfile.lock), build the
+                                 Rust code of the native ones it trusts (`native: true`), and
+                                 describe the bridges of those it trusts (`bridge: true`)
   setter update                  install their latest allowed versions
   setter list                    the facets installed
   setter publish                 tag this facet's version (v<version>) for the indexes

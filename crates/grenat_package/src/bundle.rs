@@ -8,6 +8,7 @@ use grenat_report::Sources;
 
 use crate::requires::requires;
 use crate::resolve::{Package, Resolver, find_package};
+use crate::trust::{Foreign, Trust};
 
 /// Every file of a program, dependencies first.
 #[derive(Debug)]
@@ -42,14 +43,14 @@ pub fn load_with(entry: &Path, update: bool, overlay: &HashMap<PathBuf, String>)
         seen: HashSet::new(),
         files: Vec::new(),
         overlay,
-        trusted: None,
+        trust: None,
     };
-    // a native facet's own programs (its tests) see its native functions
+    // a native or bridge facet's own programs (its tests) see its functions
     if let Some(package) = &package
-        && package.manifest.native.is_some()
+        && let Some(kind) = Foreign::of(&package.manifest)
     {
         let declarations =
-            crate::native::declarations(&package.manifest.name, &package.root).map_err(LoadError::Message)?;
+            foreign_declarations(kind, &package.manifest.name, &package.root).map_err(LoadError::Message)?;
         loader.visit(&declarations, display(&declarations))?;
     }
     loader.visit(entry, entry.to_string_lossy().into_owned())?;
@@ -76,8 +77,8 @@ struct Loader<'o> {
     seen: HashSet<PathBuf>,
     /// (displayed path, text), in load order.
     files: Vec<(String, String)>,
-    /// The facets whose native code the root package trusts, read once.
-    trusted: Option<HashSet<String>>,
+    /// The facets whose code outside Grenat the root package trusts, read once.
+    trust: Option<Trust>,
 }
 
 impl Loader<'_> {
@@ -106,7 +107,7 @@ impl Loader<'_> {
             let target = require.target.map_err(|e| e.to_string()).and_then(|t| self.target(&canonical, &t));
             match target {
                 Ok((file, native)) => {
-                    // a native facet's declarations, generated from its library
+                    // a native or bridge facet's declarations, generated from what it exports
                     if let Some(declarations) = native {
                         let shown = display(&declarations);
                         self.visit(&declarations, shown)?;
@@ -121,8 +122,8 @@ impl Loader<'_> {
         Ok(())
     }
 
-    /// The file `require "<target>"` in `file` loads, and the native
-    /// declarations of its package if it is a native facet.
+    /// The file `require "<target>"` in `file` loads, and the declarations
+    /// of its package if it is a native or bridge facet.
     fn target(&mut self, file: &Path, target: &str) -> Result<(PathBuf, Option<PathBuf>), String> {
         let (path, native) = if target.starts_with("./") || target.starts_with("../") {
             (with_extension(file.parent().unwrap_or(Path::new(".")).join(target)), None)
@@ -158,7 +159,7 @@ impl Loader<'_> {
                 display(&package.root.join(crate::MANIFEST))
             ));
         };
-        let native = self.native_declarations(&owner)?;
+        let native = self.foreign_declarations(&owner)?;
         let path = match rest {
             Some(rest) => with_extension(owner.root.join("src").join(rest)),
             None => owner.lib(),
@@ -166,26 +167,32 @@ impl Loader<'_> {
         Ok((path, native))
     }
 
-    /// The declarations of `owner`'s native code, if it has some: only for
-    /// the root package itself, or a facet the root package trusts.
-    fn native_declarations(&mut self, owner: &Package) -> Result<Option<PathBuf>, String> {
-        if owner.manifest.native.is_none() {
-            return Ok(None);
-        }
+    /// The declarations of `owner`'s native code or bridge, if it has one:
+    /// only for the root package itself, or a facet the root package trusts.
+    fn foreign_declarations(&mut self, owner: &Package) -> Result<Option<PathBuf>, String> {
+        let Some(kind) = Foreign::of(&owner.manifest) else { return Ok(None) };
         let root = self.resolver.root().map(Path::to_path_buf);
         if root.as_deref() != Some(owner.root.as_path()) {
-            let trusted = match (&self.trusted, &root) {
-                (Some(trusted), _) => trusted.clone(),
-                (None, Some(root)) => crate::native::trusted(root)?,
-                (None, None) => HashSet::new(),
+            let trust = match (&self.trust, &root) {
+                (Some(trust), _) => trust.clone(),
+                (None, Some(root)) => Trust::load(root)?,
+                (None, None) => Trust::default(),
             };
-            let allowed = trusted.contains(&owner.manifest.name);
-            self.trusted = Some(trusted);
+            let allowed = trust.allows(&owner.manifest.name, kind);
+            self.trust = Some(trust);
             if !allowed {
-                return Err(crate::native::refusal(&owner.manifest.name));
+                return Err(crate::trust::refusal(&owner.manifest.name, kind));
             }
         }
-        crate::native::declarations(&owner.manifest.name, &owner.root).map(Some)
+        foreign_declarations(kind, &owner.manifest.name, &owner.root).map(Some)
+    }
+}
+
+/// The declarations file of the package `name` in `dir`, as its kind of code writes it.
+fn foreign_declarations(kind: Foreign, name: &str, dir: &Path) -> Result<PathBuf, String> {
+    match kind {
+        Foreign::Native => crate::native::declarations(name, dir),
+        Foreign::Bridge => crate::bridge::declarations(name, dir),
     }
 }
 

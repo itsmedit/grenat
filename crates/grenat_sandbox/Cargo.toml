@@ -1,0 +1,10 @@
+[package]
+name = "grenat_sandbox"
+description = "Sandboxed processes: an argument vector, a clean environment, and no network unless allowed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]

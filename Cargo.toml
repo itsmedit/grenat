@@ -39,6 +39,8 @@ grenat_ssh = { path = "crates/grenat_ssh" }
 grenat_ext = { path = "crates/grenat_ext" }
 grenat_ext_macros = { path = "crates/grenat_ext_macros" }
 grenat_native = { path = "crates/grenat_native" }
+grenat_sandbox = { path = "crates/grenat_sandbox" }
+grenat_bridge = { path = "crates/grenat_bridge" }
 serde_json = "1"
 ureq = { version = "3", features = ["json", "socks-proxy"] }
 

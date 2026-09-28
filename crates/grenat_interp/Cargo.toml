@@ -23,10 +23,13 @@ grenat_mcp.workspace = true
 grenat_serve.workspace = true
 grenat_ssh.workspace = true
 grenat_native.workspace = true
+grenat_bridge.workspace = true
+grenat_sandbox.workspace = true
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname", "rustls-tls"] }
 
 [dev-dependencies]
 grenat_native = { workspace = true, features = ["fixture"] }
+grenat_bridge = { workspace = true, features = ["fixture"] }
 grenat_mcp = { workspace = true, features = ["fake"] }
 grenat_ssh = { workspace = true, features = ["fake"] }
 grenat_parser.workspace = true

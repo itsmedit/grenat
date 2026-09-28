@@ -12,10 +12,13 @@
 //! repositories (`git = "…"`, with a `tag`, `branch` or `rev`), fetched into
 //! the root package's `.grenat/deps/` and pinned in its `grenat.lock`.
 //!
-//! A facet may ship Rust code (`[native]`, see [`native`]): installed only
-//! when the application trusts it (`facet "sheets", native: true`), and
-//! loaded with the Grenat declarations generated from its library.
+//! A facet may ship Rust code (`[native]`, see [`native`]) or a bridge — a
+//! process serving Ruby or Python functions (`[bridge]`, see [`bridge`]):
+//! installed only when the application trusts it (`facet "sheets", native:
+//! true`, `facet "texts", bridge: true`, see [`trust`]), and loaded with the
+//! Grenat declarations generated from what it exports.
 
+pub mod bridge;
 mod bundle;
 pub mod facetfile;
 pub mod facets;
@@ -26,6 +29,7 @@ pub mod native;
 mod requires;
 mod resolve;
 mod scaffold;
+pub mod trust;
 pub mod version;
 
 pub use bundle::{Bundle, LoadError, load, load_with};

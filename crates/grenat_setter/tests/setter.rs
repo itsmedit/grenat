@@ -125,3 +125,34 @@ fn a_trusted_native_facet_is_built_at_install() {
     let list = setter(&app, &["list"]);
     assert!(text(&list.stderr).contains("native: 12 Rust function(s)"), "{}", text(&list.stderr));
 }
+
+#[test]
+fn a_trusted_bridge_facet_describes_itself_at_install() {
+    use grenat_bridge::fixture::{self, RUBY};
+    if let Some(why) = fixture::missing(RUBY) {
+        println!("skipped: {why}");
+        return;
+    }
+    let dir = temp_dir("bridge");
+    let facet = fixture::copy_facet(RUBY, &dir);
+    let app = dir.join("app");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::write(app.join("grenat.toml"), "[package]\nname = \"app\"\n").unwrap();
+    let install = |facetfile: &str| {
+        std::fs::write(app.join("Facetfile"), facetfile).unwrap();
+        setter(&app, &["install"])
+    };
+    let refused = install("facet \"texts\", path: \"../texts\"\n");
+    assert!(!refused.status.success());
+    assert!(text(&refused.stderr).contains("trust it with `facet \"texts\", bridge: true` in the Facetfile"));
+    let out = install("facet \"texts\", path: \"../texts\", bridge: true\n");
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let functions = fixture::installed(RUBY).unwrap().1.manifest.functions.len();
+    let line =
+        format!("texts 0.1.0 (path:../texts, bridge: {functions} function(s) served by `ruby bridge/server.rb`)");
+    assert!(text(&out.stderr).contains(&line), "{}", text(&out.stderr));
+    let declarations = std::fs::read_to_string(facet.join(".grenat/bridge/bridge.grn")).unwrap();
+    assert!(declarations.contains("native def shout(text: String) -> ~String\n"));
+    let list = setter(&app, &["list"]);
+    assert!(text(&list.stderr).contains(&line), "{}", text(&list.stderr));
+}

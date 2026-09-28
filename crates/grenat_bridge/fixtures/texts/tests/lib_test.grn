@@ -1,0 +1,6 @@
+require "../src/lib"
+
+test "words cross the bridge" do
+  assert_equal ["A", "B"], loud_words("a b")
+  assert_equal "HI", shout("hi").trust!
+end

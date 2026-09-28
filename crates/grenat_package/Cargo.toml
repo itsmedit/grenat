@@ -13,7 +13,9 @@ grenat_ast.workspace = true
 grenat_parser.workspace = true
 grenat_report.workspace = true
 grenat_native.workspace = true
+grenat_bridge.workspace = true
 toml = "1"
 
 [dev-dependencies]
 grenat_native = { workspace = true, features = ["fixture"] }
+grenat_bridge = { workspace = true, features = ["fixture"] }

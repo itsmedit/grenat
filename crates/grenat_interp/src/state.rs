@@ -129,6 +129,8 @@ pub(crate) struct Shared<'p> {
     pub jit: Option<grenat_codegen::Native>,
     /// The functions of native facets (`native def`), by name.
     pub natives: grenat_native::Registry,
+    /// The functions of bridge facets (`native def` too), by name.
+    pub bridges: grenat_bridge::Registry,
 }
 
 /// An execution task: its call stack, budgets and capabilities.
@@ -173,6 +175,7 @@ impl<'p> Deref for Interp<'p> {
 impl<'p> Interp<'p> {
     pub(crate) fn new(program: &'p Program, options: Options, spawner: Spawner<'p>) -> Result<Self, RuntimeError> {
         let total = Arc::new(Budget::unlimited());
+        let bridges = grenat_bridge::Registry::new(&options.bridges, crate::eval::bridge_log(&options));
         let mut shared = Shared {
             program,
             fns: HashMap::new(),
@@ -225,6 +228,7 @@ impl<'p> Interp<'p> {
             idle: grenat_green::Condvar::new(),
             jit: None,
             natives: grenat_native::Registry::new(&options.natives),
+            bridges,
             journal_dir: Mutex::new(options.journal.clone().unwrap_or_else(|| ".grenat/journal".into())),
         };
         let loaded = shared.load();

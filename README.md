@@ -183,6 +183,38 @@ end
 Types and effects are checked like any call's; the result is untrusted unless the function is
 `pure`, and no secret is ever handed to native code (see `SPEC.md`, phase 12).
 
+## Bridge facets
+
+A facet can also ship Ruby or Python functions — no interpreter is embedded in Grenat: the
+facet's server is a separate process, speaking JSON-RPC 2.0 on its standard input and output,
+with a helper library Grenat ships (standard library only):
+
+```rb
+# bridge/server.rb, started by `[bridge] command = ["ruby", "bridge/server.rb"]` in grenat.toml
+require "grenat/bridge"
+
+Grenat::Bridge.export(:slug, params: {title: :string}, returns: :string, pure: true) do |title:|
+  title.downcase.gsub(/[^a-z0-9]+/, "-")
+end
+
+Grenat::Bridge.run
+```
+
+```ruby
+# Facetfile
+facet "texts", "~> 0.1", bridge: true
+
+# generated: native def slug(title: String) -> String pure
+def main
+  puts slug("Hello, World")
+end
+```
+
+In Python, `@export` on an annotated function, then `run()` (`from grenat_bridge import export, run`).
+The server runs sandboxed — a clean environment, no network unless a function declares `net` —
+one per facet, kept alive, each call within a timeout; types, effects, taint and secrets are
+checked as for native code (see `SPEC.md`, phase 12).
+
 ## Editors
 
 `grenat lsp` is a language server (diagnostics as you type, formatting, hover, go to
@@ -219,10 +251,12 @@ end })
 | `grenat_console` | `grenat console`: pages and actions of the operations console, and who may use it |
 | `grenat_config` | the application's configuration: encrypted credentials per environment, `config/*.yml` |
 | `grenat_setter` | `setter`: creates, adds, installs and publishes facets (libraries) |
-| `grenat_package` | `grenat.toml`, `require`, facets (`Facetfile`, versions, indexes, trusted native code), path and git dependencies |
+| `grenat_package` | `grenat.toml`, `require`, facets (`Facetfile`, versions, indexes, trusted native code and bridges), path and git dependencies |
 | `grenat_ext` | the SDK of native facets: Rust functions exported to Grenat behind a versioned JSON ABI, and their manifest |
 | `grenat_ext_macros` | `#[grenat_ext::export]` and `#[derive(GrenatType)]` |
 | `grenat_native` | native facets, Grenat's side: building a facet's library, loading it (ABI checked), declaring and calling its functions |
+| `grenat_bridge` | bridge facets, Grenat's side: a facet's Ruby or Python functions served by a process over JSON-RPC 2.0, described, declared and called |
+| `grenat_sandbox` | sandboxed processes (`Shell.run`, bridges): an argument vector, a clean environment, no network unless allowed |
 | `grenat_fmt` | the formatter |
 | `grenat_lsp` | the language server |
 | `grenat_macros` | macro expansion: templates of declarations |

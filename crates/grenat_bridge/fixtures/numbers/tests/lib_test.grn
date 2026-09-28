@@ -1,0 +1,6 @@
+require "../src/lib"
+
+test "numbers cross the bridge" do
+  assert_equal 1.5, mean_or_zero([1.0, 2.0])
+  assert_equal 0.0, mean_or_zero([])
+end

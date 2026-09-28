@@ -6,6 +6,7 @@
 //! facet "utils", path: "../utils"                  # a directory
 //! facet "greet", git: "https://github.com/x/greet", tag: "v1.0.0"
 //! facet "sheets", "~> 0.1", native: true           # trusted to ship Rust code
+//! facet "texts", "~> 0.2", bridge: true            # trusted to ship a Ruby or Python bridge
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -33,6 +34,9 @@ pub struct FacetDecl {
     /// `native: true`: the application trusts its Rust code, which runs
     /// outside Grenat's sandbox.
     pub native: bool,
+    /// `bridge: true`: the application trusts its bridge, a process that
+    /// serves Ruby or Python functions outside Grenat's sandbox.
+    pub bridge: bool,
 }
 
 /// Where a facet comes from.
@@ -116,7 +120,8 @@ impl Facetfile {
                         return Err(format!("facet `{facet}` is listed twice"));
                     }
                     let native = flag(args, "native").map_err(|e| format!("facet `{facet}`: {e}"))?;
-                    file.facets.push(FacetDecl { name: facet, requirement, origin, native });
+                    let bridge = flag(args, "bridge").map_err(|e| format!("facet `{facet}`: {e}"))?;
+                    file.facets.push(FacetDecl { name: facet, requirement, origin, native, bridge });
                 }
                 other => return Err(format!("unknown Facetfile directive `{other}`")),
             }
@@ -125,7 +130,7 @@ impl Facetfile {
     }
 }
 
-/// `native: true` (or `false`): a literal boolean; `false` without it.
+/// `native: true`, `bridge: true` (or `false`): a literal boolean; `false` without it.
 fn flag(args: &[Arg], key: &str) -> Result<bool, String> {
     let value = args.iter().find_map(|a| match a {
         Arg::Named { name, value } if name.name == key => Some(value.as_ref()),
@@ -187,5 +192,14 @@ mod tests {
         let native: Vec<bool> = file.facets.iter().map(|f| f.native).collect();
         assert_eq!(native, [true, false, false]);
         assert_eq!(file.facets[0].requirement.to_string(), "~> 0.1");
+    }
+
+    #[test]
+    fn a_facet_is_trusted_with_a_bridge_explicitly() {
+        let file = Facetfile::parse("facet \"texts\", bridge: true\nfacet \"plain\", native: true\n").unwrap();
+        let flags: Vec<(bool, bool)> = file.facets.iter().map(|f| (f.native, f.bridge)).collect();
+        assert_eq!(flags, [(false, true), (true, false)]);
+        let e = Facetfile::parse("facet \"a\", bridge: 1\n").unwrap_err();
+        assert_eq!(e, "facet `a`: `bridge:` is `true` or `false`");
     }
 }

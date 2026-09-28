@@ -16,3 +16,4 @@ grenat_package.workspace = true
 
 [dev-dependencies]
 grenat_native = { workspace = true, features = ["fixture"] }
+grenat_bridge = { workspace = true, features = ["fixture"] }

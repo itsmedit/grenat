@@ -11,8 +11,8 @@
 //! With `--native`, the whole program is compiled (`grenat_codegen::standalone`)
 //! and linked with `libgrenat_standalone.a` only: no interpreter inside.
 //!
-//! A program that calls native facets (`native def`) is refused for now:
-//! their libraries are not linked into executables yet.
+//! A program that calls native or bridge facets (`native def`) is refused for now:
+//! their libraries and servers are not part of executables yet.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -77,7 +77,7 @@ fn compile(path: &str, output: &Path, standalone: bool, backend: Backend) -> Res
     let (src, files, program) = (&loaded.sources.text, loaded.sources.table(), &loaded.program);
     if let Some(name) = native_function(program) {
         return Err(format!(
-            "{path} calls native code (`native def {name}`, from a native facet): `grenat build` cannot link \
+            "{path} calls native code (`native def {name}`, from a native or bridge facet): `grenat build` cannot link \
              native facets into an executable yet; run the program with `grenat run`"
         ));
     }

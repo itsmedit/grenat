@@ -31,4 +31,5 @@ pub(crate) mod workflow;
 
 pub(crate) use assign::set_field;
 pub(crate) use errors::{error_is_a, is_error_name};
+pub(crate) use foreign::bridge_log;
 pub(crate) use ops::compare;
