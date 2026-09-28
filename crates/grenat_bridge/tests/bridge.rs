@@ -198,6 +198,14 @@ fn standard_output_is_the_protocols_and_standard_error_the_logs() {
 }
 
 #[test]
+fn a_relative_path_resolves_in_the_facets_directory() {
+    // as SPEC.md says: a program passes a bridge absolute paths
+    let Some(texts) = registry(RUBY) else { return };
+    let read = returned(&texts, "read_text", json!(["grenat.toml"]));
+    assert!(read.as_str().unwrap().contains("name = \"texts\""), "{read}");
+}
+
+#[test]
 fn the_environment_is_clean_but_for_declared_variables() {
     let Some(texts) = registry(RUBY) else { return };
     // cargo sets it for the tests: not passed on

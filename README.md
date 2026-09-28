@@ -211,7 +211,8 @@ end
 ```
 
 In Python, `@export` on an annotated function, then `run()` (`from grenat_bridge import export, run`).
-The server runs sandboxed — a clean environment, no network unless a function declares `net` —
+The server runs sandboxed in the facet's directory — a clean environment, no network unless a
+function declares `net`; a relative path it is given resolves there, so pass it absolute ones —
 one per facet, kept alive, each call within a timeout; types, effects, taint and secrets are
 checked as for native code (see `SPEC.md`, phase 12).
 
