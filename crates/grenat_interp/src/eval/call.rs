@@ -188,6 +188,9 @@ impl<'p> Interp<'p> {
         {
             return result;
         }
+        if def.kind == FnKind::Native {
+            self.bind_foreign(def)?;
+        }
         if let Some(effect) = dangerous_effect(def) {
             let tainted = args
                 .pos

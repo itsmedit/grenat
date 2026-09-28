@@ -4,6 +4,7 @@ mod agents;
 pub(crate) mod approvals;
 mod assign;
 pub(crate) mod batch;
+mod binding;
 mod budget;
 mod call;
 mod capabilities;

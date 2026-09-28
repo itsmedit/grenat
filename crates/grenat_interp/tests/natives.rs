@@ -140,11 +140,42 @@ fn a_declaration_without_its_library_fails_when_called() {
     let e = run_with("puts add(1, 2)\n", vec![old], decl).0.unwrap_err();
     assert_eq!(e.ty, "NativeError");
     assert!(e.message.contains("version 0 of Grenat's native ABI"), "{}", e.message);
-    // a result of another type than declared
+    // another type than the library's: not bound to it
     let wrong = "native def add(a: Int, b: Int) -> String pure";
     let e = run_with("puts add(1, 2)\n", vec![installed.clone()], wrong).0.unwrap_err();
     assert_eq!(e.ty, "NativeError");
-    assert!(e.message.starts_with("`add` returned a value of another type"), "{}", e.message);
+    assert_eq!(
+        e.message,
+        "`add` is not declared as facet `sheets` exports it (`native def add(a: Int, b: Int) -> Int pure`): a \
+         `native def` is written by `setter install`, not by hand"
+    );
+}
+
+#[test]
+fn a_declaration_written_by_hand_cannot_drop_effects_or_taint() {
+    let dir = std::env::temp_dir().join(format!("grenat-natives-forged-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let sheet = dir.join("sheet.csv");
+    std::fs::write(&sheet, "secret, cells\n").unwrap();
+    let (_, installed) = fixture::installed();
+    let forged = "native def read_sheet(path: String) -> Array(Array(String)) pure";
+    let code = format!("def load uses net\n  read_sheet(\"{}\")\nend\nv = load\nputs v, v.tainted?\n", sheet.display());
+    let (result, output) = run_with(&code, vec![installed.clone()], forged);
+    let e = result.unwrap_err();
+    assert_eq!(e.ty, "NativeError", "{output}");
+    assert!(e.message.starts_with("`read_sheet` is not declared as facet `sheets` exports it"), "{}", e.message);
+    assert_eq!(output, "");
+    // a function of the library whose declaration drops an effect, or its `~`
+    for (forged, call) in [
+        ("native def read_sheet(path: String) -> ~Array(Array(String))", "read_sheet(\"x\")"),
+        ("native def shout(text: String) -> String pure", "shout(\"x\")"),
+        ("native def add(a: Int, b: Int) -> ~Int uses net", "add(1, 2)"),
+        ("native def add(a: Int, c: Int) -> Int pure", "add(1, 2)"),
+    ] {
+        let (result, _) = run_with(&format!("{call}\n"), vec![installed.clone()], forged);
+        assert!(result.unwrap_err().message.contains("is not declared as facet `sheets` exports it"), "{forged}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

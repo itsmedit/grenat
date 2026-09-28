@@ -127,6 +127,41 @@ fn the_effects_of_a_bridge_function_are_enforced_on_its_callers() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Runs `code` after `declarations` (not the facet's), with the bridge of `facet`.
+fn run_declared(facet: &str, declarations: &str, code: &str) -> Option<Run> {
+    let (_, installed) = fixture::installed(facet)?;
+    let parsed = grenat_parser::parse(&format!("{declarations}\n{code}"));
+    assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+    let out = Arc::new(Mutex::new(String::new()));
+    let options =
+        Options { output: Output::Capture(out.clone()), bridges: vec![installed.clone()], ..Options::default() };
+    let result = run_main(&parsed.program, Vec::new(), options).map(drop);
+    let output = out.lock().unwrap().clone();
+    Some(Run { result, output })
+}
+
+#[test]
+fn a_declaration_written_by_hand_cannot_drop_effects_or_taint() {
+    let dir = std::env::temp_dir().join(format!("grenat-bridges-forged-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("secret.txt");
+    std::fs::write(&file, "secret file").unwrap();
+    let forged = "native def read_text(path: String) -> String pure";
+    let code = format!("def load uses net\n  read_text(\"{}\")\nend\nv = load\nputs v, v.tainted?\n", file.display());
+    let Some(run) = run_declared(RUBY, forged, &code) else { return };
+    let e = run.result.unwrap_err();
+    assert_eq!(
+        (e.ty.as_str(), e.message.as_str()),
+        (
+            "BridgeError",
+            "`read_text` is not declared as facet `texts` exports it (`native def read_text(path: String) -> ~String \
+             uses fs.read`): a `native def` is written by `setter install`, not by hand"
+        )
+    );
+    assert_eq!(run.output, "");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn errors_are_grenat_errors() {
     if let Some(e) = error(RUBY, "refuse(\"not today\")\n") {

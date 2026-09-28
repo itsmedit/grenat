@@ -51,9 +51,9 @@ pub fn load_with(entry: &Path, update: bool, overlay: &HashMap<PathBuf, String>)
     {
         let declarations =
             foreign_declarations(kind, &package.manifest.name, &package.root).map_err(LoadError::Message)?;
-        loader.visit(&declarations, display(&declarations))?;
+        loader.visit(&declarations, display(&declarations), Origin::Generated)?;
     }
-    loader.visit(entry, entry.to_string_lossy().into_owned())?;
+    loader.visit(entry, entry.to_string_lossy().into_owned(), Origin::Written)?;
     loader.resolver.save_lock().map_err(LoadError::Message)?;
     // the application's models (`config/models.yml`), declared first
     let root = package.as_ref().map(|p| p.root.clone()).or_else(|| entry.parent().map(Path::to_path_buf));
@@ -81,8 +81,16 @@ struct Loader<'o> {
     trust: Option<Trust>,
 }
 
+/// Who wrote a file of the program.
+#[derive(Clone, Copy, PartialEq)]
+enum Origin {
+    /// `setter install`, from what a native or bridge facet exports: its `native def`s.
+    Generated,
+    Written,
+}
+
 impl Loader<'_> {
-    fn visit(&mut self, path: &Path, shown: String) -> Result<(), LoadError> {
+    fn visit(&mut self, path: &Path, shown: String, origin: Origin) -> Result<(), LoadError> {
         let unreadable = |e: std::io::Error| LoadError::Message(format!("cannot read {shown}: {e}"));
         let canonical = match path.canonicalize() {
             Ok(canonical) => canonical,
@@ -103,6 +111,12 @@ impl Loader<'_> {
         if !parsed.diagnostics.is_empty() {
             return Err(fail(parsed.diagnostics));
         }
+        if origin == Origin::Written {
+            let forged = hand_written_natives(&parsed.program);
+            if !forged.is_empty() {
+                return Err(fail(forged));
+            }
+        }
         for require in requires(&parsed.program) {
             let target = require.target.map_err(|e| e.to_string()).and_then(|t| self.target(&canonical, &t));
             match target {
@@ -110,10 +124,10 @@ impl Loader<'_> {
                     // a native or bridge facet's declarations, generated from what it exports
                     if let Some(declarations) = native {
                         let shown = display(&declarations);
-                        self.visit(&declarations, shown)?;
+                        self.visit(&declarations, shown, Origin::Generated)?;
                     }
                     let shown = display(&file);
-                    self.visit(&file, shown)?;
+                    self.visit(&file, shown, Origin::Written)?;
                 }
                 Err(message) => return Err(fail(vec![Diagnostic::new(require.span, message)])),
             }
@@ -194,6 +208,29 @@ fn foreign_declarations(kind: Foreign, name: &str, dir: &Path) -> Result<PathBuf
         Foreign::Native => crate::native::declarations(name, dir),
         Foreign::Bridge => crate::bridge::declarations(name, dir),
     }
+}
+
+/// The `native def`s of a file written by hand: refused, since a `native
+/// def` stands for code outside Grenat, whose effects and purity only its
+/// facet's manifest can say (the interpreter checks them against it too).
+fn hand_written_natives(program: &grenat_ast::Program) -> Vec<Diagnostic> {
+    program
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            grenat_ast::Item::Fn(def) if def.kind == grenat_ast::FnKind::Native => Some(
+                Diagnostic::new(
+                    def.span,
+                    format!("`{}` is a `native def` written by hand: `setter install` writes them", def.name.name),
+                )
+                .with_help(
+                    "a `native def` comes from what a native or bridge facet exports: require the facet, and run \
+                     `setter install`",
+                ),
+            ),
+            _ => None,
+        })
+        .collect()
 }
 
 /// `path`, with `.grn` if it has no extension.

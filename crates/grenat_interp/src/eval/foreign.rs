@@ -3,7 +3,9 @@
 //! bridge facet ships, run by its server process (see `grenat_bridge`).
 //!
 //! The arguments go as JSON, the result comes back decoded into the
-//! declared type. A native function's effects are its callers' — checked
+//! declared type. A declaration is bound to what its facet exports
+//! ([`super::binding`]): a `native def` written by hand is refused. A
+//! native function's effects are its callers' — checked
 //! against their capabilities before it runs, since Grenat cannot watch
 //! what foreign code does — its result is untrusted unless it is `pure`,
 //! and no secret is ever handed to it. An `Err` or an exception raises the
@@ -61,6 +63,33 @@ pub(crate) fn bridge_log(options: &Options) -> Option<grenat_bridge::Log> {
 }
 
 impl<'p> Interp<'p> {
+    /// Refuses to call `def` unless it is bound to the code that runs it:
+    /// a function its facet exports, declared as `setter install` wrote it
+    /// (see [`super::binding`]). Its effects, purity and result type are
+    /// then the facet's, not what a program says they are.
+    pub(crate) fn bind_foreign(&self, def: &FnDef) -> Result<(), Ctrl<'p>> {
+        let name = def.name.name.as_str();
+        let Some((origin, facet, function)) = self.foreign(name) else {
+            return raise(
+                Origin::Library.error(),
+                format!("no native library provides `{name}`: install the facet that declares it (`setter install`)"),
+            );
+        };
+        let exported = grenat_native::declarations::signature(function)
+            .map_err(|e| format!("facet `{facet}` exports `{name}` wrongly: {e}"));
+        match exported {
+            Ok(exported) if exported == super::binding::declared(def) => Ok(()),
+            Ok(exported) => raise(
+                origin.error(),
+                format!(
+                    "`{name}` is not declared as facet `{facet}` exports it (`{exported}`): a `native def` is \
+                     written by `setter install`, not by hand"
+                ),
+            ),
+            Err(e) => raise(origin.error(), e),
+        }
+    }
+
     /// The effects of the native function `def` must be allowed by every
     /// function on the stack that declares its own.
     pub(crate) fn check_native_effects(&self, def: &FnDef) -> Result<(), Ctrl<'p>> {
@@ -71,20 +100,22 @@ impl<'p> Interp<'p> {
         Ok(())
     }
 
-    /// Where `name` is implemented: a library or a bridge, the facet that
-    /// ships it (`?` if none does), and whether its manifest says it is pure.
-    fn foreign(&self, name: &str) -> (Origin, String, bool) {
-        let (origin, found) = match self.bridges.function(name) {
-            Some(found) if self.natives.function(name).is_none() => (Origin::Bridge, Some(found)),
-            _ => (Origin::Library, self.natives.function(name)),
-        };
-        (origin, found.map_or("?", |(facet, _)| facet).to_string(), found.is_some_and(|(_, f)| f.pure))
+    /// Where `name` is implemented — a library or a bridge — the facet that
+    /// ships it, and what that facet's manifest says of it.
+    fn foreign(&self, name: &str) -> Option<(Origin, &str, &grenat_native::Function)> {
+        match self.natives.function(name) {
+            Some((facet, function)) => Some((Origin::Library, facet, function)),
+            None => self.bridges.function(name).map(|(facet, function)| (Origin::Bridge, facet, function)),
+        }
     }
 
     /// Runs the native function `def`, its parameters bound in the current frame.
     pub(crate) fn call_foreign(&mut self, def: &'p FnDef) -> R<'p> {
         let name = def.name.name.as_str();
-        let (origin, facet, pure) = self.foreign(name);
+        let Some((origin, facet, _)) = self.foreign(name) else {
+            return raise(Origin::Library.error(), format!("no native library provides `{name}`"));
+        };
+        let facet = facet.to_string();
         let values: Vec<Value<'p>> =
             def.params.iter().map(|p| scope_get(self.scope(), &p.name.name).unwrap_or(Value::Nil)).collect();
         if values.iter().any(Value::contains_secret) {
@@ -121,7 +152,7 @@ impl<'p> Interp<'p> {
                     Ok(value) => value,
                     Err(e) => return raise(origin.error(), format!("`{name}` returned a value of another type: {e}")),
                 };
-                Ok(if (def.pure || pure) && !tainted { value } else { value.taint() })
+                Ok(if def.pure && !tainted { value } else { value.taint() })
             }
             grenat_native::Outcome::Raised { ty, message } => raise(&ty, message),
             grenat_native::Outcome::Panicked(message) => raise("NativeError", format!("`{name}` panicked: {message}")),

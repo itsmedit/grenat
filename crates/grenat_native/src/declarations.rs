@@ -55,11 +55,21 @@ fn declare_struct(out: &mut String, s: &Struct) -> Result<(), String> {
 }
 
 fn declare_function(out: &mut String, f: &Function) -> Result<(), String> {
+    let line = signature(f)?;
+    doc(out, f.doc.as_deref(), "");
+    out.push_str(&line);
+    out.push('\n');
+    Ok(())
+}
+
+/// The `native def` line `f` stands for, checked: `native def add(a: Int,
+/// b: Int) -> Int pure`. A program's declaration of `f` must be this one
+/// (see `grenat_interp`), else it is not bound to `f`.
+pub fn signature(f: &Function) -> Result<String, String> {
     if !is_name(&f.name) {
         return Err(format!("the manifest declares a function named `{}`: not a Grenat name", f.name));
     }
-    doc(out, f.doc.as_deref(), "");
-    out.push_str(&format!("native def {}", f.name));
+    let mut out = format!("native def {}", f.name);
     if !f.params.is_empty() {
         let params: Vec<String> = f.params.iter().map(|p| typed(p, &f.name)).collect::<Result<_, _>>()?;
         out.push_str(&format!("({})", params.join(", ")));
@@ -84,8 +94,7 @@ fn declare_function(out: &mut String, f: &Function) -> Result<(), String> {
     if f.pure {
         out.push_str(" pure");
     }
-    out.push('\n');
-    Ok(())
+    Ok(out)
 }
 
 /// `name: Type`, both checked.

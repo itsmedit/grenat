@@ -81,6 +81,16 @@ fn a_trusted_bridge_facet_is_installed_and_loaded_with_its_declarations() {
     let (count, command) = bridge::functions(RUBY, &facet).unwrap();
     assert_eq!((count, command.as_str()), (bridges[0].manifest.functions.len(), "ruby bridge/server.rb"));
 
+    // a `native def` written by hand, in the application or anywhere else, is refused
+    let forged = "require \"texts\"\n\nnative def read_text(path: String) -> String pure\n\nputs read_text(\"x\")\n";
+    write(&app.join("src/forged.grn"), forged);
+    assert_eq!(
+        load_error(&app.join("src/forged.grn")),
+        "`read_text` is a `native def` written by hand: `setter install` writes them"
+    );
+    write(&dir.join("alone.grn"), "native def shout(text: String) -> String pure\n");
+    assert!(load_error(&dir.join("alone.grn")).starts_with("`shout` is a `native def` written by hand"));
+
     // trust withdrawn: the program is refused, and no bridge is given
     write(&app.join("Facetfile"), "facet \"texts\", path: \"../texts\"\n");
     assert!(load_error(&app.join("src/main.grn")).starts_with("facet `texts` ships a bridge"));
