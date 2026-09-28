@@ -5,17 +5,36 @@ use grenat_lexer::{Keyword as K, TokenKind as T};
 
 use crate::*;
 
+/// Why a `native def` is written without a body.
+const NATIVE_WITHOUT_BODY: &str = "a `native def` has no body: its facet's native code or bridge implements it";
+
 impl<'d> Parser<'d> {
     pub(crate) fn program(&mut self) -> Program {
         let mut items = Vec::new();
+        // after a `native def`: where the statements that follow it start, if any
+        let mut after_native: Option<Option<Span>> = None;
         loop {
             self.skip_newlines();
             if self.at(&T::Eof) || self.diags.len() >= MAX_DIAGNOSTICS {
                 break;
             }
+            // `native def f(x: Int) -> Int` then lines and `end`: a body, which it cannot have
+            if let Some(body) = after_native
+                && self.at_kw(K::End)
+            {
+                let end = self.bump().span;
+                self.report(Diagnostic::new(body.map_or(end, |start| start.to(end)), NATIVE_WITHOUT_BODY));
+                after_native = None;
+                continue;
+            }
             let before = self.pos;
             match self.item() {
                 Ok(item) => {
+                    after_native = match &item {
+                        Item::Fn(def) if def.kind == FnKind::Native => Some(None),
+                        Item::Stmt(stmt) => after_native.map(|start| Some(start.unwrap_or(stmt.span))),
+                        _ => None,
+                    };
                     items.push(item);
                     if !self.at_line_end() {
                         let _ = self.unexpected::<()>("end of line");
@@ -111,7 +130,7 @@ impl<'d> Parser<'d> {
 
         let (body, short) = if native {
             if self.at(&T::Eq) {
-                return self.fail(self.span(), "a `native def` has no body: its facet's Rust code implements it");
+                return self.fail(self.span(), NATIVE_WITHOUT_BODY);
             }
             (Body::new(Vec::new(), self.prev_span()), false)
         } else if self.eat(&T::Eq) {

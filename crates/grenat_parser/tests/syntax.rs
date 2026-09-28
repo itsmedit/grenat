@@ -219,7 +219,22 @@ fn native_functions_have_no_body() {
 #[test]
 fn a_native_function_is_declared_at_the_top_level_without_a_body() {
     let error = |src: &str| parse(src).diagnostics.first().map(|d| d.message.clone()).unwrap_or_default();
-    assert_eq!(error("native def f = 1\n"), "a `native def` has no body: its facet's Rust code implements it");
+    let no_body = "a `native def` has no body: its facet's native code or bridge implements it";
+    assert_eq!(error("native def f = 1\n"), no_body);
+    // a body written as a function's: said so, once, where it is
+    for (src, body) in [
+        ("native def f(x: Int) -> Int pure\n  x\nend\nputs 1\n", "x\nend"),
+        ("native def f(x: Int) -> Int pure\n  y = x\n  y * 2\nend\n", "y = x\n  y * 2\nend"),
+        ("native def f\nend\n", "end"),
+    ] {
+        let parsed = parse(src);
+        assert_eq!(parsed.diagnostics.len(), 1, "{src}: {:#?}", parsed.diagnostics);
+        assert_eq!(parsed.diagnostics[0].message, no_body, "{src}");
+        assert_eq!(&src[parsed.diagnostics[0].span.range()], body, "{src}");
+    }
+    // statements after a `native def`, a `def` with its own `end`: no body
+    assert!(parse("native def f\nputs 1\ndef g\n  2\nend\nx = 3\n").diagnostics.is_empty());
+    assert_eq!(error("def g\n  2\nend\nend\n"), "`end` without an opening block");
     assert_eq!(error("native def self.f\n"), "a `native def` is a function, declared at the top level");
     assert_eq!(
         error("module Sheets\n  native def f\nend\n"),
