@@ -89,6 +89,21 @@ puts m.x, m.y
 }
 
 #[test]
+fn an_integer_beyond_int_is_not_saturated() {
+    let Some(out) = ok(PYTHON, "p power_of_two(62), -power_of_two(62) * 2\n") else { return };
+    assert_eq!(out, "4611686018427387904\n-9223372036854775808\n");
+    for exponent in [63, 100] {
+        let e = error(PYTHON, &format!("p power_of_two({exponent})\n")).unwrap();
+        assert_eq!(e.ty, "BridgeError");
+        assert!(
+            e.message.starts_with("`power_of_two` returned a value of another type: expected an integer"),
+            "{}",
+            e.message
+        );
+    }
+}
+
+#[test]
 fn a_bridge_result_is_untrusted_unless_pure() {
     let Some(out) = ok(
         RUBY,

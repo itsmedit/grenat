@@ -58,6 +58,11 @@ def crash(status: int) -> None:
     os._exit(status)
 
 
+@export(pure=True)
+def power_of_two(exponent: int) -> int:
+    return 2 ** exponent
+
+
 @export
 def pid() -> int:
     return os.getpid()

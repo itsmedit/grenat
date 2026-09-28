@@ -11,7 +11,7 @@ impl<'p> Interp<'p> {
     pub(crate) fn json_to_value(&mut self, json: &Json, ty: &Ty<'p>) -> Result<Value<'p>, String> {
         let mismatch = |expected: &str| Err(format!("{expected}, got {json}"));
         match ty {
-            Ty::Int => match json.as_i64().or_else(|| json.as_f64().filter(|f| f.fract() == 0.0).map(|f| f as i64)) {
+            Ty::Int => match exact_int(json) {
                 Some(n) => Ok(Value::Int(n)),
                 None => mismatch("expected an integer"),
             },
@@ -145,4 +145,35 @@ fn to_json(value: &Value, reveal: bool) -> Json {
 
 fn fields_to_json(fields: &Fields, reveal: bool) -> Json {
     Json::Object(fields.iter().map(|(k, v)| (k.to_string(), to_json(v, reveal))).collect())
+}
+
+/// `json` as an `Int`, if it is one exactly: an integer, or a float without
+/// a fraction, within `Int`'s range — never one rounded or saturated.
+fn exact_int(json: &Json) -> Option<i64> {
+    // 2^63, the first float beyond `i64::MAX`
+    const LIMIT: f64 = 9_223_372_036_854_775_808.0;
+    json.as_i64().or_else(|| {
+        let f = json.as_f64().filter(|f| json.is_f64() && f.fract() == 0.0 && (-LIMIT..LIMIT).contains(f))?;
+        Some(f as i64)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_int_is_exact_or_is_not_one() {
+        let int = |text: &str| exact_int(&serde_json::from_str(text).unwrap());
+        assert_eq!(int("42"), Some(42));
+        assert_eq!(int("-9223372036854775808"), Some(i64::MIN));
+        assert_eq!(int("9223372036854775807"), Some(i64::MAX));
+        assert_eq!(int("3.0"), Some(3));
+        assert_eq!(int("-9.223372036854775808e18"), Some(i64::MIN));
+        for beyond in ["9223372036854775808", "18446744073709551615", "1e30", "9.223372036854775808e18", "-1e19"] {
+            assert_eq!(int(beyond), None, "{beyond}");
+        }
+        assert_eq!(int("2.5"), None);
+        assert_eq!(int("\"1\""), None);
+    }
 }
