@@ -94,7 +94,9 @@ fn an_application_runs_and_checks_its_bridge_functions() {
     write(&app.join("Facetfile"), "facet \"texts\", path: \"../texts\"\n");
     let out = grenat_in(&app, &["run"], &[]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(text(&out.stderr).contains("trust it with `facet \"texts\", bridge: true` in the Facetfile"));
+    assert!(text(&out.stderr).contains(
+        "add `bridge: true` to its line in the Facetfile: `facet \"texts\", path: \"../texts\", bridge: true`"
+    ));
 }
 
 #[test]

@@ -57,7 +57,7 @@ fn a_native_facet_is_refused_unless_trusted() {
     assert_eq!(
         e,
         "facet `sheets` ships native code (Rust), which runs outside Grenat's sandbox: \
-         trust it with `facet \"sheets\", native: true` in the Facetfile"
+         add `native: true` to its line in the Facetfile: `facet \"sheets\", path: \"../sheets\", native: true`"
     );
     // nothing recorded, nothing built
     assert!(!app.join("Facetfile.lock").exists());

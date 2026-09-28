@@ -111,7 +111,9 @@ fn a_trusted_native_facet_is_built_at_install() {
     };
     let refused = install("facet \"sheets\", path: \"../sheets\"\n");
     assert!(!refused.status.success());
-    assert!(text(&refused.stderr).contains("trust it with `facet \"sheets\", native: true` in the Facetfile"));
+    assert!(text(&refused.stderr).contains(
+        "add `native: true` to its line in the Facetfile: `facet \"sheets\", path: \"../sheets\", native: true`"
+    ));
     let out = install("facet \"sheets\", path: \"../sheets\", native: true\n");
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert!(
@@ -144,7 +146,9 @@ fn a_trusted_bridge_facet_describes_itself_at_install() {
     };
     let refused = install("facet \"texts\", path: \"../texts\"\n");
     assert!(!refused.status.success());
-    assert!(text(&refused.stderr).contains("trust it with `facet \"texts\", bridge: true` in the Facetfile"));
+    assert!(text(&refused.stderr).contains(
+        "add `bridge: true` to its line in the Facetfile: `facet \"texts\", path: \"../texts\", bridge: true`"
+    ));
     let out = install("facet \"texts\", path: \"../texts\", bridge: true\n");
     assert!(out.status.success(), "{}", text(&out.stderr));
     let functions = fixture::installed(RUBY).unwrap().1.manifest.functions.len();

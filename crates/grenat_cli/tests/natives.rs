@@ -80,7 +80,9 @@ fn an_application_runs_and_checks_its_native_functions() {
     write(&app.join("Facetfile"), "facet \"sheets\", path: \"../sheets\"\n");
     let out = grenat_in(&app, &["run"]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(text(&out.stderr).contains("trust it with `facet \"sheets\", native: true` in the Facetfile"));
+    assert!(text(&out.stderr).contains(
+        "add `native: true` to its line in the Facetfile: `facet \"sheets\", path: \"../sheets\", native: true`"
+    ));
 }
 
 #[test]

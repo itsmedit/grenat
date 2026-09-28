@@ -51,7 +51,8 @@ fn a_bridge_facet_is_refused_unless_trusted() {
     assert_eq!(
         e,
         "facet `texts` ships a bridge (Ruby or Python code, run as a process), which runs outside Grenat's \
-         sandbox: trust it with `facet \"texts\", bridge: true` in the Facetfile"
+         sandbox: add `bridge: true` to its line in the Facetfile: `facet \"texts\", path: \"../texts\", native: true, \
+         bridge: true`"
     );
     // nothing recorded, nothing started
     assert!(!app.join("Facetfile.lock").exists());

@@ -192,10 +192,11 @@ impl Loader<'_> {
                 (None, Some(root)) => Trust::load(root)?,
                 (None, None) => Trust::default(),
             };
-            let allowed = trust.allows(&owner.manifest.name, kind);
+            let refused =
+                (!trust.allows(&owner.manifest.name, kind)).then(|| trust.refusal(&owner.manifest.name, kind));
             self.trust = Some(trust);
-            if !allowed {
-                return Err(crate::trust::refusal(&owner.manifest.name, kind));
+            if let Some(refusal) = refused {
+                return Err(refusal);
             }
         }
         foreign_declarations(kind, &owner.manifest.name, &owner.root).map(Some)

@@ -11,7 +11,7 @@
 //! code) nor loading a program that requires the facet goes further. A
 //! package's own code is its author's, trusted.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::facetfile::Facetfile;
@@ -57,6 +57,8 @@ impl Foreign {
 pub struct Trust {
     native: HashSet<String>,
     bridge: HashSet<String>,
+    /// Each facet's declaration, as written in the `Facetfile`.
+    written: HashMap<String, String>,
 }
 
 impl Trust {
@@ -68,8 +70,9 @@ impl Trust {
                 trust.native.insert(facet.name.clone());
             }
             if facet.bridge {
-                trust.bridge.insert(facet.name);
+                trust.bridge.insert(facet.name.clone());
             }
+            trust.written.insert(facet.name, facet.written);
         }
         Ok(trust)
     }
@@ -82,14 +85,26 @@ impl Trust {
     }
 }
 
-/// Why a facet the application does not trust is refused, and how to trust it.
-pub fn refusal(name: &str, kind: Foreign) -> String {
-    format!(
-        "facet `{name}` ships {}, which runs outside Grenat's sandbox: trust it with `facet \"{name}\", {}: true` \
-         in the Facetfile",
-        kind.what(),
-        kind.option()
-    )
+impl Trust {
+    /// Why a facet the application does not trust is refused, and how to
+    /// trust it: its line of the `Facetfile` as it should read (its source
+    /// and version kept), or the line to add if it has none.
+    pub fn refusal(&self, name: &str, kind: Foreign) -> String {
+        let option = kind.option();
+        let how = match self.written.get(name) {
+            Some(written) => {
+                let off = format!("{option}: false");
+                let trusted = if written.contains(&off) {
+                    written.replacen(&off, &format!("{option}: true"), 1)
+                } else {
+                    format!("{written}, {option}: true")
+                };
+                format!("add `{option}: true` to its line in the Facetfile: `{trusted}`")
+            }
+            None => format!("trust it with `facet \"{name}\", {option}: true` in the Facetfile"),
+        };
+        format!("facet `{name}` ships {}, which runs outside Grenat's sandbox: {how}", kind.what())
+    }
 }
 
 /// Refuses the facets among `facets` (name, directory) whose code outside
@@ -100,7 +115,7 @@ pub fn check(root: &Path, facets: &[(String, PathBuf)]) -> Result<(), String> {
         if let Some(kind) = Foreign::of(&Manifest::load(dir)?)
             && !trust.allows(name, kind)
         {
-            return Err(refusal(name, kind));
+            return Err(trust.refusal(name, kind));
         }
     }
     Ok(())
@@ -121,10 +136,31 @@ mod tests {
         assert!(trust.allows("b", Foreign::Bridge) && !trust.allows("b", Foreign::Native));
         assert!(!trust.allows("c", Foreign::Native) && !trust.allows("c", Foreign::Bridge));
         assert_eq!(Trust::load(Path::new("/nowhere")).unwrap(), Trust::default());
+        // not in the Facetfile (required by another facet): the line to add
         assert_eq!(
-            refusal("texts", Foreign::Bridge),
+            Trust::default().refusal("texts", Foreign::Bridge),
             "facet `texts` ships a bridge (Ruby or Python code, run as a process), which runs outside Grenat's \
              sandbox: trust it with `facet \"texts\", bridge: true` in the Facetfile"
+        );
+        // in it: its own line, its source and version kept
+        std::fs::write(
+            dir.join("Facetfile"),
+            "facet \"texts\", path: \"../texts\"\nfacet \"sheets\", \"~> 0.1\", git: \"https://x.io/s\", native: false\n",
+        )
+        .unwrap();
+        let trust = Trust::load(&dir).unwrap();
+        assert_eq!(
+            trust.refusal("texts", Foreign::Bridge),
+            "facet `texts` ships a bridge (Ruby or Python code, run as a process), which runs outside Grenat's \
+             sandbox: add `bridge: true` to its line in the Facetfile: `facet \"texts\", path: \"../texts\", bridge: true`"
+        );
+        assert!(
+            trust.refusal("sheets", Foreign::Native).ends_with(
+                "add `native: true` to its line in the Facetfile: `facet \"sheets\", \"~> 0.1\", git: \"https://x.io/s\", \
+                 native: true`"
+            ),
+            "{}",
+            trust.refusal("sheets", Foreign::Native)
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

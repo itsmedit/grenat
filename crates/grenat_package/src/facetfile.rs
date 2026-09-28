@@ -37,6 +37,8 @@ pub struct FacetDecl {
     /// `bridge: true`: the application trusts its bridge, a process that
     /// serves Ruby or Python functions outside Grenat's sandbox.
     pub bridge: bool,
+    /// The declaration as written: `facet "texts", path: "../texts"`.
+    pub written: String,
 }
 
 /// Where a facet comes from.
@@ -68,7 +70,7 @@ impl Facetfile {
         }
         let mut file = Facetfile { sources: Vec::new(), facets: Vec::new() };
         for item in &parsed.program.items {
-            let Item::Stmt(Expr { kind: ExprKind::Call { recv: None, name, args, .. }, .. }) = item else {
+            let Item::Stmt(Expr { kind: ExprKind::Call { recv: None, name, args, .. }, span, .. }) = item else {
                 return Err("a Facetfile holds `source \"…\"` and `facet \"…\"` lines".into());
             };
             let positional: Vec<String> = args
@@ -121,7 +123,8 @@ impl Facetfile {
                     }
                     let native = flag(args, "native").map_err(|e| format!("facet `{facet}`: {e}"))?;
                     let bridge = flag(args, "bridge").map_err(|e| format!("facet `{facet}`: {e}"))?;
-                    file.facets.push(FacetDecl { name: facet, requirement, origin, native, bridge });
+                    let written = text[span.range()].to_string();
+                    file.facets.push(FacetDecl { name: facet, requirement, origin, native, bridge, written });
                 }
                 other => return Err(format!("unknown Facetfile directive `{other}`")),
             }
@@ -175,6 +178,7 @@ mod tests {
             Origin::Git { url: "https://x.io/greet".into(), reference: Reference::Tag("v1.0.0".into()) }
         );
         assert_eq!(file.facets[3].requirement, Requirement::any());
+        assert_eq!(file.facets[2].written, "facet \"greet\", git: \"https://x.io/greet\", tag: \"v1.0.0\"");
         let err = |text: &str| Facetfile::parse(text).unwrap_err();
         assert_eq!(err("facet \"a\"\nfacet \"a\"\n"), "facet `a` is listed twice");
         assert_eq!(err("gem \"rails\"\n"), "unknown Facetfile directive `gem`");
