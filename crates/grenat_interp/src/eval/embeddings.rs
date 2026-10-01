@@ -213,7 +213,9 @@ impl<'p> Interp<'p> {
     }
 }
 
-/// The floats of an array of numbers (a vector given to `mock_embed`).
+/// The floats of an array of numbers (a vector given to `mock_embed`,
+/// stored, searched): finite, and within the range of the 32-bit floats a
+/// database keeps — a larger one would be kept as infinity.
 pub(crate) fn floats<'p>(value: &Value<'p>) -> Result<Vec<f64>, Ctrl<'p>> {
     let Value::Array(items) = value.untainted() else {
         return raise("TypeError", format!("a vector is an array of numbers, got {}", value.inspect()));
@@ -222,7 +224,8 @@ pub(crate) fn floats<'p>(value: &Value<'p>) -> Result<Vec<f64>, Ctrl<'p>> {
         .borrow()
         .iter()
         .map(|x| match number(x) {
-            Some(f) => Ok(f),
+            Some(f) if f.is_finite() && f.abs() <= f64::from(f32::MAX) => Ok(f),
+            Some(f) => raise("TypeError", format!("a vector holds 32-bit floats: {f:e} is out of their range")),
             None => raise("TypeError", format!("a vector holds numbers, got {}", x.inspect())),
         })
         .collect()

@@ -63,16 +63,21 @@ pub fn from_cell(cell: &Cell) -> Result<Option<Vec<f64>>, String> {
 
 /// `1 - cos(a, b)`: 0 for the same direction, 2 for opposite ones. A zero
 /// vector has no direction: it is at distance 1 from everything, as an
-/// orthogonal one.
+/// orthogonal one. Each vector is first divided by its largest component,
+/// so that only directions count: no square overflows for a huge vector or
+/// vanishes for a tiny one.
 pub fn cosine_distance(a: &[f64], b: &[f64]) -> f64 {
+    let largest = |v: &[f64]| v.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
+    let (scale_a, scale_b) = (largest(a), largest(b));
+    if scale_a == 0.0 || scale_b == 0.0 || !scale_a.is_finite() || !scale_b.is_finite() {
+        return 1.0;
+    }
     let (mut dot, mut norm_a, mut norm_b) = (0.0, 0.0, 0.0);
     for (x, y) in a.iter().zip(b) {
+        let (x, y) = (x / scale_a, y / scale_b);
         dot += x * y;
         norm_a += x * x;
         norm_b += y * y;
-    }
-    if norm_a == 0.0 || norm_b == 0.0 {
-        return 1.0;
     }
     1.0 - dot / (norm_a.sqrt() * norm_b.sqrt())
 }
@@ -186,6 +191,11 @@ mod tests {
         assert!((cosine_distance(&[1.0, 0.0], &[0.0, 1.0]) - 1.0).abs() < 1e-12);
         assert!((cosine_distance(&[1.0, 0.0], &[-1.0, 0.0]) - 2.0).abs() < 1e-12);
         assert_eq!(cosine_distance(&[0.0, 0.0], &[1.0, 0.0]), 1.0);
+        // only the direction counts, whatever the magnitude
+        assert!(cosine_distance(&[1.0e200, 0.0], &[1.0, 0.0]).abs() < 1e-12);
+        assert!((cosine_distance(&[1.0e200, 0.0], &[0.0, 1.0]) - 1.0).abs() < 1e-12);
+        assert!(cosine_distance(&[1.0e-200, 0.0], &[1.0, 0.0]).abs() < 1e-12);
+        assert!((cosine_distance(&[1.0e-200, 1.0e-200], &[1.0e200, 0.0]) - (1.0 - 0.5_f64.sqrt())).abs() < 1e-12);
         let candidates = vec![("east", vec![1.0, 0.0]), ("north", vec![0.0, 1.0]), ("northeast", vec![1.0, 1.0])];
         let found = nearest(candidates.clone(), &[1.0, 0.1], 2, None);
         assert_eq!(found.iter().map(|(n, _)| *n).collect::<Vec<_>>(), ["east", "northeast"]);

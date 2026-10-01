@@ -100,6 +100,46 @@ end
 }
 
 #[test]
+fn only_a_direction_counts_and_floats_stay_in_range() {
+    let zeros = "(4..64).map { |i| 0.0 }";
+    let results = results(&format!(
+        "{DOCS}
+def vector(x: Float, y: Float) -> Array(Float) = [x, y, 0.0] + {zeros}
+def compass uses db
+  Doc.create(title: \"north\", embedding: vector(0.0, 1.0))
+  Doc.create(title: \"east\", embedding: vector(1.0, 0.0))
+end
+test \"large and tiny queries\" do
+  compass
+  assert_equal [\"east\"], titles(Doc.nearest(:embedding, vector(1.0e38, 0.0), limit: 1))
+  assert_equal 1, Doc.nearest(:embedding, vector(1.0e38, 0.0), max_distance: 0.1).size
+  assert_equal [\"east\"], titles(Doc.nearest(:embedding, vector(1.0e-200, 0.0), limit: 1))
+  assert_equal [\"north\"], titles(Doc.nearest(:embedding, vector(1.0e-200, 1.0e-150), limit: 1))
+end
+test \"a query out of range\" do
+  Doc.nearest(:embedding, vector(1.0e200, 0.0))
+end
+test \"a float out of range\" do
+  Doc.create(title: \"far\", embedding: vector(1.0e39, 0.0))
+end
+test \"not a number\" do
+  Doc.nearest(:embedding, vector(0.0 / 0.0, 0.0))
+end
+"
+    ));
+    let errors: Vec<&str> = results.iter().map(|(_, e)| e.as_deref().unwrap_or("passed")).collect();
+    assert_eq!(
+        errors,
+        [
+            "passed",
+            "TypeError: a vector holds 32-bit floats: 1e200 is out of their range",
+            "TypeError: a vector holds 32-bit floats: 1e39 is out of their range",
+            "TypeError: a vector holds 32-bit floats: NaN is out of their range",
+        ]
+    );
+}
+
+#[test]
 fn mistakes_are_said() {
     let results = results(&format!(
         "{DOCS}
