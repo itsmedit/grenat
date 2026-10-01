@@ -77,10 +77,14 @@ impl<'p> Interp<'p> {
         Ok(Value::Nil)
     }
 
+    /// The reply of the latest stub matching `request`, if any.
+    pub(crate) fn http_stub(&self, request: &HttpRequest) -> Option<HttpReply> {
+        self.http_stubs.borrow().iter().rev().find(|s| s.matches(request)).map(|s| s.reply.clone())
+    }
+
     /// The reply to `request`: a stub's, else the network's (never in tests).
     pub(crate) fn http(&self, request: &HttpRequest) -> Result<HttpReply, Ctrl<'p>> {
-        let stub = self.http_stubs.borrow().iter().rev().find(|s| s.matches(request)).map(|s| s.reply.clone());
-        if let Some(reply) = stub {
+        if let Some(reply) = self.http_stub(request) {
             return Ok(reply);
         }
         if self.offline {

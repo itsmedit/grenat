@@ -51,6 +51,9 @@ impl<'p> Interp<'p> {
                 ("price", Value::Hash(pairs)) => prices = Some(pairs.borrow().clone()),
                 ("kind", Value::Symbol(s) | Value::Str(s)) if &*s == "chat" => config.kind = ModelKind::Chat,
                 ("kind", Value::Symbol(s) | Value::Str(s)) if &*s == "embedding" => config.kind = ModelKind::Embedding,
+                ("kind", Value::Symbol(s) | Value::Str(s)) if &*s == "transcription" => {
+                    config.kind = ModelKind::Transcription
+                }
                 ("dimensions", Value::Int(n)) if n > 0 && n <= i64::from(u32::MAX) => {
                     config.dimensions = Some(n as u32)
                 }
@@ -85,14 +88,18 @@ impl<'p> Interp<'p> {
         if let Some(refusal) = grenat_llm::catalog::refuses(provider, config.kind) {
             return raise("ArgumentError", format!("model `:{}`: {refusal}", decl.name.name));
         }
-        if config.dimensions.is_some() && config.kind == ModelKind::Chat {
+        if config.dimensions.is_some() && config.kind != ModelKind::Embedding {
             return raise(
                 "ArgumentError",
                 format!("model `:{}`: `dimensions:` is for embedding models (`kind: :embedding`)", decl.name.name),
             );
         }
         if let Some(pairs) = prices {
-            config.price = Some(price(&pairs, &decl.name.name, config.kind)?);
+            if config.kind == ModelKind::Transcription && pairs.iter().any(|(k, _)| k.to_display() == "minute") {
+                config.minute_price = Some(minute_price(&pairs, &decl.name.name)?);
+            } else {
+                config.price = Some(price(&pairs, &decl.name.name, config.kind)?);
+            }
         }
         config.fallbacks = fallbacks.unwrap_or_else(|| ModelConfig::new("", config.name.as_str()).fallbacks);
         Ok(config)
@@ -194,6 +201,21 @@ impl<'p> TypeInfo<'p> {
 
     pub fn is(&self, kind: TypeKind) -> bool {
         self.def.kind == kind
+    }
+}
+
+/// `price: {minute: 0.006}`: dollars per minute of audio, for a
+/// transcription model billed by duration.
+fn minute_price<'p>(pairs: &[(Value<'p>, Value<'p>)], model: &str) -> Result<f64, Ctrl<'p>> {
+    match pairs {
+        [(_, Value::Int(n))] if *n >= 0 => Ok(*n as f64),
+        [(_, Value::Float(f))] if *f >= 0.0 => Ok(*f),
+        _ => raise(
+            "ArgumentError",
+            format!(
+                "model `:{model}`: `price:` is `{{minute: …}}` (dollars per minute of audio) or `{{input: …, output: …}}` (per million tokens)"
+            ),
+        ),
     }
 }
 

@@ -43,6 +43,7 @@ mod ssh;
 mod streams;
 mod suggest;
 mod taint;
+mod transcription;
 mod ty;
 
 pub use grenat_ast::Diagnostic;

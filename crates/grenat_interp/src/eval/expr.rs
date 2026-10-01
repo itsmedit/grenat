@@ -20,6 +20,7 @@ const BUILTIN_TYPES: &[&str] = &[
     "Mcp",
     "Pdf",
     "Image",
+    "Audio",
     "Mail",
     "Html",
     "Conversation",

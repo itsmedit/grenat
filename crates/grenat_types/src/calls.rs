@@ -19,14 +19,18 @@ impl<'p> Checker<'p> {
                         grenat_ast::ExprKind::Symbol(name) => Some(name.clone()),
                         _ => None,
                     });
-                    out.push(ArgV { name: None, v, span: e.span, lit });
+                    out.push(ArgV { name: None, v, span: e.span, lit, flag: None });
                 }
                 Arg::Named { name, value } => {
                     let (v, span, lit) = match value {
                         Some(e) => (self.expr(cx, e), e.span, literal_string(e)),
                         None => (self.var(cx, &name.name, name.span), name.span, None),
                     };
-                    out.push(ArgV { name: Some(name.name.clone()), v, span, lit });
+                    let flag = match value.as_ref().map(|e| &e.kind) {
+                        Some(grenat_ast::ExprKind::Bool(b)) => Some(*b),
+                        _ => None,
+                    };
+                    out.push(ArgV { name: Some(name.name.clone()), v, span, lit, flag });
                 }
                 Arg::BlockPass(e) => {
                     self.expr(cx, e);
@@ -317,7 +321,7 @@ impl<'p> Checker<'p> {
             "deny_all" | "approve_all" => V::new(Ty::Sym),
             // test doubles and evals
             "mock" | "mock_http" | "mock_shell" | "mcp" | "mock_mcp" | "mock_ssh" | "mock_credentials"
-            | "mock_embed" => V::new(Ty::Nil),
+            | "mock_embed" | "mock_transcribe" => V::new(Ty::Nil),
             "database" | "expose" => V::new(Ty::Nil),
             // a job: its arguments are written to the database
             "enqueue" => {
@@ -368,6 +372,7 @@ impl<'p> Checker<'p> {
                 V::new(Ty::Nil)
             }
             "embed" => self.embed_call(cx, span, argv),
+            "transcribe" => self.transcribe_call(cx, span, argv),
             "judge" => {
                 self.secrets_to_model(argv, "judge");
                 cx.add_effect(Eff { path: "llm".into(), arg: None, origin: span });

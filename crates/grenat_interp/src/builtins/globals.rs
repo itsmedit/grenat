@@ -168,6 +168,33 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             };
             interp.embed(model.as_deref(), &input)
         })(),
+        "mock_transcribe" => (|| {
+            let model = match args.pos.first().map(Value::untainted) {
+                None => None,
+                Some(Value::Symbol(s)) => Some(s.to_string()),
+                Some(other) => {
+                    return raise(
+                        "TypeError",
+                        format!("`mock_transcribe` expects a model (`:whisper`), got {}", other.inspect()),
+                    );
+                }
+            };
+            interp.mock_transcribe(model.as_deref(), &args)
+        })(),
+        // the text of audio (see `eval::transcription`)
+        "transcribe" => (|| {
+            let (model, audio) = match args.pos.as_slice() {
+                [Value::Symbol(model), audio] => (Some(model.to_string()), audio.clone()),
+                [audio] => (None, audio.clone()),
+                _ => {
+                    return raise(
+                        "ArgumentError",
+                        "`transcribe` expects a model and audio: `transcribe(:whisper, audio)`",
+                    );
+                }
+            };
+            interp.transcribe(model.as_deref(), &audio, &args)
+        })(),
         "get" | "post" | "put" | "patch" | "delete" if args.block.is_some() => declare_route(interp, name, &args),
         "html" | "json" | "status" | "redirect" => response_helper(name, &args),
         "stream" if args.block.is_some() => stream_response(&args),

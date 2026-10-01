@@ -2,6 +2,7 @@
 
 mod proxy;
 
+use std::io::Read;
 use std::time::Duration;
 
 pub(crate) use proxy::{ProxyChoice, validate as validate_proxy, without_credentials};
@@ -26,6 +27,47 @@ pub(crate) struct HttpReply {
 /// Sends `request`; an error is a failure to get any answer (a status
 /// such as 404 is an answer, an unreachable proxy is not).
 pub(crate) fn send(request: &HttpRequest) -> Result<HttpReply, String> {
+    let (status, headers, mut response) = run(request)?;
+    let body = response.body_mut().read_to_string().map_err(|e| format!("unreadable body: {e}"))?;
+    Ok(HttpReply { status, headers, body })
+}
+
+/// The bytes `request` gets, `max_bytes` at most: a larger body (by its
+/// `Content-Length`, else by what arrives) is read no further and not kept.
+pub(crate) fn download(request: &HttpRequest, max_bytes: usize) -> Result<Download, String> {
+    let (status, headers, mut response) = run(request)?;
+    let announced = headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+        .and_then(|(_, value)| value.parse::<u64>().ok());
+    if status == 200 && announced.is_some_and(|size| size > max_bytes as u64) {
+        return Ok(Download { status, headers, body: Vec::new(), too_large: true });
+    }
+    let mut body = Vec::new();
+    let reader = response.body_mut().as_reader();
+    reader.take(max_bytes as u64 + 1).read_to_end(&mut body).map_err(|e| format!("unreadable body: {e}"))?;
+    let too_large = body.len() > max_bytes;
+    if too_large {
+        body.clear();
+    }
+    Ok(Download { status, headers, body, too_large })
+}
+
+/// What [`download`] got.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Download {
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+    /// Over the limit: nothing kept.
+    pub too_large: bool,
+}
+
+/// An answer: its status, its headers, its body unread.
+type Answer = (u16, Vec<(String, String)>, ureq::http::Response<ureq::Body>);
+
+/// The answer to `request`.
+fn run(request: &HttpRequest) -> Result<Answer, String> {
     let proxy = proxy::resolve(&request.proxy, &request.url, |name| std::env::var(name).ok())?;
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .http_status_as_error(false)
@@ -39,15 +81,14 @@ pub(crate) fn send(request: &HttpRequest) -> Result<HttpReply, String> {
     }
     let body = request.body.clone().unwrap_or_default().into_bytes();
     let built = builder.body(body).map_err(|e| format!("invalid request: {e}"))?;
-    let mut response = agent.run(built).map_err(|e| e.to_string())?;
+    let response = agent.run(built).map_err(|e| e.to_string())?;
     let headers = response
         .headers()
         .iter()
         .map(|(name, value)| (name.to_string(), value.to_str().unwrap_or_default().to_string()))
         .collect();
     let status = response.status().as_u16();
-    let body = response.body_mut().read_to_string().map_err(|e| format!("unreadable body: {e}"))?;
-    Ok(HttpReply { status, headers, body })
+    Ok((status, headers, response))
 }
 
 /// `url` with `params` as its query string, percent-encoded.

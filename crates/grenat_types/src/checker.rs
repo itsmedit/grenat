@@ -64,6 +64,8 @@ pub(crate) struct Checker<'p> {
     pub(crate) models: Vec<&'p str>,
     /// The models declared with `kind: :embedding`.
     pub(crate) embedding_models: Vec<&'p str>,
+    /// The models declared with `kind: :transcription`.
+    pub(crate) transcription_models: Vec<&'p str>,
     pub(crate) diags: Vec<Diagnostic>,
     pub(crate) seen: HashSet<(u32, u32, String)>,
     pub(crate) memo: HashMap<Key, (V, Vec<Eff>)>,
@@ -88,6 +90,7 @@ impl<'p> Checker<'p> {
             messages: HashMap::new(),
             models: Vec::new(),
             embedding_models: Vec::new(),
+            transcription_models: Vec::new(),
             diags: Vec::new(),
             seen: HashSet::new(),
             memo: HashMap::new(),

@@ -2,6 +2,7 @@
 
 mod args;
 mod attachments;
+mod audio;
 mod collections;
 mod db;
 mod events;
@@ -20,6 +21,7 @@ mod web;
 
 pub(crate) use args::*;
 pub(crate) use attachments::*;
+pub(crate) use audio::*;
 pub(crate) use collections::*;
 pub(crate) use db::*;
 pub(crate) use events::*;

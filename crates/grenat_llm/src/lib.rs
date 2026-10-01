@@ -4,11 +4,14 @@
 //! ([`Anthropic`]) talks HTTP to the Messages API, while [`Scripted`] replays
 //! prepared replies for tests, [`Mock`] shapes test answers into whatever
 //! each request expects, [`FakeEmbeddings`] makes deterministic vectors for
-//! tests, and [`Cassette`] records real calls once to replay them.
-//! [`Provider::stream`] gives an answer as the model writes it.
+//! tests, [`FakeTranscripts`] gives transcripts for tests, and [`Cassette`]
+//! records real calls once to replay them. [`Provider::stream`] gives an
+//! answer as the model writes it; [`Provider::transcribe`] turns speech
+//! into text.
 
 mod anthropic;
 mod anthropic_stream;
+pub mod audio;
 mod batch;
 mod caching;
 mod cassette;
@@ -16,7 +19,9 @@ pub mod catalog;
 mod chat_stream;
 mod embeddings_wire;
 mod fake_embeddings;
+mod fake_transcripts;
 mod mock;
+mod multipart;
 mod openai;
 mod openai_wire;
 mod pricing;
@@ -26,6 +31,7 @@ mod retry;
 mod scripted;
 mod sse;
 mod streaming;
+mod transcription_wire;
 mod types;
 mod wire;
 
@@ -33,10 +39,11 @@ pub use anthropic::Anthropic;
 pub use cassette::Cassette;
 pub use embeddings_wire::embeddings_body;
 pub use fake_embeddings::FakeEmbeddings;
+pub use fake_transcripts::{FakeTranscripts, TranscriptReply};
 pub use mock::{Mock, MockReply};
 pub use openai::OpenAi;
 pub use openai_wire::chat_body;
-pub use pricing::{Price, cost_at, cost_usd};
+pub use pricing::{Price, cost_at, cost_usd, transcription_cost};
 pub use responses_wire::responses_body;
 pub use scripted::Scripted;
 pub use streaming::{Delta, STOPPED, Sink, replay};

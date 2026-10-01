@@ -12,6 +12,8 @@ pub enum ModelKind {
     Chat,
     /// It turns texts into vectors (`embed`).
     Embedding,
+    /// It turns speech into text (`transcribe`).
+    Transcription,
 }
 
 /// Which requests carry prompt-cache breakpoints, where the provider wants
@@ -56,6 +58,9 @@ pub struct ModelConfig {
     /// Dollars per million tokens, when Grenat does not know the model's
     /// price.
     pub price: Option<Price>,
+    /// Dollars per minute of audio, for a transcription model billed by
+    /// duration (`price: {minute: 0.006}`).
+    pub minute_price: Option<f64>,
     pub kind: ModelKind,
     /// The size of an embedding model's vectors, where the provider lets
     /// it be chosen (its default otherwise).
@@ -80,6 +85,7 @@ impl ModelConfig {
             fallbacks,
             base_url: None,
             price: None,
+            minute_price: None,
             kind: ModelKind::Chat,
             dimensions: None,
             cache: Caching::default(),
@@ -224,6 +230,48 @@ pub struct Embeddings {
     pub model: String,
 }
 
+/// Audio to turn into text, in one request.
+#[derive(Debug, Clone)]
+pub struct TranscriptionRequest<'a> {
+    pub model: &'a ModelConfig,
+    /// `audio/mpeg`, `audio/wav`… (see [`crate::audio`]).
+    pub media_type: String,
+    /// The audio, in base64 (as an attachment carries it).
+    pub data: String,
+    /// The language spoken (ISO-639-1: `fr`), when known.
+    pub language: Option<String>,
+    /// Text guiding the model: names, terms, the style of a transcript.
+    pub prompt: Option<String>,
+    /// Words to recognize (`gpt-transcribe`).
+    pub keywords: Vec<String>,
+    /// Timed segments wanted, not only the text.
+    pub segments: bool,
+}
+
+/// A stretch of speech, in seconds from the start of the audio.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Segment {
+    pub start: f64,
+    pub end: f64,
+    pub text: String,
+    /// Who speaks, where the model tells speakers apart.
+    pub speaker: Option<String>,
+}
+
+/// The text of an audio, its segments when asked, and what it cost.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Transcript {
+    pub text: String,
+    pub segments: Vec<Segment>,
+    /// The language detected, when the provider says it.
+    pub language: Option<String>,
+    /// Tokens, for models billed by tokens.
+    pub usage: Usage,
+    /// The audio's duration, for models billed by the minute.
+    pub seconds: Option<f64>,
+    pub model: String,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LlmError {
     pub message: String,
@@ -260,6 +308,11 @@ pub trait Provider: Send + Sync {
     fn embed(&self, request: &EmbeddingRequest) -> Result<Embeddings, LlmError> {
         Err(LlmError::new(format!("`{}` makes no embeddings here", request.model.name)))
     }
+
+    /// The text of an audio, from a transcription model.
+    fn transcribe(&self, request: &TranscriptionRequest) -> Result<Transcript, LlmError> {
+        Err(LlmError::new(format!("`{}` makes no transcriptions here", request.model.name)))
+    }
 }
 
 impl<P: Provider + ?Sized> Provider for std::sync::Arc<P> {
@@ -277,5 +330,9 @@ impl<P: Provider + ?Sized> Provider for std::sync::Arc<P> {
 
     fn embed(&self, request: &EmbeddingRequest) -> Result<Embeddings, LlmError> {
         (**self).embed(request)
+    }
+
+    fn transcribe(&self, request: &TranscriptionRequest) -> Result<Transcript, LlmError> {
+        (**self).transcribe(request)
     }
 }

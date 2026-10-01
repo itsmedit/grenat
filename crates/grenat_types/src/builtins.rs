@@ -167,6 +167,9 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Ssh", "connect") => (User(SSH_SESSION.into()), Some("ssh")),
         ("Pdf" | "Image", "read") => (User(ATTACHMENT.into()), Some("fs.read")),
         ("Pdf" | "Image", "url") => (User(ATTACHMENT.into()), None),
+        ("Audio", "read") => (User(ATTACHMENT.into()), Some("fs.read")),
+        // no provider fetches audio: Grenat downloads it
+        ("Audio", "url") => (User(ATTACHMENT.into()), Some("net")),
         ("Mail", "connect") => (User(MAILER.into()), None),
         ("Html", "text" | "escape") => (Str, None),
         ("Conversation", "new") => (User(CONVERSATION.into()), None),
@@ -200,6 +203,7 @@ pub const MODULES: &[&str] = &[
     "Mcp",
     "Pdf",
     "Image",
+    "Audio",
     "Mail",
     "Html",
     "Conversation",
@@ -232,8 +236,12 @@ pub fn sanitizes(module: &str, name: &str) -> bool {
     matches!((module, name), ("Html", "escape"))
 }
 
-/// What `Pdf.read`, `Image.read`… return: a document or image for a model.
+/// What `Pdf.read`, `Image.read`, `Audio.read`… return: a document, an
+/// image or audio for a model.
 pub const ATTACHMENT: &str = "Attachment";
+
+/// What `transcribe(…, segments: true)` lists: a stretch of speech.
+pub const TRANSCRIPT_SEGMENT: &str = "TranscriptSegment";
 
 /// Built-in functions whose result comes from outside, hence untrusted.
 pub fn untrusted_result(module: &str, name: &str) -> bool {
@@ -328,6 +336,9 @@ pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
         (SFTP_ENTRY, "size") => (Ty::Int, false),
         (SFTP_ENTRY, "dir?") => (Ty::Bool, false),
         (SFTP_ENTRY, "modified") => (Ty::opt(Ty::Float), false),
+        (TRANSCRIPT_SEGMENT, "start" | "end") => (Ty::Float, false),
+        (TRANSCRIPT_SEGMENT, "text") => (Ty::Str, true),
+        (TRANSCRIPT_SEGMENT, "speaker") => (Ty::opt(Ty::Str), true),
         _ => return None,
     })
 }
@@ -364,6 +375,7 @@ pub const GLOBALS: &[&str] = &[
     "mock_ssh",
     "mock_credentials",
     "mock_embed",
+    "mock_transcribe",
     "database",
     "enqueue",
     "expose",
@@ -388,6 +400,7 @@ pub const GLOBALS: &[&str] = &[
     "eval",
     "judge",
     "embed",
+    "transcribe",
     "loop",
     "sleep",
     "exit",

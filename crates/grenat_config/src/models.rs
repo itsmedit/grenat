@@ -20,6 +20,11 @@
 //!   kind: embedding
 //!   dimensions: 1024
 //!   price: {input: 0.06}
+//! whisper:                    # speech to text, for `transcribe`
+//!   provider: openai
+//!   name: whisper-1
+//!   kind: transcription
+//!   price: {minute: 0.006}
 //! ```
 //!
 //! Each entry becomes `model :fast, provider: :anthropic, name: '…'`, so the
@@ -155,6 +160,11 @@ reader:
   provider: anthropic
   name: claude-haiku-4-5
   cache: agents
+whisper:
+  provider: openai
+  name: whisper-1
+  kind: transcription
+  price: {minute: 0.006}
 ";
         assert_eq!(
             declarations(yaml).unwrap(),
@@ -165,6 +175,7 @@ model :local, provider: :ollama, name: 'it\\'s #{here}', base_url: 'http://gpu:1
 model :docs, provider: :openai, name: 'text-embedding-3-small', kind: :embedding, dimensions: 512, price: {input: 0.02}
 model :writer, provider: :anthropic, name: 'claude-opus-5', cache: true, cache_ttl: '1h'
 model :reader, provider: :anthropic, name: 'claude-haiku-4-5', cache: :agents
+model :whisper, provider: :openai, name: 'whisper-1', kind: :transcription, price: {minute: 0.006}
 "
         );
         assert_eq!(declarations("").unwrap(), "");

@@ -13,9 +13,14 @@ const NEAREST_OPTIONS: [&str; 3] = ["limit", "where", "max_distance"];
 
 /// Whether a model declaration says `kind: :embedding`.
 pub(crate) fn declares_embedding(model: &ModelDecl) -> bool {
+    declares_kind(model, "embedding")
+}
+
+/// Whether a model declaration says `kind: :<kind>`.
+pub(crate) fn declares_kind(model: &ModelDecl, kind: &str) -> bool {
     model.options.iter().any(|option| {
         matches!(option, Arg::Named { name, value: Some(value) }
-            if name.name == "kind" && matches!(&value.kind, ExprKind::Symbol(k) if k == "embedding"))
+            if name.name == "kind" && matches!(&value.kind, ExprKind::Symbol(k) if k == kind))
     })
 }
 

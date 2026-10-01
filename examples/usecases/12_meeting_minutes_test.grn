@@ -1,0 +1,34 @@
+require "./12_meeting_minutes"
+
+TRANSCRIPT = "Ada: we ship on Friday. Grace, can you update the changelog by Thursday? Grace: yes. Ada: I'll tell support."
+
+MINUTES = {
+  summary: "The release ships on Friday.",
+  decisions: ["Ship on Friday"],
+  tasks: [
+    {owner: "Grace", title: "Update the changelog", due: "Thursday"},
+    {owner: "Ada", title: "Tell support", due: nil},
+  ],
+}
+
+test "a recording becomes minutes with their tasks" do
+  File.write("weekly.mp3", "ID3")
+  mock_transcribe :whisper, text: TRANSCRIPT
+  mock :fast, replies: [MINUTES]
+  m = minutes("weekly.mp3")
+  assert_equal ["Grace", "Ada"], m.tasks.map { |t| t.owner }
+  assert markdown(m).include?("- [ ] Grace: Update the changelog (Thursday)\n- [ ] Ada: Tell support")
+end
+
+test "a link to a recording is downloaded first" do
+  mock_http "GET https://files.acme.io/standup.m4a", body: "ftypM4A"
+  mock_transcribe :whisper, text: TRANSCRIPT
+  mock :fast, replies: [MINUTES]
+  assert_equal "The release ships on Friday.", minutes("https://files.acme.io/standup.m4a").summary
+end
+
+test "a recording elsewhere is refused" do
+  assert_raises CapabilityError do
+    minutes("https://evil.io/standup.m4a")
+  end
+end

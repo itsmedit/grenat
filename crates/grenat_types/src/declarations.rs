@@ -46,19 +46,27 @@ impl<'p> Checker<'p> {
             "cache_ttl",
         ];
         let embedding = crate::embeddings::declares_embedding(model);
+        let transcription = crate::transcription::declares_transcription(model);
         for option in &model.options {
             let Arg::Named { name, value: Some(value) } = option else { continue };
             match (name.name.as_str(), &value.kind) {
                 ("provider", ExprKind::Symbol(p)) if grenat_llm::catalog::provider(p).is_some() => {
-                    let kind = if embedding { grenat_llm::ModelKind::Embedding } else { grenat_llm::ModelKind::Chat };
+                    let kind = match (embedding, transcription) {
+                        (true, _) => grenat_llm::ModelKind::Embedding,
+                        (_, true) => grenat_llm::ModelKind::Transcription,
+                        _ => grenat_llm::ModelKind::Chat,
+                    };
                     let provider = grenat_llm::catalog::provider(p).expect("known");
                     if let Some(refusal) = grenat_llm::catalog::refuses(provider, kind) {
                         self.error(E_DECL, value.span, refusal);
                     }
                 }
-                ("kind", ExprKind::Symbol(k)) if k != "chat" && k != "embedding" => {
-                    self.error(E_DECL, value.span, format!("`kind: :{k}` is unknown: `:chat` or `:embedding`"))
-                }
+                ("kind", ExprKind::Symbol(k)) if !["chat", "embedding", "transcription"].contains(&k.as_str()) => self
+                    .error(
+                        E_DECL,
+                        value.span,
+                        format!("`kind: :{k}` is unknown: `:chat`, `:embedding` or `:transcription`"),
+                    ),
                 ("cache", ExprKind::Symbol(c)) if c != "agents" => self.error(
                     E_DECL,
                     value.span,
@@ -145,6 +153,13 @@ impl<'p> Checker<'p> {
                 let models = self.models.clone();
                 self.error_help(E_NAME, span, format!("model `:{name}` is not declared"), suggest(name, models));
             }
+            Some((ExprKind::Symbol(name), span)) if self.transcription_models.contains(&name.as_str()) => self.report(
+                Diagnostic::new(
+                    span,
+                    format!("model `:{name}` is a transcription model: it answers `transcribe`, not prompts"),
+                )
+                .with_code(E_DECL),
+            ),
             Some((ExprKind::Symbol(name), span)) if self.embedding_models.contains(&name.as_str()) => self.report(
                 Diagnostic::new(
                     span,
@@ -152,8 +167,8 @@ impl<'p> Checker<'p> {
                 )
                 .with_code(E_DECL),
             ),
-            // the default model answers prompts: embedding models are not candidates
-            None if self.models.len() == self.embedding_models.len() => self.report(
+            // the default model answers prompts: embedding and transcription models are not candidates
+            None if self.models.len() == self.embedding_models.len() + self.transcription_models.len() => self.report(
                 Diagnostic::new(span, "no model declared")
                     .with_code(E_DECL)
                     .with_help("add `model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"`"),

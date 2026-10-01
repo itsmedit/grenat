@@ -143,14 +143,29 @@ impl<'p> Interp<'p> {
         self.after_call(request, response, started, batched.is_some())
     }
 
-    /// What every model call checks first: a chat model, not cancelled,
-    /// within its budgets.
+    /// What every model call checks first: a chat model, given audio only
+    /// where its provider takes it, not cancelled, within its budgets.
     pub(crate) fn before_call(&mut self, request: &Request) -> Result<(), Ctrl<'p>> {
-        if request.model.kind == ModelKind::Embedding {
-            return raise(
-                "LlmError",
-                format!("`{}` is an embedding model: it answers `embed`, not prompts", request.model.name),
-            );
+        match request.model.kind {
+            ModelKind::Chat => {}
+            ModelKind::Embedding => {
+                return raise(
+                    "LlmError",
+                    format!("`{}` is an embedding model: it answers `embed`, not prompts", request.model.name),
+                );
+            }
+            ModelKind::Transcription => {
+                return raise(
+                    "LlmError",
+                    format!("`{}` is a transcription model: it answers `transcribe`, not prompts", request.model.name),
+                );
+            }
+        }
+        // said even to a mock: a test fails where production would
+        if grenat_llm::audio::in_messages(&request.messages)
+            && let Some(refusal) = catalog::provider(&request.model.provider).and_then(catalog::refuses_audio)
+        {
+            return raise("LlmError", refusal);
         }
         self.check_cancel()?;
         self.check_budgets()

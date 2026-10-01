@@ -614,6 +614,62 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 13 status: audio
+
+A team records its meetings; someone listens again and writes the minutes and the tasks. Now a recording becomes text — and, with a prompt, minutes — in a few lines: `Audio.read` and `Audio.url` attach audio as `Pdf` and `Image` attach documents, `transcribe` turns it into text through a transcription model, and audio goes into a prompt where the provider takes it.
+
+```yaml
+# config/models.yml
+fast:
+  provider: anthropic
+  name: claude-haiku-4-5
+whisper:                     # speech to text, for `transcribe`, never prompts
+  provider: openai
+  name: gpt-transcribe       # or whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe, gpt-4o-transcribe-diarize
+  kind: transcription
+stamps:                      # segments with their speakers
+  provider: openai
+  name: gpt-4o-transcribe-diarize
+  kind: transcription
+```
+
+```ruby
+struct Task
+  owner: String
+  title: String
+end
+
+## The tasks a meeting agreed, with their owner.
+prompt tasks_of(transcript: String) -> ~Array(Task) using :fast
+  user "List the tasks agreed, with their owner:\n#{transcript}"
+end
+
+def minutes(path: String) -> Array(Task) uses fs.read, llm
+  transcript = transcribe(:whisper, Audio.read(path), language: "en")  # ~String
+  tasks_of(transcript).trust!
+end
+
+def timeline(url: String) -> Array(TranscriptSegment) uses net("files.acme.io"), llm
+  transcribe(:stamps, Audio.url(url), segments: true)  # start, end, text, speaker
+end
+
+test "a recording becomes tasks" do
+  File.write("weekly.mp3", "ID3")
+  mock_transcribe :whisper, text: "Grace updates the changelog by Thursday."
+  mock :fast, replies: [[{owner: "Grace", title: "Update the changelog"}]]
+  assert_equal "Grace", minutes("weekly.mp3").first&.owner
+end
+```
+
+- **`Audio.read` and `Audio.url`.** `Audio.read("meeting.mp3")` is an `Attachment` of audio — an `fs.read` effect, its format read from its extension (`.mp3`, `.mpeg`, `.mpga`, `.wav`, `.m4a`, `.mp4`, `.ogg`, `.oga`, `.opus`, `.flac`, `.webm`, `.aac`, `.aiff`, `.aif`; any other is an `ArgumentError`). No provider fetches audio by URL, so `Audio.url(url)` downloads it when called: a `net` effect whose host the checker and the runtime hold to the function's `uses net("…")` (E0300, `CapabilityError`), an untrusted URL refused (E0412, `TaintError`), a status other than 200 an `HttpError`, its format read from the URL's extension or else its `Content-Type`; in tests it is answered by `mock_http` or refused, as `Http` is. Either way audio is **25 MB at most** (26,214,400 bytes, OpenAI's transcription limit, the largest any provider here takes): a larger file is refused before it is read whole, a download stopped at the limit — an `ArgumentError` saying to compress it (mp3, m4a) or split it.
+- **Transcription models.** `kind: :transcription` declares one (in code or `config/models.yml`); OpenAI is the provider that transcribes here (`POST /audio/transcriptions`). Anthropic has no transcription API and other providers make none in Grenat: such a declaration is refused by the checker (E0500) and when the program loads, as is `dimensions:`; a prompt, an agent or a conversation using a transcription model too, and the default model of prompts is the first *chat* model.
+- **`transcribe`.** `transcribe(:whisper, audio)` is a `~String`: what was said comes from outside, untrusted as a model's answer is (E0412, `TaintError`, until checked or `trust!`ed). `segments: true` gives an `Array(TranscriptSegment)` — `start` and `end` in seconds, `text` and `speaker` (`String?`) untrusted — from `whisper-1` (`verbose_json`, `timestamp_granularities[]=segment`) or `gpt-4o-transcribe-diarize` (`diarized_json`, `chunking_strategy=auto`, segments with speakers); asked of another model it is an `LlmError` before anything is uploaded. Options: `language: "fr"` (sent as `languages[]` to `gpt-transcribe`, `language` to the others), `prompt: "…"` (names, terms; not for the diarizing model), `keywords: [...]` (`gpt-transcribe` only). `transcribe(audio)` uses the first transcription model. The audio goes up as `multipart/form-data` — the fields, then the file named by its format (`audio.m4a`) with its media type — and what the provider would refuse is said first, nothing sent: a format it does not take (OpenAI: flac, mp3, m4a, ogg, opus, wav, webm), a file over 25 MB, an option the model does not take. Rate limits and server errors are retried as model calls are.
+- **Costs.** A transcription is an `llm` effect, counted by budgets, recorded in the ledger and logged by `--log` (`[transcribe] whisper-1 · 1.5 min · $0.0090 · 2.1s`). It is priced as the model is billed: by the minute from the answer's `usage: {type: "duration", seconds}` (or its `duration`) — `whisper-1` $0.006, `gpt-transcribe` $0.0045 — or by tokens from `usage: {type: "tokens", input_tokens, output_tokens}` — `gpt-4o-transcribe` and its diarizing variant $2.50 / $10, `gpt-4o-mini-transcribe` $1.25 / $5 per million, by the minute at OpenAI's estimates when no tokens are counted. `price: {minute: 0.006}` prices another model by the minute, `price: {input: …, output: …}` by tokens; a cost Grenat cannot know (no price, or an answer without usage or duration) is said once and counts nothing.
+- **Audio in prompts.** An audio attachment goes into a prompt (`user "Summarize this call.", call`) where the provider takes audio: OpenAI, whose Responses API takes none, so such a request goes to its Chat Completions (`input_audio`, `{data, format}`, wav or mp3, `max_completion_tokens`) for its audio models (`gpt-audio`…); Gemini, through its compatible endpoint (wav, mp3, aiff, aac, ogg, flac; a request is 20 MB at most, base64 included). Anywhere else — Anthropic's models take no audio, nor do the other providers here — the call raises an `LlmError` naming the provider and saying to transcribe first, before any request, even to a mock: a test fails where production would.
+- **Tests.** `mock_transcribe :whisper, text: "…"` answers every call; `replies: ["…", [{start: 0.0, end: 4.5, text: "…", speaker: "A"}], LlmError("overloaded")]` answer in order — a text, segments, a failure; without a model, every transcription model. A fake checks each request as the provider would (format, size, options), so `segments: true` asked of `gpt-4o-mini-transcribe` fails in a test too. Without one, `transcribe` in a test says it is not mocked. The Rust tests play the transcription API on a local server that reads the multipart body byte for byte (fields, file name, media type, bytes no text encoding keeps), its retries and its client errors; check that a file over the limit never reaches it; and play `input_audio` for OpenAI and Gemini and the refusals. `examples/usecases/12_meeting_minutes.grn` turns a recording, a file or a link, into Markdown minutes and a checklist of tasks.
+- **Verified** against OpenAI's documentation (October 2026): the speech-to-text guide (25 MB, the models, `gpt-transcribe`'s `languages` and `keywords[]`, `timestamp_granularities[]` for `whisper-1` only, the diarizing model's `diarized_json`, `chunking_strategy` and lack of prompts), the API reference of `POST /audio/transcriptions` (its fields, `json` / `verbose_json` / `diarized_json` answers, `usage` by tokens or by duration), its OpenAPI specification (the file formats), its pricing page (per minute and per token), its audio guide for Chat Completions (`input_audio`, the Responses API taking text and images only); Gemini's OpenAI-compatibility page (`input_audio`) and audio page (formats, 20 MB a request). Not verified live: no key here. Not documented, hence assumed: `languages[]` as the form name of `gpt-transcribe`'s languages (written as its documented `keywords[]`), Gemini's `format` names beyond `wav`, a size limit for OpenAI's `input_audio` (none is checked), the formats OpenAI's audio models take beyond wav and mp3 (none sent).
+- **Limits.** Files over 25 MB are not split for you; no streamed transcription (`stream=true`), no `srt` / `vtt`, no word timestamps, no known speakers for diarization; Gemini, Mistral, Groq and others transcribe through their chat models only (audio in prompts), not through a transcription API here; cassettes record chat calls, not transcriptions (`mock_transcribe` stands for them); no text-to-speech.
+
 ### Phase 13 status: streaming
 
 A chat in a web application waited 10 to 30 seconds for a whole answer, then showed it at once. Now the answer reaches the browser as the model writes it: a prompt call, an agent's `ask` or a conversation's `say` take a block that receives each piece, and a route answers as Server-Sent Events.

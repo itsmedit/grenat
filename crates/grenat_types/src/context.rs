@@ -107,6 +107,9 @@ pub(crate) struct ArgV {
     pub(crate) span: Span,
     /// String literal without interpolation (effect restriction).
     pub(crate) lit: Option<String>,
+    /// A boolean literal: an option that changes a result's type
+    /// (`segments: true`).
+    pub(crate) flag: Option<bool>,
 }
 
 pub(crate) type Key = (usize, Vec<bool>, bool);

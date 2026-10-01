@@ -1,4 +1,5 @@
-//! Attachments: PDF documents and images given to a model.
+//! Attachments: PDF documents, images and audio (see [`super::audio`])
+//! given to a model.
 //!
 //! ```ruby
 //! prompt extract(invoice: Attachment) -> ~Invoice using :fast
@@ -16,7 +17,7 @@ use crate::prelude::*;
 
 use super::*;
 
-/// The record `Pdf.read`, `Image.read`… return.
+/// The record `Pdf.read`, `Image.read`, `Audio.read`… return.
 pub(crate) const ATTACHMENT: &str = "Attachment";
 
 pub(crate) fn call_attachment<'p>(interp: &mut Interp<'p>, module: &str, name: &str, args: &Args<'p>) -> R<'p> {
@@ -50,7 +51,7 @@ fn media_type<'p>(module: &str, path: &str) -> Result<String, Ctrl<'p>> {
     .to_string())
 }
 
-fn attachment<'p>(kind: &str, media_type: &str, source: &str, data: String) -> Value<'p> {
+pub(crate) fn attachment<'p>(kind: &str, media_type: &str, source: &str, data: String) -> Value<'p> {
     Value::record(
         ATTACHMENT,
         vec![
@@ -72,7 +73,7 @@ pub(crate) fn attachment_block(fields: &Fields) -> Json {
     json!({"type": get("kind"), "source": source})
 }
 
-fn base64(bytes: &[u8]) -> String {
+pub(crate) fn base64(bytes: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {

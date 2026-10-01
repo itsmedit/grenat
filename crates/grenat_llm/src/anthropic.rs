@@ -115,19 +115,31 @@ impl Anthropic {
     }
 }
 
+/// Audio is refused before sending: the Messages API takes none.
+fn no_audio(request: &Request) -> Result<(), LlmError> {
+    if !crate::audio::in_messages(&request.messages) {
+        return Ok(());
+    }
+    let anthropic = crate::catalog::provider("anthropic").expect("catalogued");
+    Err(LlmError::new(crate::catalog::refuses_audio(anthropic).unwrap_or_default()))
+}
+
 impl Provider for Anthropic {
     fn complete(&self, request: &Request) -> Result<Response, LlmError> {
+        no_audio(request)?;
         let body = request_body(request);
         crate::retry::with_retries(self.retry_delay, || self.send(&body), parse_response)
     }
 
     fn stream(&self, request: &Request, sink: &mut Sink) -> Result<Response, LlmError> {
+        no_audio(request)?;
         let mut body = request_body(request);
         body["stream"] = json!(true);
         crate::retry::with_stream_retries(self.retry_delay, || self.stream_once(&body, sink))
     }
 
     fn batch(&self, requests: &[Request]) -> Result<Vec<Result<Response, LlmError>>, LlmError> {
+        requests.iter().try_for_each(no_audio)?;
         crate::batch::run(self, requests)
     }
 }

@@ -59,6 +59,32 @@ pub(crate) fn price_of(model: &str) -> Option<Price> {
         .map(|&(_, input, output, read)| Price::with_reads(input, output, read))
 }
 
+/// Dollars per million input and output tokens, for a model so billed.
+type TokenPrices = Option<(f64, f64)>;
+
+/// The price of OpenAI's transcription models (its pricing page, October
+/// 2026): (prefix, dollars per minute — an estimate for those billed by
+/// tokens —, dollars per million input and output tokens, if so billed).
+const TRANSCRIPTION: &[(&str, f64, TokenPrices)] = &[
+    ("gpt-transcribe", 0.0045, None),
+    ("gpt-4o-mini-transcribe", 0.003, Some((1.25, 5.0))),
+    ("gpt-4o-transcribe", 0.006, Some((2.5, 10.0))),
+    ("whisper", 0.006, None),
+];
+
+/// The cost of a transcription: by its tokens where the model is billed by
+/// tokens and the answer counts them, else by its minutes; `None` when
+/// the model's price or the audio's duration is unknown.
+pub fn transcription_cost(model: &str, transcript: &Transcript) -> Option<f64> {
+    let &(_, per_minute, tokens) = TRANSCRIPTION.iter().find(|(prefix, ..)| model.starts_with(prefix))?;
+    match tokens {
+        Some((input, output)) if transcript.usage.total_tokens() > 0 => {
+            Some(cost_at(Price::new(input, output), &transcript.usage))
+        }
+        _ => transcript.seconds.map(|seconds| seconds / 60.0 * per_minute),
+    }
+}
+
 /// Cost of a call in dollars; `None` for a model with an unknown price.
 pub fn cost_usd(model: &str, usage: &Usage) -> Option<f64> {
     Some(cost_at(price_of(model)?, usage))
@@ -118,6 +144,28 @@ mod tests {
             assert!(close(at(usage(0, M, M, 0, 0)), write_1h), "{model} 1h write");
             assert!(close(at(usage(0, 0, 0, M, 0)), read), "{model} read: {}", at(usage(0, 0, 0, M, 0)));
         }
+    }
+
+    #[test]
+    fn transcriptions_are_priced_by_tokens_or_by_minutes() {
+        let transcript = |input: u64, output: u64, seconds: Option<f64>| Transcript {
+            text: String::new(),
+            segments: Vec::new(),
+            language: None,
+            usage: usage(input, 0, 0, 0, output),
+            seconds,
+            model: String::new(),
+        };
+        let ten_minutes = transcript(0, 0, Some(600.0));
+        assert!(close(transcription_cost("whisper-1", &ten_minutes).unwrap(), 0.06));
+        assert!(close(transcription_cost("gpt-transcribe", &ten_minutes).unwrap(), 0.045));
+        // tokens when counted: 1M in at $2.50, 100k out at $10
+        let counted = transcript(1_000_000, 100_000, Some(600.0));
+        assert!(close(transcription_cost("gpt-4o-transcribe-diarize", &counted).unwrap(), 3.5));
+        assert!(close(transcription_cost("gpt-4o-mini-transcribe", &counted).unwrap(), 1.75));
+        assert!(close(transcription_cost("gpt-4o-mini-transcribe", &ten_minutes).unwrap(), 0.03));
+        assert_eq!(transcription_cost("whisper-1", &transcript(0, 0, None)), None);
+        assert_eq!(transcription_cost("voxtral", &ten_minutes), None);
     }
 
     #[test]

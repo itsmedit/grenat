@@ -29,6 +29,7 @@ mod pattern;
 pub(crate) mod records;
 pub(crate) mod secrets;
 pub(crate) mod store;
+pub(crate) mod transcription;
 pub(crate) mod vectors;
 pub(crate) mod workflow;
 

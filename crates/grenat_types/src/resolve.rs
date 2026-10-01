@@ -51,6 +51,7 @@ impl<'p> Checker<'p> {
                     | builtins::SFTP
                     | builtins::SFTP_ENTRY
                     | builtins::ATTACHMENT
+                    | builtins::TRANSCRIPT_SEGMENT
                     | builtins::REQUEST
                     | builtins::MAILER
                     | builtins::CONVERSATION

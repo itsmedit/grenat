@@ -1,0 +1,58 @@
+# Meeting minutes: a recording transcribed, then turned into minutes — a
+# summary, the decisions taken, the tasks agreed with their owner — written
+# as Markdown for the team's wiki.
+#
+#   grenat run 12_meeting_minutes.grn meetings/2026-10-01.mp3
+#   grenat run 12_meeting_minutes.grn https://files.acme.io/standup.m4a
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+model :whisper, provider: :openai, name: "gpt-transcribe", kind: :transcription
+
+struct Task
+  owner: String  ## who does it, as named in the meeting
+  title: String  ## what, in a few words
+  due: String?   ## when, if a date was said
+end
+
+struct Minutes
+  summary: String  ## three sentences at most
+  decisions: Array(String)
+  tasks: Array(Task)
+end
+
+## Minutes from a meeting's transcript.
+prompt minutes_of(transcript: String) -> ~Minutes using :fast
+  system "You write the minutes of a meeting from its transcript: a short summary, the decisions taken, the tasks agreed with their owner. Nothing that was not said."
+  user transcript
+end
+
+## The recording: a file, or a link to one on the team's file server.
+def recording(source: String) -> Attachment uses fs.read, net("files.acme.io")
+  if source.start_with?("https://")
+    Audio.url(source)
+  else
+    Audio.read(source)
+  end
+end
+
+## The minutes of a recording: transcribed (25 MB at most), then summed up.
+def minutes(source: String) -> Minutes uses fs.read, net("files.acme.io"), llm
+  transcript = transcribe(:whisper, recording(source), language: "en", keywords: ["Grenat"])
+  minutes_of(transcript).check { |m| m.summary.size > 0 }?
+end
+
+## As Markdown: tasks as a checklist.
+def markdown(m: Minutes) -> String
+  decisions = m.decisions.map { |d| "- #{d}" }.join("\n")
+  tasks = m.tasks.map do |t|
+    due = t.due ? " (#{t.due})" : ""
+    "- [ ] #{t.owner}: #{t.title}#{due}"
+  end
+  "## Summary\n\n#{m.summary}\n\n## Decisions\n\n#{decisions}\n\n## Tasks\n\n#{tasks.join("\n")}\n"
+end
+
+def main(args: Array(String)) uses fs.read, fs.write, net("files.acme.io"), llm
+  within budget(usd: 1.00) do
+    File.write("minutes.md", markdown(minutes(args.first)))
+    puts "minutes.md written — #{budget.spent}"
+  end
+end

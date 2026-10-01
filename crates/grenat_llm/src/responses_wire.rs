@@ -95,6 +95,10 @@ fn part(block: &Json, provider: &Catalogued) -> Result<Json, LlmError> {
         (Some("image"), _) => json!({"type": "input_image", "image_url": data_url()}),
         (Some("document"), Some("url")) => json!({"type": "input_file", "file_url": source["url"]}),
         (Some("document"), _) => json!({"type": "input_file", "filename": "document.pdf", "file_data": data_url()}),
+        // such a request goes to Chat Completions (see `crate::openai`)
+        (Some("audio"), _) => {
+            return Err(LlmError::new("the Responses API takes no audio: send it through Chat Completions"));
+        }
         (other, _) => {
             return Err(LlmError::new(format!("unsupported content {other:?} for the provider `{}`", provider.name)));
         }

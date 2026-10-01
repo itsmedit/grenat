@@ -235,7 +235,7 @@ end })
 | `grenat_lexer` | tokens, interpolation, heredocs, `##` doc comments |
 | `grenat_ast` | syntax tree |
 | `grenat_parser` | recursive descent + Pratt, diagnostics with error recovery |
-| `grenat_llm` | model providers: the catalog, Anthropic's Messages API and Chat Completions (OpenAI, Gemini, Mistral, Ollama…), embeddings (those and Voyage); mocks, fake embeddings, cassettes and a scripted provider for tests |
+| `grenat_llm` | model providers: the catalog, Anthropic's Messages API and Chat Completions (OpenAI, Gemini, Mistral, Ollama…), embeddings (those and Voyage), transcriptions (OpenAI's, uploaded as `multipart/form-data`) and audio in prompts (OpenAI, Gemini); mocks, fake embeddings and transcripts, cassettes and a scripted provider for tests |
 | `grenat_types` | checker: names, types, effects, `~T` taint (E0100–E0500) |
 | `grenat_codegen` | Cranelift: typing, liveness (Perceus), translation, boundary; JIT and object files; LLVM IR for release builds |
 | `grenat_runtime` | reference-counted strings, arrays and records called by native code |

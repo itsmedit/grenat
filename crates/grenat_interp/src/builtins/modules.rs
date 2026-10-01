@@ -15,6 +15,7 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         ("Shell", _) => call_shell(interp, name, args),
         ("Ssh", _) => call_ssh(interp, name, args),
         ("Pdf" | "Image", _) => call_attachment(interp, ty, name, &args),
+        ("Audio", _) => call_audio(interp, name, &args),
         ("Mail", _) => call_mail(interp, name, &args),
         ("Conversation", "new" | "load") => interp.conversation_static(name, &args),
         ("Approvals", "pending") => interp.pending_approvals(),

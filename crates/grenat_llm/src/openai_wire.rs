@@ -1,5 +1,5 @@
 //! Chat Completions wire format: Grenat's requests — messages as content
-//! blocks (text, images, documents, tool calls and results) — translated for
+//! blocks (text, images, documents, audio, tool calls and results) — translated for
 //! OpenAI and the providers that speak its protocol, and their answers
 //! translated back into blocks.
 
@@ -127,10 +127,45 @@ fn part(block: &Json, provider: &Catalogued) -> Result<Json, LlmError> {
             )));
         }
         Some("document") => json!({"type": "file", "file": {"filename": "document.pdf", "file_data": data_url()}}),
+        Some("audio") => audio_part(source, provider)?,
         other => {
             return Err(LlmError::new(format!("unsupported content {other:?} for the provider `{}`", provider.name)));
         }
     })
+}
+
+/// An audio block, as `input_audio` (base64 and its format), where the
+/// provider takes audio in that format and of that size.
+fn audio_part(source: &Json, provider: &Catalogued) -> Result<Json, LlmError> {
+    let Some(input) = provider.audio_input else {
+        return Err(LlmError::new(crate::catalog::refuses_audio(provider).unwrap_or_default()));
+    };
+    if source["type"] == "url" {
+        return Err(LlmError::new(format!(
+            "the provider `{}` takes audio given as data (`Audio.read`), not by URL",
+            provider.name
+        )));
+    }
+    let media_type = source["media_type"].as_str().unwrap_or_default();
+    let format = crate::audio::format_of(media_type).filter(|f| input.formats.contains(f)).ok_or_else(|| {
+        LlmError::new(format!(
+            "the provider `{}` takes {} audio in prompts, not `{media_type}`: convert it, or transcribe it first",
+            provider.name,
+            input.formats.join(", ")
+        ))
+    })?;
+    let data = source["data"].as_str().unwrap_or_default();
+    if let Some(max) = input.max_encoded_bytes
+        && data.len() > max
+    {
+        return Err(LlmError::new(format!(
+            "the audio is {} once encoded: the provider `{}` takes {} at most in a request — compress it or transcribe it first",
+            crate::audio::megabytes(data.len()),
+            provider.name,
+            crate::audio::megabytes(max)
+        )));
+    }
+    Ok(json!({"type": "input_audio", "input_audio": {"data": data, "format": format}}))
 }
 
 /// A Chat Completions answer, as content blocks.
