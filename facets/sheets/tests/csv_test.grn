@@ -1,0 +1,66 @@
+# CSV: texts (pure functions) and files. Paths are relative to the facet's
+# directory, where `grenat test` runs; written files go to .grenat/, which
+# `setter install` creates.
+
+require "../src/lib"
+
+test "a CSV text: quoted delimiters, quotes and line breaks" do
+  rows = Sheets.parse_csv("name,note\n\"Doe, Jane\",\"said \"\"hi\"\"\"\nx,\"two\nlines\"\n\nshort\n")
+  assert_equal [["name", "note"], ["Doe, Jane", "said \"hi\""], ["x", "two\nlines"], ["short"]], rows
+  assert_equal [["a", "b"], ["1", "2"]], Sheets.parse_csv("a;b\n1;2\n", delimiter: ";")
+  assert_equal [["a", "b,c"]], Sheets.parse_csv("a\tb,c\n", delimiter: "\t")
+  assert_equal [], Sheets.parse_csv("")
+end
+
+test "a CSV text as records" do
+  people = Sheets.parse_csv_records("name,age\nAda,36\nLinus\n")
+  assert_equal [{"name" => "Ada", "age" => "36"}, {"name" => "Linus", "age" => ""}], people
+  assert_equal [{"a" => "1"}], Sheets.parse_csv_records("a\n1\n", delimiter: ";")
+end
+
+test "rows as CSV text, quoted where they must be, read back the same" do
+  rows = [["name", "note"], ["Doe, Jane", "said \"hi\""], ["x", "two\nlines"], [""]]
+  text = Sheets.to_csv(rows)
+  assert_equal "name,note\n\"Doe, Jane\",\"said \"\"hi\"\"\"\nx,\"two\nlines\"\n\"\"\n", text
+  assert_equal rows, Sheets.parse_csv(text)
+  assert_equal "a;\"b;c\"\n", Sheets.to_csv([["a", "b;c"]], delimiter: ";")
+end
+
+test "a CSV file: a byte order mark, CRLF lines, another delimiter" do
+  rows = Sheets.read_csv("tests/fixtures/contacts.csv", delimiter: ";").trust!
+  assert_equal ["name", "city", "note"], rows[0]
+  assert_equal ["Doe; Jane", "Paris", "said \"hi\""], rows[1]
+  assert_equal ["Linus", "Portland", "two\r\nlines"], rows[2]
+  contacts = Sheets.read_csv_records("tests/fixtures/contacts.csv", delimiter: ";").trust!
+  assert_equal ["Paris", "Portland"], contacts.map { |c| c["city"] }
+end
+
+test "a CSV file written reads back the same" do
+  rows = [["id", "label"], ["1", "un, deux"], ["2", "trois \"quatre\""]]
+  Sheets.write_csv(".grenat/written.csv", rows)
+  assert_equal rows, Sheets.read_csv(".grenat/written.csv").trust!
+  Sheets.write_csv(".grenat/written.tsv", rows, delimiter: "\t")
+  assert_equal "id\tlabel\n1\tun, deux\n2\t\"trois \"\"quatre\"\"\"\n", File.read(".grenat/written.tsv")
+  records = Sheets.read_csv_records(".grenat/written.tsv", delimiter: "\t").trust!
+  assert_equal "un, deux", records[0]["label"]
+end
+
+test "records back to rows" do
+  records = Sheets.parse_csv_records("a,b\n1,2\n3,4\n")
+  table = Sheets.table(records, ["b", "a", "c"])
+  assert_equal [["b", "a", "c"], ["2", "1", ""], ["4", "3", ""]], table
+  assert_equal "b,a\n2,1\n4,3\n", Sheets.to_csv(Sheets.table(records, ["b", "a"]))
+end
+
+test "bad delimiters, bad quotes, duplicate columns, ragged records, unreadable files: CsvError" do
+  assert_raises(CsvError) { Sheets.parse_csv("a,b", delimiter: "") }
+  assert_raises(CsvError) { Sheets.parse_csv("a,b", delimiter: "\"") }
+  assert_raises(CsvError) { Sheets.to_csv([["a"]], delimiter: ";;") }
+  assert_raises(CsvError) { Sheets.parse_csv("a,\"never closed\nb,c\n") }
+  assert_raises(CsvError) { Sheets.parse_csv("\"a\"b,c\n") }
+  assert_raises(CsvError) { Sheets.parse_csv_records("a,a\n1,2\n") }
+  assert_raises(CsvError) { Sheets.read_csv_records("tests/fixtures/ragged.csv") }
+  assert_raises(CsvError) { Sheets.read_csv("tests/fixtures/latin1.csv") }
+  assert_raises(CsvError) { Sheets.read_csv("tests/fixtures/missing.csv") }
+  assert_raises(CsvError) { Sheets.write_csv(".grenat/no/such/dir.csv", [["x"]]) }
+end

@@ -1,0 +1,26 @@
+# The native part of the facet `sheets`: built by `setter install` into the
+# library `.grenat/native/<arch>-<os>/libsheets.<so|dylib>`.
+[package]
+name = "sheets_native"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+grenat_ext = { path = "../../../crates/grenat_ext" }
+serde = { version = "1", features = ["derive"] }
+calamine = { version = "0.36", features = ["dates"] }
+rust_xlsxwriter = "0.99"
+csv = "1.4"
+
+[dev-dependencies]
+# to write an OpenDocument spreadsheet by hand, in the tests
+zip = { version = "8", default-features = false }
+
+# a crate of its own, not a member of Grenat's workspace
+[workspace]
