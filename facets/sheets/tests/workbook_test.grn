@@ -1,0 +1,66 @@
+# Workbooks: reading the fixtures (an .xlsx, an .ods), writing .xlsx files.
+# Paths are relative to the facet's directory, where `grenat test` runs;
+# written files go to .grenat/, which `setter install` creates.
+
+require "../src/lib"
+
+test "the sheets of a workbook are named in order" do
+  assert_equal ["People", "Totals"], Sheets.names("tests/fixtures/people.xlsx").trust!
+  assert_equal ["Stock", "Notes"], Sheets.names("tests/fixtures/stock.ods").trust!
+end
+
+test "cells read as text: numbers, dates, booleans, empty cells, line breaks" do
+  rows = Sheets.rows("tests/fixtures/people.xlsx").trust!
+  assert_equal ["name", "age", "joined", "member", "note"], rows[0]
+  assert_equal ["Ada, \"the first\"", "36", "2024-01-15", "true", ""], rows[1]
+  assert_equal ["Linus", "54.5", "2023-12-01 10:30:00", "false", "two\nlines"], rows[2]
+  assert_equal 3, rows.size
+end
+
+test "a named sheet is its used range; a formula gives its saved value" do
+  totals = Sheets.rows("tests/fixtures/people.xlsx", sheet: "Totals").trust!
+  assert_equal [["item", "amount"], ["pens", "3"], ["total", "6"]], totals
+  stock = Sheets.rows("tests/fixtures/stock.ods").trust!
+  assert_equal [["item", "count", "price"], ["pens", "12", "1.5"], ["ink", "", "2"]], stock
+  assert_equal [["hello"]], Sheets.rows("tests/fixtures/stock.ods", sheet: "Notes").trust!
+end
+
+test "records take their names from the first row" do
+  people = Sheets.records("tests/fixtures/people.xlsx").trust!
+  assert_equal 2, people.size
+  assert_equal "Ada, \"the first\"", people[0]["name"]
+  assert_equal "2024-01-15", people[0]["joined"]
+  assert_equal "", people[0]["note"]
+  stock = Sheets.records("tests/fixtures/stock.ods", sheet: "Stock").trust!
+  assert_equal ["12", ""], stock.map { |item| item["count"] }
+end
+
+test "a missing sheet, a missing file, a file that is no workbook: SheetError" do
+  assert_raises(SheetError) { Sheets.rows("tests/fixtures/people.xlsx", sheet: "Nope") }
+  assert_raises(SheetError) { Sheets.records("tests/fixtures/missing.xlsx") }
+  assert_raises(SheetError) { Sheets.names("tests/fixtures/contacts.csv") }
+end
+
+test "rows written as text read back the same" do
+  rows = [["code", "price", "formula"], ["007", "1.50", "=1+1"], ["42", "-3.5", ""]]
+  Sheets.write_rows(".grenat/text.xlsx", rows, name: "Prices")
+  assert_equal ["Prices"], Sheets.names(".grenat/text.xlsx").trust!
+  assert_equal rows, Sheets.rows(".grenat/text.xlsx").trust!
+end
+
+test "typed writing keeps the same text, numbers being numbers" do
+  sheets = [
+    Worksheet(name: "One", rows: [["n", "x"], ["42", "007"]]),
+    Worksheet(name: "Two", rows: [["0.25"]]),
+  ]
+  Sheets.write(".grenat/typed.xlsx", sheets, typed: true)
+  assert_equal ["One", "Two"], Sheets.names(".grenat/typed.xlsx").trust!
+  assert_equal [["n", "x"], ["42", "007"]], Sheets.rows(".grenat/typed.xlsx").trust!
+  assert_equal [["0.25"]], Sheets.rows(".grenat/typed.xlsx", sheet: "Two").trust!
+end
+
+test "a workbook without sheets, or with a bad sheet name: SheetError" do
+  assert_raises(SheetError) { Sheets.write(".grenat/none.xlsx", []) }
+  assert_raises(SheetError) { Sheets.write_rows(".grenat/bad.xlsx", [["x"]], name: "a/b") }
+  assert_raises(SheetError) { Sheets.write_rows(".grenat/no/such/dir.xlsx", [["x"]]) }
+end

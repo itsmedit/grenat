@@ -1,0 +1,2 @@
+# the test files are kept byte for byte: CRLF line ends, a byte order mark, Latin-1
+tests/fixtures/* -text

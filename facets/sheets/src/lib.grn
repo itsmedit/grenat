@@ -1,0 +1,75 @@
+# The facet `sheets`: spreadsheets and CSV, read and written natively.
+#
+# The native functions (`sheets_*`, declared by `setter install` in
+# .grenat/native/native.grn) take every argument; the module `Sheets`
+# gives them friendlier signatures: a delimiter of "," unless told
+# otherwise, the first sheet unless one is named, text unless `typed:`.
+#
+# What comes from a file is untrusted (`~T`): check it before it reaches a
+# command, a request or a file. What comes from a text is as trusted as the
+# text. Writing refuses untrusted rows.
+
+module Sheets
+  ## The names of the sheets of a workbook (.xlsx, .xlsm, .xlsb, .xls, .ods), in order.
+  def self.names(path: String) -> ~Array(String) uses fs.read
+    sheets_names(path)
+  end
+
+  ## The rows of a sheet of a workbook (the first one unless `sheet` names
+  ## another), each cell as text: `"36"`, `"2.5"`, `"2024-01-15"`, `""` when empty.
+  def self.rows(path: String, sheet: String? = nil) -> ~Array(Array(String)) uses fs.read
+    sheets_rows(path, sheet)
+  end
+
+  ## The records of a sheet of a workbook: its first row names the columns.
+  def self.records(path: String, sheet: String? = nil) -> ~Array(Hash(String, String)) uses fs.read
+    sheets_records(path, sheet)
+  end
+
+  ## Writes a workbook of the sheets to the .xlsx file at `path`: each cell
+  ## as text, or, `typed`, a number as a number (`"42"`, not `"007"`).
+  def self.write(path: String, sheets: Array(Worksheet), typed: Bool = false) uses fs.write
+    sheets_write_xlsx(path, sheets, typed)
+  end
+
+  ## Writes one sheet, named `name`, to the .xlsx file at `path`.
+  def self.write_rows(path: String, rows: Array(Array(String)), name: String = "Sheet1", typed: Bool = false) uses fs.write
+    sheets_write_xlsx(path, [Worksheet(name: name, rows: rows)], typed)
+  end
+
+  ## The rows of a CSV text.
+  def self.parse_csv(text: String, delimiter: String = ",") -> Array(Array(String))
+    sheets_parse_csv(text, delimiter)
+  end
+
+  ## The records of a CSV text whose first row names the columns.
+  def self.parse_csv_records(text: String, delimiter: String = ",") -> Array(Hash(String, String))
+    sheets_parse_csv_records(text, delimiter)
+  end
+
+  ## The rows of a CSV file.
+  def self.read_csv(path: String, delimiter: String = ",") -> ~Array(Array(String)) uses fs.read
+    sheets_read_csv(path, delimiter)
+  end
+
+  ## The records of a CSV file whose first row names the columns.
+  def self.read_csv_records(path: String, delimiter: String = ",") -> ~Array(Hash(String, String)) uses fs.read
+    sheets_read_csv_records(path, delimiter)
+  end
+
+  ## The CSV text of the rows, cells quoted where they must be.
+  def self.to_csv(rows: Array(Array(String)), delimiter: String = ",") -> String
+    sheets_format_csv(rows, delimiter)
+  end
+
+  ## Writes the rows to the CSV file at `path`.
+  def self.write_csv(path: String, rows: Array(Array(String)), delimiter: String = ",") uses fs.write
+    sheets_write_csv(path, rows, delimiter)
+  end
+
+  ## Records as rows: a header row of `columns`, then each record's cells
+  ## in that order (`""` for a column a record lacks).
+  def self.table(records: Array(Hash(String, String)), columns: Array(String)) -> Array(Array(String))
+    [columns] + records.map { |record| columns.map { |column| record.fetch(column, "") } }
+  end
+end
