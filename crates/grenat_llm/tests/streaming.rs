@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use grenat_llm::catalog::{self, Catalogued};
 use grenat_llm::{
-    Anthropic, Cassette, Delta, ModelConfig, OpenAi, Provider, Request, Response, STOPPED, Scripted, ToolSpec,
+    Anthropic, Cassette, Delta, ModelConfig, OpenAi, Provider, Request, Response, STOPPED, Scripted, Timeouts, ToolSpec,
 };
 use serde_json::{Value as Json, json};
 
@@ -23,19 +23,25 @@ struct Received {
     body: Json,
 }
 
-/// A reply: a status, and a body sent in these pieces.
+/// A reply: a status, and a body sent in these pieces, a pause after each.
 struct Reply {
     status: u16,
     pieces: Vec<Vec<u8>>,
+    pause: Duration,
 }
 
 /// An event stream, cut every `size` bytes.
 fn stream(text: &str, size: usize) -> Reply {
-    Reply { status: 200, pieces: text.as_bytes().chunks(size).map(<[u8]>::to_vec).collect() }
+    trickle(text, size, Duration::from_millis(2))
+}
+
+/// An event stream, cut every `size` bytes, a piece every `pause`.
+fn trickle(text: &str, size: usize, pause: Duration) -> Reply {
+    Reply { status: 200, pieces: text.as_bytes().chunks(size).map(<[u8]>::to_vec).collect(), pause }
 }
 
 fn failure(status: u16, body: Json) -> Reply {
-    Reply { status, pieces: vec![body.to_string().into_bytes()] }
+    Reply { status, pieces: vec![body.to_string().into_bytes()], pause: Duration::from_millis(2) }
 }
 
 /// Answers each connection with the next reply, its body closed by the
@@ -73,12 +79,12 @@ fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<Received>>>) {
             let kind = if reply.status == 200 { "text/event-stream" } else { "application/json" };
             let head = format!("HTTP/1.1 {} X\r\ncontent-type: {kind}\r\nconnection: close\r\n\r\n", reply.status);
             stream.write_all(head.as_bytes()).unwrap();
-            for piece in reply.pieces {
+            for piece in &reply.pieces {
                 // the client may have stopped reading
-                if stream.write_all(&piece).and_then(|()| stream.flush()).is_err() {
+                if stream.write_all(piece).and_then(|()| stream.flush()).is_err() {
                     break;
                 }
-                std::thread::sleep(Duration::from_millis(2));
+                std::thread::sleep(reply.pause);
             }
         }
     });
@@ -303,6 +309,39 @@ fn a_stream_cut_short_fails_and_a_consumer_may_stop_it() {
         (billed.model.as_str(), billed.usage.input_tokens, billed.usage.cache_read_input_tokens),
         ("claude-opus-5", 5, 30)
     );
+}
+
+/// Short limits: 300 ms a call answered whole, 200 ms of silence.
+fn short() -> Timeouts {
+    Timeouts { whole: Duration::from_millis(300), connect: Duration::from_secs(5), silence: Duration::from_millis(200) }
+}
+
+#[test]
+fn a_stream_lasts_as_long_as_its_pieces_keep_coming() {
+    let model = ModelConfig::new("anthropic", "claude-haiku-4-5");
+    let mut events = vec![message_start(5), text_block(0)];
+    events.extend((0..12).map(|i| text_delta(0, &format!("{i} "))));
+    events.push(block_stop(0));
+    events.extend(message_end("end_turn", 12));
+    let text = sse(&events);
+    // a piece every 50 ms, 20 pieces at least: longer than a whole call may last
+    let size = text.len() / 20;
+    let (url, _) = serve(vec![trickle(&text, size, Duration::from_millis(50))]);
+    let (response, pieces) = collect(&anthropic(&url).with_timeouts(short()), &ask(&model));
+    assert_eq!(response.unwrap().text(), "0 1 2 3 4 5 6 7 8 9 10 11 ");
+    assert_eq!(pieces.text.len(), 12);
+    // a silence longer than the limit breaks it
+    let (url, _) = serve(vec![trickle(&text, text.len() / 2, Duration::from_millis(600))]);
+    let (response, _) = collect(&anthropic(&url).with_timeouts(short()), &ask(&model));
+    let error = response.unwrap_err();
+    assert!(error.starts_with("the stream broke") && error.contains("timeout"), "{error}");
+    // the same for OpenAI's APIs
+    let chunks = chunks(&(0..12).map(|i| chunk(json!({"content": format!("{i} ")}), None)).collect::<Vec<_>>(), true);
+    let (url, _) = serve(vec![trickle(&chunks, chunks.len() / 20, Duration::from_millis(50))]);
+    let gpt = ModelConfig::new("deepseek", "deepseek-chat");
+    let deepseek = openai(&url, provider("deepseek")).with_timeouts(short());
+    let (response, _) = collect(&deepseek, &ask(&gpt));
+    assert_eq!(response.unwrap().text(), "0 1 2 3 4 5 6 7 8 9 10 11 ");
 }
 
 #[test]

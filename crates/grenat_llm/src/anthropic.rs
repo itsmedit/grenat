@@ -12,6 +12,8 @@ use crate::*;
 /// HTTP client for Anthropic's Messages API.
 pub struct Anthropic {
     agent: ureq::Agent,
+    /// For streamed calls: a limit on silence, none on the whole.
+    stream_agent: ureq::Agent,
     api_key: String,
     base_url: String,
     /// Delay before the first retry, doubled afterwards (unless `retry-after` says otherwise).
@@ -32,14 +34,11 @@ impl Anthropic {
     }
 
     pub fn new(api_key: impl Into<String>, base_url: impl Into<String>) -> Self {
-        let agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .timeout_global(Some(Duration::from_secs(600)))
-            .build()
-            .into();
+        let timeouts = Timeouts::default();
         let base_url = base_url.into().trim_end_matches('/').to_string();
         Anthropic {
-            agent,
+            agent: timeouts.whole_agent(),
+            stream_agent: timeouts.stream_agent(),
             api_key: api_key.into(),
             base_url,
             retry_delay: Duration::from_secs(1),
@@ -49,6 +48,13 @@ impl Anthropic {
 
     pub fn with_retry_delay(mut self, delay: Duration) -> Self {
         self.retry_delay = delay;
+        self
+    }
+
+    /// Other limits than ten minutes a call, five of silence in a stream.
+    pub fn with_timeouts(mut self, timeouts: Timeouts) -> Self {
+        self.agent = timeouts.whole_agent();
+        self.stream_agent = timeouts.stream_agent();
         self
     }
 
@@ -80,10 +86,10 @@ impl Anthropic {
         &self.base_url
     }
 
-    /// `POST /v1/messages`: (status, `retry-after` seconds, the body unread).
-    fn post(&self, body: &Json) -> Result<(u16, Option<u64>, ureq::Body), String> {
-        let mut request = self
-            .agent
+    /// `POST /v1/messages` through `agent`: (status, `retry-after` seconds,
+    /// the body unread).
+    fn post(&self, agent: &ureq::Agent, body: &Json) -> Result<(u16, Option<u64>, ureq::Body), String> {
+        let mut request = agent
             .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
@@ -99,14 +105,14 @@ impl Anthropic {
     }
 
     fn send(&self, body: &Json) -> Result<(u16, Option<u64>, Json), String> {
-        let (status, retry_after, mut response) = self.post(body)?;
+        let (status, retry_after, mut response) = self.post(&self.agent, body)?;
         let json = response.read_json::<Json>().map_err(|e| format!("unreadable response: {e}"))?;
         Ok((status, retry_after, json))
     }
 
     /// One streamed attempt.
     fn stream_once(&self, body: &Json, sink: &mut Sink) -> Result<Response, Failed> {
-        let (status, retry_after, mut response) = self.post(body).map_err(Failed::retry)?;
+        let (status, retry_after, mut response) = self.post(&self.stream_agent, body).map_err(Failed::retry)?;
         if status != 200 {
             let text = response.read_to_string().unwrap_or_default();
             return Err(Failed::status(status, retry_after, &text));

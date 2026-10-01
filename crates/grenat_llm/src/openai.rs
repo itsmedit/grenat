@@ -23,6 +23,8 @@ use crate::*;
 
 pub struct OpenAi {
     agent: ureq::Agent,
+    /// For streamed calls: a limit on silence, none on the whole.
+    stream_agent: ureq::Agent,
     provider: Catalogued,
     /// `None` for a local server that needs none.
     api_key: Option<String>,
@@ -33,13 +35,16 @@ pub struct OpenAi {
 impl OpenAi {
     /// A client of `provider` at `base_url` (its own by default).
     pub fn new(provider: Catalogued, api_key: Option<String>, base_url: Option<&str>) -> OpenAi {
-        let agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .timeout_global(Some(Duration::from_secs(600)))
-            .build()
-            .into();
+        let timeouts = Timeouts::default();
         let base_url = base_url.unwrap_or(provider.base_url).trim_end_matches('/').to_string();
-        OpenAi { agent, provider, api_key, base_url, retry_delay: Duration::from_secs(1) }
+        OpenAi {
+            agent: timeouts.whole_agent(),
+            stream_agent: timeouts.stream_agent(),
+            provider,
+            api_key,
+            base_url,
+            retry_delay: Duration::from_secs(1),
+        }
     }
 
     pub fn with_retry_delay(mut self, delay: Duration) -> Self {
@@ -47,19 +52,27 @@ impl OpenAi {
         self
     }
 
-    /// `POST <path>` with a JSON body: (status, `retry-after` seconds, the body unread).
-    fn post(&self, path: &str, body: &Json) -> Result<(u16, Option<u64>, ureq::Body), String> {
-        self.post_bytes(path, "application/json", &body.to_string().into_bytes())
+    /// Other limits than ten minutes a call, five of silence in a stream.
+    pub fn with_timeouts(mut self, timeouts: Timeouts) -> Self {
+        self.agent = timeouts.whole_agent();
+        self.stream_agent = timeouts.stream_agent();
+        self
     }
 
-    /// `POST <path>` with a body of `content_type`.
+    /// `POST <path>` with a JSON body: (status, `retry-after` seconds, the body unread).
+    fn post(&self, path: &str, body: &Json) -> Result<(u16, Option<u64>, ureq::Body), String> {
+        self.post_bytes(&self.agent, path, "application/json", &body.to_string().into_bytes())
+    }
+
+    /// `POST <path>` through `agent`, with a body of `content_type`.
     fn post_bytes(
         &self,
+        agent: &ureq::Agent,
         path: &str,
         content_type: &str,
         body: &[u8],
     ) -> Result<(u16, Option<u64>, ureq::Body), String> {
-        let mut request = self.agent.post(format!("{}{path}", self.base_url)).header("content-type", content_type);
+        let mut request = agent.post(format!("{}{path}", self.base_url)).header("content-type", content_type);
         if let Some(key) = &self.api_key {
             request = request.header("authorization", &format!("Bearer {key}"));
         }
@@ -97,7 +110,9 @@ impl OpenAi {
         decoder: &mut impl Decoder,
         sink: &mut Sink,
     ) -> Result<Response, Failed> {
-        let (status, retry_after, mut response) = self.post(path, body).map_err(Failed::retry)?;
+        let json = body.to_string().into_bytes();
+        let (status, retry_after, mut response) =
+            self.post_bytes(&self.stream_agent, path, "application/json", &json).map_err(Failed::retry)?;
         if status != 200 {
             let text = response.read_to_string().unwrap_or_default();
             return Err(Failed::status(status, retry_after, &text));
@@ -187,7 +202,7 @@ impl Provider for OpenAi {
         let (content_type, body) = form.finish();
         crate::retry::with_retries(
             self.retry_delay,
-            || read_json(self.post_bytes("/audio/transcriptions", &content_type, &body)?),
+            || read_json(self.post_bytes(&self.agent, "/audio/transcriptions", &content_type, &body)?),
             |json| parse_transcript(json, request),
         )
     }
