@@ -2,6 +2,8 @@
 
 use serde_json::{Value as Json, json};
 
+use crate::Price;
+
 /// What a model is for.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ModelKind {
@@ -10,6 +12,32 @@ pub enum ModelKind {
     Chat,
     /// It turns texts into vectors (`embed`).
     Embedding,
+}
+
+/// Which requests carry prompt-cache breakpoints, where the provider wants
+/// them written (Anthropic); the others cache by themselves.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Caching {
+    /// None (`cache: false`).
+    Off,
+    /// An agent's turns: its tools, its instructions and the history of its
+    /// run, sent again at every turn (the default).
+    #[default]
+    Agents,
+    /// Every request: also what repeats in prompts and conversations — the
+    /// system prompt, the history before the last message, the documents
+    /// and images given before a question (`cache: true`).
+    Always,
+}
+
+/// How long a cache entry lives after its last use (Anthropic).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CacheTtl {
+    /// Five minutes: writes cost 1.25 times the input price.
+    #[default]
+    FiveMinutes,
+    /// An hour (`cache_ttl: "1h"`): writes cost twice the input price.
+    OneHour,
 }
 
 /// Model configuration, from a `model :name, …` declaration.
@@ -25,13 +53,17 @@ pub struct ModelConfig {
     pub fallbacks: bool,
     /// Another address for the provider (a proxy, a machine running Ollama).
     pub base_url: Option<String>,
-    /// Dollars per million tokens (input, output), when Grenat does not
-    /// know the model's price.
-    pub price: Option<(f64, f64)>,
+    /// Dollars per million tokens, when Grenat does not know the model's
+    /// price.
+    pub price: Option<Price>,
     pub kind: ModelKind,
     /// The size of an embedding model's vectors, where the provider lets
     /// it be chosen (its default otherwise).
     pub dimensions: Option<u32>,
+    /// Which requests mark what the prompt cache keeps (`cache:`).
+    pub cache: Caching,
+    /// How long it keeps it (`cache_ttl:`).
+    pub cache_ttl: CacheTtl,
 }
 
 impl ModelConfig {
@@ -50,6 +82,8 @@ impl ModelConfig {
             price: None,
             kind: ModelKind::Chat,
             dimensions: None,
+            cache: Caching::default(),
+            cache_ttl: CacheTtl::default(),
         }
     }
 }
@@ -75,17 +109,39 @@ pub struct Request<'a> {
     pub output_schema: Option<Json>,
 }
 
+/// The tokens of a call. The input is split three ways: `input_tokens` at
+/// the full price, `cache_creation_input_tokens` written to the prompt
+/// cache, `cache_read_input_tokens` read from it.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Usage {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cache_creation_input_tokens: u64,
     pub cache_read_input_tokens: u64,
+    /// Of the tokens written, those kept for an hour (priced higher).
+    pub cache_creation_1h_input_tokens: u64,
 }
 
 impl Usage {
     pub fn total_tokens(&self) -> u64 {
-        self.input_tokens + self.output_tokens + self.cache_creation_input_tokens + self.cache_read_input_tokens
+        self.prompt_tokens() + self.output_tokens
+    }
+
+    /// From an input counted whole, of which `read` tokens came from the
+    /// cache and `written` went to it (OpenAI's way of saying it).
+    pub fn from_whole_input(input: u64, read: u64, written: u64, output: u64) -> Usage {
+        Usage {
+            input_tokens: input.saturating_sub(read).saturating_sub(written),
+            output_tokens: output,
+            cache_creation_input_tokens: written,
+            cache_read_input_tokens: read,
+            cache_creation_1h_input_tokens: 0,
+        }
+    }
+
+    /// Every input token, cached or not.
+    pub fn prompt_tokens(&self) -> u64 {
+        self.input_tokens + self.cache_creation_input_tokens + self.cache_read_input_tokens
     }
 }
 

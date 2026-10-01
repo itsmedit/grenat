@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use grenat_ast::{Arg, Directive, Field, FnDef, Handler, Item, Member, TypeDef, TypeKind, Variant};
-use grenat_llm::{ModelConfig, ModelKind};
+use grenat_llm::{CacheTtl, Caching, ModelConfig, ModelKind, Price};
 
 use crate::value::{Locked, Value};
 use crate::*;
@@ -54,6 +54,12 @@ impl<'p> Interp<'p> {
                 ("dimensions", Value::Int(n)) if n > 0 && n <= i64::from(u32::MAX) => {
                     config.dimensions = Some(n as u32)
                 }
+                ("cache", Value::Bool(b)) => config.cache = if b { Caching::Always } else { Caching::Off },
+                ("cache", Value::Symbol(s)) if &*s == "agents" => config.cache = Caching::Agents,
+                ("cache_ttl", Value::Str(s) | Value::Symbol(s)) if &*s == "5m" => {
+                    config.cache_ttl = CacheTtl::FiveMinutes
+                }
+                ("cache_ttl", Value::Str(s) | Value::Symbol(s)) if &*s == "1h" => config.cache_ttl = CacheTtl::OneHour,
                 (option, value) => {
                     return raise(
                         "ArgumentError",
@@ -191,10 +197,11 @@ impl<'p> TypeInfo<'p> {
     }
 }
 
-/// `price: {input: 1.25, output: 10}`: dollars per million tokens.
-/// `{input: …, output: …}`, dollars per million tokens; an embedding model
-/// has no output, hence no output price.
-fn price<'p>(pairs: &[(Value<'p>, Value<'p>)], model: &str, kind: ModelKind) -> Result<(f64, f64), Ctrl<'p>> {
+/// `price: {input: 1.25, output: 10}`: dollars per million tokens, and
+/// those of the prompt cache when they are not the usual (`cache_read:`, a
+/// tenth of the input price; `cache_write:`, a quarter more). An embedding
+/// model has no output, hence no output price.
+fn price<'p>(pairs: &[(Value<'p>, Value<'p>)], model: &str, kind: ModelKind) -> Result<Price, Ctrl<'p>> {
     let get = |name: &str| {
         pairs.iter().find(|(k, _)| k.to_display() == name).and_then(|(_, v)| match v {
             Value::Int(n) => Some(*n as f64),
@@ -203,11 +210,24 @@ fn price<'p>(pairs: &[(Value<'p>, Value<'p>)], model: &str, kind: ModelKind) -> 
         })
     };
     let output = get("output").or((kind == ModelKind::Embedding).then_some(0.0));
+    let cache = [get("cache_read"), get("cache_write")];
+    let given = |name: &str| pairs.iter().any(|(k, _)| k.to_display() == name);
+    let valid_cache =
+        ["cache_read", "cache_write"].iter().zip(cache).all(|(name, v)| !given(name) || v.is_some_and(|v| v >= 0.0));
     match (get("input"), output) {
-        (Some(input), Some(output)) if input >= 0.0 && output >= 0.0 => Ok((input, output)),
+        (Some(input), Some(output)) if input >= 0.0 && output >= 0.0 && valid_cache => {
+            let usual = Price::new(input, output);
+            Ok(Price {
+                cache_read: cache[0].unwrap_or(usual.cache_read),
+                cache_write: cache[1].unwrap_or(usual.cache_write),
+                ..usual
+            })
+        }
         _ => raise(
             "ArgumentError",
-            format!("model `:{model}`: `price:` is `{{input: …, output: …}}`, dollars per million tokens"),
+            format!(
+                "model `:{model}`: `price:` is `{{input: …, output: …}}`, dollars per million tokens (with `cache_read: …` and `cache_write: …` when the prompt cache is not priced as usual)"
+            ),
         ),
     }
 }

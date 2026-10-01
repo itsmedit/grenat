@@ -79,3 +79,19 @@ fn models_are_declared_once_from_a_known_provider() {
         "model :x, provider: :ollama, name: \"llama3.3\", base_url: \"http://gpu:11434/v1\", price: {input: 0, output: 0}\n",
     );
 }
+
+#[test]
+fn prompt_caching_is_an_option_of_the_model() {
+    clean("model :a, provider: :anthropic, name: \"claude-opus-5\", cache: true, cache_ttl: \"1h\"\n");
+    clean("model :a, provider: :anthropic, name: \"claude-opus-5\", cache: :agents, cache_ttl: \"5m\"\n");
+    clean(
+        "model :a, provider: :anthropic, name: \"claude-opus-5\", cache: false, price: {input: 5, output: 25, cache_read: 0.5, cache_write: 6.25}\n",
+    );
+    let d = single("model :a, provider: :anthropic, name: \"claude-opus-5\", cache: :always\n", "E0500", ":always");
+    assert!(d.message.contains("`true`, `false` or `:agents`"), "{}", d.message);
+    single("model :a, provider: :anthropic, name: \"claude-opus-5\", cache: \"yes\"\n", "E0500", "\"yes\"");
+    let d = single("model :a, provider: :anthropic, name: \"claude-opus-5\", cache_ttl: \"2h\"\n", "E0500", "\"2h\"");
+    assert!(d.message.contains("\"1h\""), "{}", d.message);
+    let d = single("model :a, provider: :anthropic, name: \"claude-opus-5\", cach: true\n", "E0500", "cach:");
+    assert_eq!(d.help.as_deref(), Some("did you mean `cache`?"));
+}

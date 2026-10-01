@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use grenat_llm::catalog::{self, Catalogued};
-use grenat_llm::{ModelConfig, OpenAi, Provider, Request, ToolSpec, chat_body};
+use grenat_llm::{Caching, ModelConfig, OpenAi, Provider, Request, ToolSpec, Usage, chat_body};
 use serde_json::{Value as Json, json};
 
 struct Received {
@@ -219,6 +219,39 @@ fn text_answers_refusals_and_truncation() {
 }
 
 #[test]
+fn providers_cache_by_themselves_and_say_what_they_read() {
+    let reply = |usage: Json| {
+        let mut body = answer(json!({"role": "assistant", "content": "ok"}), "stop");
+        body["usage"] = usage;
+        (200, body)
+    };
+    let (url, received) = serve(vec![
+        // DeepSeek: hits and misses in fields of its own
+        reply(
+            json!({"prompt_tokens": 90, "completion_tokens": 5, "prompt_cache_hit_tokens": 64, "prompt_cache_miss_tokens": 26}),
+        ),
+        // OpenRouter: what was written too
+        reply(
+            json!({"prompt_tokens": 90, "completion_tokens": 5, "prompt_tokens_details": {"cached_tokens": 10, "cache_write_tokens": 70}}),
+        ),
+        // no detail: nothing cached
+        reply(json!({"prompt_tokens": 90, "completion_tokens": 5})),
+    ]);
+    let mut model = ModelConfig::new("deepseek", "deepseek-chat");
+    // `cache: true` marks nothing outside Anthropic's API
+    model.cache = Caching::Always;
+    let c = client(&url, chat(), Some("k"));
+    let ask = || c.complete(&request(&model, vec![json!({"role": "user", "content": "Hi"})])).unwrap().usage;
+    let split = |u: Usage| (u.input_tokens, u.cache_read_input_tokens, u.cache_creation_input_tokens, u.output_tokens);
+    assert_eq!(split(ask()), (26, 64, 0, 5));
+    assert_eq!(split(ask()), (10, 10, 70, 5));
+    assert_eq!(split(ask()), (90, 0, 0, 5));
+    for r in received.lock().unwrap().iter() {
+        assert!(!r.body.to_string().contains("cache_control"), "{}", r.body);
+    }
+}
+
+#[test]
 fn retries_rate_limits_not_client_errors() {
     let (url, received) = serve(vec![
         (429, json!({"error": {"message": "slow down"}})),
@@ -262,7 +295,7 @@ fn openai_itself_is_spoken_to_through_the_responses_api() {
             {"type": "reasoning", "id": "rs_1", "summary": []},
             {"type": "function_call", "id": "fc_1", "call_id": "call_9", "name": "search", "arguments": "{\"q\":\"rust\"}"}
         ],
-        "usage": {"input_tokens": 108, "output_tokens": 33, "input_tokens_details": {"cached_tokens": 8}}
+        "usage": {"input_tokens": 108, "output_tokens": 33, "input_tokens_details": {"cached_tokens": 8, "cache_write_tokens": 50}}
     });
     let (url, received) = serve(vec![(200, output)]);
     let mut model = ModelConfig::new("openai", "gpt-5.4-mini");
@@ -276,7 +309,15 @@ fn openai_itself_is_spoken_to_through_the_responses_api() {
     assert_eq!(response.stop_reason, "tool_use");
     let uses = response.tool_uses();
     assert_eq!((uses[0].id.as_str(), &uses[0].input), ("call_9", &json!({"q": "rust"})));
-    assert_eq!((response.usage.input_tokens, response.usage.cache_read_input_tokens), (100, 8));
+    // the input counted whole: 50 written to the cache, 8 read from it, 50 at full price
+    assert_eq!(
+        (
+            response.usage.input_tokens,
+            response.usage.cache_read_input_tokens,
+            response.usage.cache_creation_input_tokens
+        ),
+        (50, 8, 50)
+    );
 
     let received = received.lock().unwrap();
     assert_eq!(received[0].path, "/v1/responses");

@@ -31,7 +31,7 @@ impl<'p> Checker<'p> {
     }
 
     pub(crate) fn check_model(&mut self, model: &'p grenat_ast::ModelDecl) {
-        const MODEL_OPTIONS: [&str; 10] = [
+        const MODEL_OPTIONS: [&str; 12] = [
             "provider",
             "name",
             "temperature",
@@ -42,6 +42,8 @@ impl<'p> Checker<'p> {
             "price",
             "kind",
             "dimensions",
+            "cache",
+            "cache_ttl",
         ];
         let embedding = crate::embeddings::declares_embedding(model);
         for option in &model.options {
@@ -56,6 +58,17 @@ impl<'p> Checker<'p> {
                 }
                 ("kind", ExprKind::Symbol(k)) if k != "chat" && k != "embedding" => {
                     self.error(E_DECL, value.span, format!("`kind: :{k}` is unknown: `:chat` or `:embedding`"))
+                }
+                ("cache", ExprKind::Symbol(c)) if c != "agents" => self.error(
+                    E_DECL,
+                    value.span,
+                    format!("`cache: :{c}` is unknown: `true`, `false` or `:agents` (the default)"),
+                ),
+                ("cache", ExprKind::Str(_) | ExprKind::Int(_) | ExprKind::Float(_)) => {
+                    self.error(E_DECL, value.span, "`cache:` is `true`, `false` or `:agents` (the default)")
+                }
+                ("cache_ttl", ExprKind::Str(segments)) if !cache_ttl(segments) => {
+                    self.error(E_DECL, value.span, "`cache_ttl:` is \"5m\" (the default) or \"1h\"")
                 }
                 ("dimensions", _) if !embedding => {
                     self.error(E_DECL, name.span, "`dimensions:` is for embedding models (`kind: :embedding`)")
@@ -364,4 +377,9 @@ impl<'p> Checker<'p> {
             }
         }
     }
+}
+
+/// `"5m"` or `"1h"`, written as such.
+fn cache_ttl(segments: &[grenat_ast::StrSeg]) -> bool {
+    matches!(segments, [grenat_ast::StrSeg::Lit(text)] if text == "5m" || text == "1h")
 }

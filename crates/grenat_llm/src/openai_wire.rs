@@ -159,17 +159,21 @@ pub(crate) fn parse_chat(body: &Json) -> Result<Response, LlmError> {
         _ => "end_turn",
     };
     let usage = &body["usage"];
+    let details = &usage["prompt_tokens_details"];
     let tokens = |v: &Json| v.as_u64().unwrap_or(0);
-    let cached = tokens(&usage["prompt_tokens_details"]["cached_tokens"]);
+    // DeepSeek counts its cache hits in a field of its own
+    let read = details["cached_tokens"].as_u64().or_else(|| usage["prompt_cache_hit_tokens"].as_u64()).unwrap_or(0);
+    // OpenRouter says what was written (to the cache of a model that charges for it)
+    let written = tokens(&details["cache_write_tokens"]);
     Ok(Response {
         content,
         stop_reason: stop_reason.into(),
-        usage: Usage {
-            input_tokens: tokens(&usage["prompt_tokens"]).saturating_sub(cached),
-            output_tokens: tokens(&usage["completion_tokens"]),
-            cache_creation_input_tokens: 0,
-            cache_read_input_tokens: cached,
-        },
+        usage: Usage::from_whole_input(
+            tokens(&usage["prompt_tokens"]),
+            read,
+            written,
+            tokens(&usage["completion_tokens"]),
+        ),
         model: body["model"].as_str().unwrap_or_default().to_string(),
     })
 }

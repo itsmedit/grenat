@@ -28,6 +28,10 @@ pub(crate) const MODELS: &str = "\
 # deepseek, together, ollama (local, no key), voyage (embeddings only).
 # Options: temperature, max_tokens, effort, base_url, and price (dollars per
 # million tokens: {input: 1.25, output: 10}) for a model Grenat has no price for.
+# Prompt caching (Anthropic; the others cache by themselves): agents' tools,
+# instructions and history are cached by default; `cache: true` caches what
+# prompts and conversations repeat too, `cache: false` nothing, and
+# `cache_ttl: 1h` keeps it an hour instead of five minutes.
 # `kind: embedding` makes vectors for `embed` (openai, gemini, mistral, ollama,
 # voyage), with `dimensions` where the provider takes them.
 fast:

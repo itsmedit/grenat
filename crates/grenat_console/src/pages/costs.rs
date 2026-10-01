@@ -1,4 +1,5 @@
-//! Costs: what the models cost, by agent, workflow, model and day.
+//! Costs: what the models cost, by agent, workflow, model and day, and the
+//! share of their input the prompt cache served.
 
 use grenat_ops::calls::{self, By, Total};
 
@@ -23,13 +24,14 @@ pub(crate) fn show(ctx: &mut Ctx) -> Result {
         .collect();
     let total: f64 = recorded.iter().map(|c| c.cost_usd).sum();
     let tokens: i64 = recorded.iter().map(|c| c.input_tokens + c.output_tokens).sum();
+    let cached = share(calls::cached_share(&recorded));
     let section = |title: &str, by: By, outside: &str| {
         let totals = calls::totals(&recorded, by);
         let most = totals.iter().map(|t| t.cost_usd).fold(0.0, f64::max);
         format!(
             "<h2>{title}</h2>{}",
             table(
-                &[title, "Calls", "Tokens in", "Tokens out", "Cost", ""],
+                &[title, "Calls", "Tokens in", "Cached", "Tokens out", "Cost", ""],
                 &rows(&totals, most, outside),
                 "No model call."
             )
@@ -37,7 +39,8 @@ pub(crate) fn show(ctx: &mut Ctx) -> Result {
     };
     let body = format!(
         "<div class=\"tabs\">{tabs}</div><div class=\"cards\"><div class=\"card\"><b>{}</b><span>spent</span></div>\
-         <div class=\"card\"><b>{}</b><span>model calls</span></div><div class=\"card\"><b>{tokens}</b><span>tokens</span></div></div>\
+         <div class=\"card\"><b>{}</b><span>model calls</span></div><div class=\"card\"><b>{tokens}</b><span>tokens</span></div>\
+         <div class=\"card\"><b>{cached}</b><span>of the input from the cache</span></div></div>\
          {}{}{}{}",
         money(total),
         recorded.len(),
@@ -62,10 +65,16 @@ fn rows(totals: &[Total], most: f64, outside: &str) -> Vec<Vec<String>> {
                 key,
                 format!("<span class=\"num\">{}</span>", t.calls),
                 format!("<span class=\"num\">{}</span>", t.input_tokens),
+                format!("<span class=\"num\">{}</span>", share(t.cached_share())),
                 format!("<span class=\"num\">{}</span>", t.output_tokens),
                 money(t.cost_usd),
                 format!("<div class=\"bar\" style=\"width:{width}%\"></div>"),
             ]
         })
         .collect()
+}
+
+/// A share as a percentage.
+fn share(share: f64) -> String {
+    format!("{:.0}%", share * 100.0)
 }

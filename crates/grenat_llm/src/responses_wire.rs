@@ -137,17 +137,18 @@ pub(crate) fn parse_responses(body: &Json) -> Result<Response, LlmError> {
         "end_turn"
     };
     let usage = &body["usage"];
+    let details = &usage["input_tokens_details"];
     let tokens = |v: &Json| v.as_u64().unwrap_or(0);
-    let cached = tokens(&usage["input_tokens_details"]["cached_tokens"]);
     Ok(Response {
         content,
         stop_reason: stop_reason.into(),
-        usage: Usage {
-            input_tokens: tokens(&usage["input_tokens"]).saturating_sub(cached),
-            output_tokens: tokens(&usage["output_tokens"]),
-            cache_creation_input_tokens: 0,
-            cache_read_input_tokens: cached,
-        },
+        // writes are counted (and priced) from GPT-5.6 on
+        usage: Usage::from_whole_input(
+            tokens(&usage["input_tokens"]),
+            tokens(&details["cached_tokens"]),
+            tokens(&details["cache_write_tokens"]),
+            tokens(&usage["output_tokens"]),
+        ),
         model: body["model"].as_str().unwrap_or_default().to_string(),
     })
 }

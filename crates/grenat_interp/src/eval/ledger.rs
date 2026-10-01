@@ -1,6 +1,6 @@
 //! What the runtime records for `grenat console`, in the application's
 //! database when it has one: each model call and its cost (on behalf of
-//! which agent, workflow and job), what failed while serving — refusals
+//! which agent, workflow and job, and what the prompt cache served), what failed while serving — refusals
 //! included — and eval runs. Recording never fails a program: a write that
 //! fails is reported, and the program goes on.
 
@@ -30,10 +30,11 @@ impl<'p> Interp<'p> {
             agent: self.agents.last().map(|frame| frame.agent.ty.to_string()),
             workflow: self.workflows.last().map(|run| run.name().to_string()),
             job_id: self.current_job,
-            input_tokens: (usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens)
-                as i64,
+            input_tokens: usage.prompt_tokens() as i64,
             output_tokens: usage.output_tokens as i64,
             cost_usd,
+            cached_tokens: usage.cache_read_input_tokens as i64,
+            cache_write_tokens: usage.cache_creation_input_tokens as i64,
         };
         self.ledger(|db| calls::record(db, &call));
     }

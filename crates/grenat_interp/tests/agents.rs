@@ -22,8 +22,9 @@ fn agent_runs_the_tool_loop_until_final_answer() {
     let requests = r.requests;
     assert_eq!(requests.len(), 2);
     let first = &requests[0];
-    assert!(first["system"].as_str().unwrap().starts_with("You read files."));
-    assert_eq!(first["messages"][0]["content"], "Question: what is in a.txt?");
+    // an agent's turns are cached (see tests/caching.rs): its texts become blocks
+    assert!(first["system"][0]["text"].as_str().unwrap().starts_with("You read files."));
+    assert_eq!(first["messages"][0]["content"][0]["text"], "Question: what is in a.txt?");
     let tools = first["tools"].as_array().unwrap();
     assert_eq!(tools[0]["name"], "read_file");
     assert_eq!(tools[0]["description"], "Reads a file.");

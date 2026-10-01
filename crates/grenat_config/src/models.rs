@@ -9,6 +9,11 @@
 //!   provider: openai
 //!   name: gpt-5
 //!   price: {input: 1.25, output: 10}
+//! writer:
+//!   provider: anthropic
+//!   name: claude-opus-5
+//!   cache: true                # prompts and conversations too, not only agents
+//!   cache_ttl: 1h
 //! docs:                       # vectors for `embed`, not prompts
 //!   provider: voyage
 //!   name: voyage-3.5
@@ -27,7 +32,7 @@ use yaml_rust2::Yaml;
 pub const FILE: &str = "config/models.yml";
 
 /// Options whose value is a name (a symbol), not a text.
-const SYMBOLS: [&str; 3] = ["provider", "effort", "kind"];
+const SYMBOLS: [&str; 4] = ["provider", "effort", "kind", "cache"];
 
 /// The declarations `yaml` stands for, one per line, in its order.
 pub fn declarations(yaml: &str) -> Result<String, String> {
@@ -141,6 +146,15 @@ docs:
   kind: embedding
   dimensions: 512
   price: {input: 0.02}
+writer:
+  provider: anthropic
+  name: claude-opus-5
+  cache: true
+  cache_ttl: 1h
+reader:
+  provider: anthropic
+  name: claude-haiku-4-5
+  cache: agents
 ";
         assert_eq!(
             declarations(yaml).unwrap(),
@@ -149,6 +163,8 @@ model :fast, provider: :anthropic, name: 'claude-haiku-4-5', temperature: 0.2
 model :smart, provider: :openai, name: 'gpt-5', effort: :low, max_tokens: 4000, price: {input: 1.25, output: 10}
 model :local, provider: :ollama, name: 'it\\'s #{here}', base_url: 'http://gpu:11434/v1', fallbacks: false
 model :docs, provider: :openai, name: 'text-embedding-3-small', kind: :embedding, dimensions: 512, price: {input: 0.02}
+model :writer, provider: :anthropic, name: 'claude-opus-5', cache: true, cache_ttl: '1h'
+model :reader, provider: :anthropic, name: 'claude-haiku-4-5', cache: :agents
 "
         );
         assert_eq!(declarations("").unwrap(), "");

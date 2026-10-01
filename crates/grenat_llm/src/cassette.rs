@@ -1,8 +1,9 @@
 //! Cassettes: model calls recorded once, then replayed (VCR-style), so that
 //! tests calling models are deterministic, fast and free.
 //!
-//! A replayed call is found by its request (the exact JSON body), not by its
-//! position: concurrent calls may come in any order.
+//! A replayed call is found by its request (the exact JSON body, without its
+//! prompt-cache breakpoints: they change the price, not the answer), not by
+//! its position: concurrent calls may come in any order.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -67,7 +68,7 @@ impl Cassette {
 
 impl Provider for Cassette {
     fn complete(&self, request: &Request) -> Result<Response, LlmError> {
-        let body = request_body(request);
+        let body = key(request);
         match &self.mode {
             Mode::Replay(calls) => {
                 let mut calls = calls.lock().unwrap_or_else(PoisonError::into_inner);
@@ -88,6 +89,12 @@ impl Provider for Cassette {
     }
 }
 
+/// The body that finds a call: the request's, without cache breakpoints.
+fn key(request: &Request) -> Json {
+    let model = ModelConfig { cache: Caching::Off, ..request.model.clone() };
+    request_body(&Request { model: &model, ..request.clone() })
+}
+
 fn response_to_json(r: &Response) -> Json {
     json!({
         "content": r.content,
@@ -98,6 +105,7 @@ fn response_to_json(r: &Response) -> Json {
             "output_tokens": r.usage.output_tokens,
             "cache_creation_input_tokens": r.usage.cache_creation_input_tokens,
             "cache_read_input_tokens": r.usage.cache_read_input_tokens,
+            "cache_creation_1h_input_tokens": r.usage.cache_creation_1h_input_tokens,
         },
     })
 }
@@ -113,6 +121,7 @@ fn response_from_json(json: &Json) -> Response {
             output_tokens: tokens("output_tokens"),
             cache_creation_input_tokens: tokens("cache_creation_input_tokens"),
             cache_read_input_tokens: tokens("cache_read_input_tokens"),
+            cache_creation_1h_input_tokens: tokens("cache_creation_1h_input_tokens"),
         },
     }
 }

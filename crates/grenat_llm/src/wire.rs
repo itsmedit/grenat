@@ -1,4 +1,5 @@
-//! Messages API wire format: request bodies and response parsing.
+//! Messages API wire format: request bodies (their prompt-cache breakpoints
+//! placed by [`crate::caching`]) and response parsing.
 
 use serde_json::{Value as Json, json};
 
@@ -38,6 +39,7 @@ pub fn request_body(request: &Request) -> Json {
     if !output_config.is_empty() {
         body["output_config"] = Json::Object(output_config);
     }
+    crate::caching::mark(&mut body, request);
     body
 }
 
@@ -53,6 +55,7 @@ pub(crate) fn parse_response(body: &Json) -> Result<Response, LlmError> {
             output_tokens: tokens("output_tokens"),
             cache_creation_input_tokens: tokens("cache_creation_input_tokens"),
             cache_read_input_tokens: tokens("cache_read_input_tokens"),
+            cache_creation_1h_input_tokens: usage["cache_creation"]["ephemeral_1h_input_tokens"].as_u64().unwrap_or(0),
         },
         model: body["model"].as_str().unwrap_or_default().to_string(),
     })

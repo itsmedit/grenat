@@ -6,7 +6,7 @@ use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use grenat_llm::{Anthropic, ModelConfig, Provider, Request, ToolSpec};
+use grenat_llm::{Anthropic, CacheTtl, Caching, ModelConfig, Provider, Request, ToolSpec};
 use serde_json::{Value as Json, json};
 
 /// Request received by the fake server.
@@ -118,8 +118,43 @@ fn sends_a_well_formed_request_and_parses_the_reply() {
     // server-side fallback: on by default for claude-opus-5, with its beta header
     assert_eq!(r.headers["anthropic-beta"], "server-side-fallback-2026-07-01");
     assert_eq!(r.body["fallbacks"], "default");
-    assert_eq!(r.body["system"], "be brief");
+    assert_eq!(r.body["system"][0]["text"], "be brief");
     assert_eq!(r.body["tools"][0]["strict"], true);
+}
+
+#[test]
+fn an_agent_s_prefix_is_cached_and_what_the_cache_did_is_read_back() {
+    let mut reply = message("ok");
+    reply["usage"] = json!({
+        "input_tokens": 40,
+        "output_tokens": 3,
+        "cache_creation_input_tokens": 600,
+        "cache_read_input_tokens": 2_000,
+        "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 600}
+    });
+    let (url, received) = serve(vec![(200, vec![], reply), (200, vec![], message("ok"))]);
+    let mut model = ModelConfig::new("anthropic", "claude-haiku-4-5");
+    model.cache_ttl = CacheTtl::OneHour;
+    let usage = client(&url).complete(&request(&model)).unwrap().usage;
+    assert_eq!(
+        (usage.input_tokens, usage.cache_creation_input_tokens, usage.cache_creation_1h_input_tokens),
+        (40, 600, 600)
+    );
+    assert_eq!((usage.cache_read_input_tokens, usage.prompt_tokens()), (2_000, 2_640));
+    model.cache = Caching::Off;
+    client(&url).complete(&request(&model)).unwrap();
+
+    let received = received.lock().unwrap();
+    let hour = json!({"type": "ephemeral", "ttl": "1h"});
+    let cached = &received[0].body;
+    assert_eq!(cached["tools"][0]["cache_control"], hour);
+    assert_eq!(cached["system"], json!([{"type": "text", "text": "be brief", "cache_control": hour}]));
+    assert_eq!(cached["messages"][0]["content"], json!([{"type": "text", "text": "Hello", "cache_control": hour}]));
+    // caching needs no beta header any more
+    assert!(!received[0].headers.contains_key("anthropic-beta"));
+    let plain = &received[1].body;
+    assert!(!plain.to_string().contains("cache_control"), "{plain}");
+    assert_eq!(plain["system"], "be brief");
 }
 
 #[test]

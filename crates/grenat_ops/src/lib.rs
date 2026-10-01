@@ -5,12 +5,14 @@
 //!
 //! The runtime writes it (`grenat serve`, `grenat eval`); `grenat console`
 //! reads it and acts on it (approve, retry). Tables are created when first
-//! used, in SQL that SQLite and PostgreSQL both accept; times are seconds
+//! used, in SQL that SQLite and PostgreSQL both accept, and given the
+//! columns added since when an earlier Grenat made them; times are seconds
 //! since the epoch. Nothing here knows the language: values are the
 //! runtime's own encoding (JSON).
 
 pub mod approvals;
 pub mod calls;
+mod columns;
 pub mod evals;
 pub mod events;
 pub mod jobs;

@@ -98,6 +98,8 @@ fn model_calls_are_summed_by_agent_workflow_model_and_day() {
             input_tokens: 100,
             output_tokens: 10,
             cost_usd: cost,
+            cached_tokens: 60,
+            cache_write_tokens: 30,
         };
         calls::record(db, &call(10.0, "claude-haiku-4-5", Some("Triage"), 0.25)).unwrap();
         calls::record(db, &call(86_400.0 + 5.0, "claude-opus-5", Some("Writer"), 1.5)).unwrap();
@@ -114,9 +116,53 @@ fn model_calls_are_summed_by_agent_workflow_model_and_day() {
         let models = calls::totals(&all, By::Model);
         let haiku = models.iter().find(|t| t.key.as_deref() == Some("claude-haiku-4-5")).unwrap();
         assert_eq!((haiku.calls, haiku.input_tokens, haiku.output_tokens, haiku.cost_usd), (2, 200, 20, 0.5));
+        assert_eq!((haiku.cached_tokens, haiku.cache_write_tokens, haiku.cached_share()), (120, 60, 0.6));
+        assert_eq!(calls::cached_share(&all), 0.6);
+        assert_eq!(calls::cached_share(&[]), 0.0);
         let days: Vec<_> = calls::totals(&all, By::Day).into_iter().map(|t| t.key.unwrap()).collect();
         assert_eq!(days, ["1970-01-01", "1970-01-02"]);
         assert_eq!(calls::totals(&all, By::Workflow).len(), 1);
+    });
+}
+
+#[test]
+fn a_ledger_made_by_an_earlier_grenat_gets_the_cache_columns_and_keeps_its_rows() {
+    on_every_database(|db| {
+        // the table as Grenat made it before prompt caching was recorded
+        let key = db.dialect().primary_key();
+        db.batch(&format!(
+            "CREATE TABLE {} (id {key}, at FLOAT NOT NULL, model TEXT NOT NULL, agent TEXT, workflow TEXT, \
+             job_id INTEGER, input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL, cost_usd FLOAT NOT NULL)",
+            calls::TABLE
+        ))
+        .unwrap();
+        db.execute(
+            &format!(
+                "INSERT INTO {} (at, model, input_tokens, output_tokens, cost_usd) VALUES (1.0, 'claude-opus-5', 500, 50, 0.5)",
+                calls::TABLE
+            ),
+            &[],
+        )
+        .unwrap();
+        let old = calls::since(db, 0.0).unwrap();
+        assert_eq!(old.len(), 1);
+        assert_eq!((old[0].input_tokens, old[0].cached_tokens, old[0].cache_write_tokens), (500, 0, 0));
+        let new = Call {
+            at: 2.0,
+            model: "claude-opus-5".into(),
+            input_tokens: 1_000,
+            output_tokens: 10,
+            cost_usd: 0.1,
+            cached_tokens: 900,
+            cache_write_tokens: 50,
+            ..Call::default()
+        };
+        calls::record(db, &new).unwrap();
+        // used again: nothing more to add
+        calls::ensure(db).unwrap();
+        let all = calls::since(db, 0.0).unwrap();
+        assert_eq!(all[1], new);
+        assert_eq!(calls::cached_share(&all), 0.6);
     });
 }
 

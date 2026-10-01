@@ -255,6 +255,7 @@ fn costs_evals_refusals_and_mcp() {
         input_tokens: 1000,
         output_tokens: 100,
         cost_usd: cost,
+        cached_tokens: if agent == "Writer" { 900 } else { 0 },
         ..calls::Call::default()
     };
     calls::record(s.db.as_mut(), &call("Triage", 0.5)).unwrap();
@@ -263,6 +264,9 @@ fn costs_evals_refusals_and_mcp() {
     calls::record(s.db.as_mut(), &old).unwrap();
     let costs = s.get("/costs").body;
     assert!(costs.contains("$2.50") && costs.contains("Writer") && !costs.contains("Old"), "{costs}");
+    // the cache share: 900 of 2,000 input tokens overall, 90% of the Writer's
+    assert!(costs.contains("<b>45%</b><span>of the input from the cache</span>"), "{costs}");
+    assert!(costs.contains("<span class=\"num\">90%</span>") && costs.contains("<span class=\"num\">0%</span>"));
     assert!(s.get("/costs?days=30").body.contains("$102.50"));
     assert!(s.get("/").body.contains("$2.50"));
 

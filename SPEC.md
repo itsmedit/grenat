@@ -614,6 +614,44 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 13 status: prompt caching
+
+An agent with long instructions and a dozen tools, asked hundreds of times a day; prompts over the same contract, the same handbook: each call sent the whole context again and paid for all of it. Now what repeats is read from the provider's prompt cache, at a tenth of the input price or less.
+
+```yaml
+# config/models.yml
+desk:
+  provider: anthropic
+  name: claude-opus-5          # agents: cached by default
+reader:
+  provider: anthropic
+  name: claude-haiku-4-5
+  cache: true                  # prompts and conversations too
+  cache_ttl: 1h                # kept an hour, not five minutes
+quick:
+  provider: anthropic
+  name: claude-haiku-4-5
+  cache: false                 # nothing marked
+```
+
+```ruby
+## Answers from the handbook.
+prompt answer(handbook: Attachment, question: String) -> ~String using :reader
+  system "Answer from the handbook only; say when it does not say."
+  user handbook   # cached: the handbook, not the question
+  user question
+end
+```
+
+- **Anthropic: breakpoints, placed by Grenat.** The Messages API caches a request's prefix — tools, then system prompt, then messages — up to each `cache_control` breakpoint. An agent's turns get three: after its last tool, after its instructions, after the last message of its run (each turn reads all the run but what the previous turn added). That is the default (`cache: :agents`): an agent sends the same prefix at every turn and every run, while a one-off prompt would pay the write for nothing. With `cache: true`, prompts and conversations get them too, where what follows changes: after the system prompt, after the history before the last message, after the documents and images given before the question — never on the question itself. `cache: false` marks nothing. Never more than four breakpoints (the API's limit): a request gets three at most, fewer when it already carries some. Thinking blocks and empty texts carry none; a text message becomes a block to carry one. A prefix under the model's minimum (512 tokens on Opus 5, Opus 5.5, Fable 5 and 5.1; 1,024 on Sonnet 5 and Opus 4.8; 4,096 on Haiku 4.5) is not cached and costs nothing more.
+- **How long.** `cache_ttl: "5m"` (the default; each read keeps it five more minutes) or `"1h"` (`{"type": "ephemeral", "ttl": "1h"}`), for calls further apart; every breakpoint of a request has the same, so the API's rule — longer lives first — always holds. The checker knows both options (E0500 for `cache: :always` or `cache_ttl: "2h"`), and `config/models.yml` writes them as in code (`cache: agents`, `cache_ttl: 1h`).
+- **The others cache by themselves.** OpenAI (prompts of 1,024 tokens and more), Gemini, DeepSeek, xAI, Groq, OpenRouter: nothing is marked; Grenat reads what they say they cached — `input_tokens_details.cached_tokens` and, from GPT-5.6, `cache_write_tokens` (Responses API), `prompt_tokens_details.cached_tokens` and OpenRouter's `cache_write_tokens` (Chat Completions), DeepSeek's `prompt_cache_hit_tokens` — the input counted whole minus those being the part at full price.
+- **Costs.** A call is priced by kind of token: at full price, read from the cache, written for five minutes, written for an hour (`usage.cache_creation.ephemeral_1h_input_tokens`). Anthropic's table: reads at 0.1 times the input price — 0.05 on Opus 5.5, 0.025 on Fable 5.1 and Mythos 5.1 — writes at 1.25 times, 2 times for an hour; the batch discount applies on top. For a model priced by hand, `price: {input: 2, output: 8, cache_read: 0.5, cache_write: 2.5}`: without them, reads at a tenth and writes at a quarter more. Opus 4 and 4.1 are priced at their own $15 / $75 now, not as Opus 4.5.
+- **The ledger and the console.** `grenat_calls` keeps, for each call, its whole input, `cached_tokens` and `cache_write_tokens`: a database made by an earlier Grenat gets the two columns (`ALTER TABLE … ADD COLUMN … DEFAULT 0`) when the ledger is next used, its rows kept — the columns are read from the catalog, so that a program's transaction is never aborted by a probe. The console's costs page shows the share of the input the cache served, overall and by agent, workflow, model and day; `--log` says `[llm] claude-opus-5 · 10100 in (9000 cached, 1000 to cache) / 20 out · $0.0118 · 1.2s`.
+- **Tests.** A cassette finds a call by its request without its breakpoints: they change the price, not the answer, so recordings made before stay valid and `cache:` can change. Tests check the bodies sent (breakpoints where expected, nowhere else, never more than four), the usage of each wire format, the price of each kind of token against Anthropic's table, and the ledger's migration of an old table on SQLite and PostgreSQL.
+- **Verified** against Anthropic's documentation (prompt caching and pricing pages, October 2026: the four breakpoints, the cacheable blocks, the minimums, both lifetimes and their prices, the usage fields), OpenAI's prompt caching guide (the usage fields, writes from GPT-5.6), DeepSeek's (its fields) and OpenRouter's. Not verified live: no key here. Gemini's compatible endpoint is read as Chat Completions (`prompt_tokens_details.cached_tokens`), not checked against a live answer.
+- **Limits.** No breakpoint is sent through OpenRouter to Anthropic models (it caches them only when marked); OpenAI's explicit breakpoints and `prompt_cache_key` are not used; `cache_ttl:` has no meaning outside Anthropic; Grenat does not count tokens, so it marks a prefix even when it is under the minimum (harmless). Anthropic's top-level automatic caching is not used: explicit breakpoints keep the question out of what is written.
+
 ### Phase 13 status: embeddings and vector search
 
 A support desk answering from internal docs, a knowledge-base assistant: they find the passages a question is about by meaning, not by counting the words they share. A model makes the vectors, a record keeps them, `nearest` finds the closest.
@@ -908,7 +946,7 @@ The operations console of an application, in a browser, open source like the res
 - **Approvals** — the questions jobs wait on (`approve!` in a job), approved or denied here: the job is queued again and resumes where it stopped.
 - **Jobs** — the queue by status; a job's arguments, last error, journal, approvals and model calls; a failed job retried (a workflow resumes from its journal).
 - **Journals** — each run of a workflow, its steps and their values, completed or not.
-- **Costs** — model calls by agent, workflow, model and day, over 24 hours, 7 or 30 days.
+- **Costs** — model calls by agent, workflow, model and day, over 24 hours, 7 or 30 days, and the share of their input the prompt cache served.
 - **Evals** — each `grenat eval` kept: scores over time against their threshold, and what they cost.
 - **Events** — what failed while serving (a request, a schedule, a job run, an exposed tool), and among them the refusals: untrusted data stopped at a sink, an effect not granted, a human's no, a budget spent.
 - **MCP** — the servers the program uses (their tools, listed on demand; never their headers or environment) and what it serves (`expose`).

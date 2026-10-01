@@ -163,11 +163,16 @@ impl<'p> Interp<'p> {
         }
         self.record_call(&billed, &response.usage, cost);
         if self.log {
+            let usage = &response.usage;
+            let cached = match (usage.cache_read_input_tokens, usage.cache_creation_input_tokens) {
+                (0, 0) => String::new(),
+                (read, written) => format!(" ({read} cached, {written} to cache)"),
+            };
             let line = format!(
-                "[llm] {} · {} in / {} out · {} · {:.1}s\n",
+                "[llm] {} · {} in{cached} / {} out · {} · {:.1}s\n",
                 request.model.name,
-                response.usage.input_tokens,
-                response.usage.output_tokens,
+                usage.prompt_tokens(),
+                usage.output_tokens,
                 money(cost),
                 started.elapsed().as_secs_f64()
             );

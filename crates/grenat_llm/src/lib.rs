@@ -8,6 +8,7 @@
 
 mod anthropic;
 mod batch;
+mod caching;
 mod cassette;
 pub mod catalog;
 mod embeddings_wire;
@@ -29,7 +30,7 @@ pub use fake_embeddings::FakeEmbeddings;
 pub use mock::{Mock, MockReply};
 pub use openai::OpenAi;
 pub use openai_wire::chat_body;
-pub use pricing::{cost_at, cost_usd};
+pub use pricing::{Price, cost_at, cost_usd};
 pub use responses_wire::responses_body;
 pub use scripted::Scripted;
 pub use types::*;
@@ -60,7 +61,8 @@ mod tests {
             output_schema: Some(json!({"type": "object"})),
         };
         let body = request_body(&request);
-        assert_eq!(body["system"], "sys");
+        // tools: an agent's turn, whose prefix is cached
+        assert_eq!(body["system"], json!([{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}]));
         assert_eq!(body["tools"][0]["strict"], true);
         assert_eq!(body["output_config"]["format"]["type"], "json_schema");
         assert_eq!(body["output_config"]["effort"], "low");
@@ -89,6 +91,10 @@ mod tests {
         assert_eq!(r.text(), "Reading.");
         assert_eq!(r.tool_uses()[0].name, "read");
         assert_eq!(r.usage.total_tokens(), 17);
+        assert_eq!(r.usage.prompt_tokens(), 12);
+        let hour = json!({"content": [], "usage": {"input_tokens": 1, "cache_creation_input_tokens": 30, "cache_creation": {"ephemeral_5m_input_tokens": 10, "ephemeral_1h_input_tokens": 20}}});
+        let usage = parse_response(&hour).unwrap().usage;
+        assert_eq!((usage.cache_creation_input_tokens, usage.cache_creation_1h_input_tokens), (30, 20));
     }
 
     #[test]
@@ -119,6 +125,37 @@ mod tests {
         assert!(missing.message.contains("GRENAT_RECORD=1"), "{}", missing.message);
         // the real provider was only called while recording
         assert_eq!(real.requests().len(), 2);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_cassette_finds_a_call_whatever_its_cache_breakpoints() {
+        let dir = std::env::temp_dir().join(format!("grenat-cassette-cache-{}", std::process::id()));
+        let path = dir.join("calls.json");
+        let mut model = ModelConfig::new("anthropic", "claude-haiku-4-5");
+        model.cache = Caching::Off;
+        fn ask(model: &ModelConfig) -> Request<'_> {
+            Request {
+                model,
+                system: Some("sys".into()),
+                messages: vec![json!({"role": "user", "content": "go"})],
+                tools: vec![ToolSpec {
+                    name: "t".into(),
+                    description: "d".into(),
+                    input_schema: json!({"type": "object"}),
+                    strict: true,
+                }],
+                output_schema: None,
+            }
+        }
+        let real = std::sync::Arc::new(Scripted::new([Response::text_reply("done")]));
+        let recorder = Cassette::record(&path, real);
+        recorder.complete(&ask(&model)).unwrap();
+        recorder.save().unwrap();
+        // recorded without breakpoints, replayed with them
+        model.cache = Caching::Agents;
+        let player = Cassette::replay(&path).unwrap();
+        assert_eq!(player.complete(&ask(&model)).unwrap().text(), "done");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
