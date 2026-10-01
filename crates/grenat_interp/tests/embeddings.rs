@@ -172,6 +172,10 @@ test \"an embedding model answers no prompt\" do
   mock_embed :docs
   Conversation.new(model: :docs).say(\"hi\")
 end
+test \"no named argument\" do
+  mock_embed :docs
+  embed(:docs, \"x\", dimensions: 3)
+end
 "
     ));
     let errors: Vec<&str> = results.iter().map(|(_, e)| e.as_deref().unwrap_or("passed")).collect();
@@ -186,6 +190,7 @@ end
             "ArgumentError: `mock_embed`: the vectors given have different sizes (1, 2)",
             "ArgumentError: `mock_embed`: vectors of 1 floats are given, not of the 4 of `dimensions:`",
             "LlmError: `text-embedding-3-small` is an embedding model: it answers `embed`, not prompts",
+            "ArgumentError: `embed` takes no named argument `dimensions:` (a model's size is declared with it)",
         ]
     );
 }
@@ -207,6 +212,27 @@ fn declarations_say_what_a_model_is_for() {
     assert!(
         declare("model :d, provider: :openai, name: \"x\", kind: :vector\n").contains("invalid option `kind: :vector`")
     );
+    // what the checker refuses as written (`grenat_types`' tests list the same)
+    for options in [
+        "cache_ttl: :hour",
+        "cache_ttl: 3600",
+        "cache: nil",
+        "cache: \"agents\"",
+        "kind: :embedding, dimensions: 0",
+        "kind: :embedding, dimensions: \"3\"",
+        "kind: :embedding, dimensions: 3.5",
+        "kind: :transcription, price: {minute: -1}",
+        "kind: :transcription, price: {minute: \"x\"}",
+        "price: {input: -1, output: 2}",
+        "max_tokens: 0",
+    ] {
+        let message = declare(&format!("model :m, provider: :openai, name: \"whisper-1\", {options}\n"));
+        assert!(message.contains("model `:m`"), "{options}: {message}");
+    }
+    // a kind written as a string is a kind
+    let parsed =
+        grenat_parser::parse("model :e, provider: :openai, name: \"text-embedding-3-small\", kind: \"embedding\"\n");
+    run_main(&parsed.program, Vec::new(), Options::default()).unwrap();
     // an embedding model's price is for its input only
     let parsed = grenat_parser::parse(
         "model :d, provider: :openai, name: \"x\", kind: :embedding, price: {input: 0.02}\nmodel :f, provider: :openai, name: \"y\", price: {input: 1}\n",

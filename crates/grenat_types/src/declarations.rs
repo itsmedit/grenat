@@ -47,36 +47,26 @@ impl<'p> Checker<'p> {
         ];
         let embedding = crate::embeddings::declares_embedding(model);
         let transcription = crate::transcription::declares_transcription(model);
+        let kind = match (embedding, transcription) {
+            (true, _) => grenat_llm::ModelKind::Embedding,
+            (_, true) => grenat_llm::ModelKind::Transcription,
+            _ => grenat_llm::ModelKind::Chat,
+        };
         for option in &model.options {
             let Arg::Named { name, value: Some(value) } = option else { continue };
+            // a literal the interpreter would refuse when the program loads
+            if MODEL_OPTIONS.contains(&name.name.as_str())
+                && let Some(message) = crate::model_options::invalid(&name.name, value, kind)
+            {
+                self.error(E_DECL, value.span, message);
+                continue;
+            }
             match (name.name.as_str(), &value.kind) {
                 ("provider", ExprKind::Symbol(p)) if grenat_llm::catalog::provider(p).is_some() => {
-                    let kind = match (embedding, transcription) {
-                        (true, _) => grenat_llm::ModelKind::Embedding,
-                        (_, true) => grenat_llm::ModelKind::Transcription,
-                        _ => grenat_llm::ModelKind::Chat,
-                    };
                     let provider = grenat_llm::catalog::provider(p).expect("known");
                     if let Some(refusal) = grenat_llm::catalog::refuses(provider, kind) {
                         self.error(E_DECL, value.span, refusal);
                     }
-                }
-                ("kind", ExprKind::Symbol(k)) if !["chat", "embedding", "transcription"].contains(&k.as_str()) => self
-                    .error(
-                        E_DECL,
-                        value.span,
-                        format!("`kind: :{k}` is unknown: `:chat`, `:embedding` or `:transcription`"),
-                    ),
-                ("cache", ExprKind::Symbol(c)) if c != "agents" => self.error(
-                    E_DECL,
-                    value.span,
-                    format!("`cache: :{c}` is unknown: `true`, `false` or `:agents` (the default)"),
-                ),
-                ("cache", ExprKind::Str(_) | ExprKind::Int(_) | ExprKind::Float(_)) => {
-                    self.error(E_DECL, value.span, "`cache:` is `true`, `false` or `:agents` (the default)")
-                }
-                ("cache_ttl", ExprKind::Str(segments)) if !cache_ttl(segments) => {
-                    self.error(E_DECL, value.span, "`cache_ttl:` is \"5m\" (the default) or \"1h\"")
                 }
                 ("dimensions", _) if !embedding => {
                     self.error(E_DECL, name.span, "`dimensions:` is for embedding models (`kind: :embedding`)")
@@ -392,9 +382,4 @@ impl<'p> Checker<'p> {
             }
         }
     }
-}
-
-/// `"5m"` or `"1h"`, written as such.
-fn cache_ttl(segments: &[grenat_ast::StrSeg]) -> bool {
-    matches!(segments, [grenat_ast::StrSeg::Lit(text)] if text == "5m" || text == "1h")
 }

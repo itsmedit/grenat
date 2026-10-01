@@ -16,11 +16,17 @@ pub(crate) fn declares_embedding(model: &ModelDecl) -> bool {
     declares_kind(model, "embedding")
 }
 
-/// Whether a model declaration says `kind: :<kind>`.
+/// Whether a model declaration says `kind: :<kind>` (or `kind: "<kind>"`,
+/// which the interpreter takes as well).
 pub(crate) fn declares_kind(model: &ModelDecl, kind: &str) -> bool {
     model.options.iter().any(|option| {
-        matches!(option, Arg::Named { name, value: Some(value) }
-            if name.name == "kind" && matches!(&value.kind, ExprKind::Symbol(k) if k == kind))
+        let Arg::Named { name, value: Some(value) } = option else { return false };
+        name.name == "kind"
+            && match &value.kind {
+                ExprKind::Symbol(k) => k == kind,
+                ExprKind::Str(segments) => matches!(segments.as_slice(), [grenat_ast::StrSeg::Lit(k)] if k == kind),
+                _ => false,
+            }
     })
 }
 
@@ -29,7 +35,15 @@ impl<'p> Checker<'p> {
     pub(crate) fn embed_call(&mut self, cx: &mut Ctx<'p>, span: Span, argv: &[ArgV]) -> V {
         self.secrets_to_model(argv, "embed");
         cx.add_effect(Eff { path: "llm".into(), arg: None, origin: span });
-        let input = match argv {
+        // no options: a vector's size is its model's (`dimensions:` in its declaration)
+        for arg in argv {
+            if let Some(name) = &arg.name {
+                let message = format!("`embed` takes no named argument `{name}:` (a model's size is declared with it)");
+                self.error(E_TYPE, arg.span, message);
+            }
+        }
+        let positional: Vec<&ArgV> = argv.iter().filter(|a| a.name.is_none()).collect();
+        let input = match positional.as_slice() {
             [model, input] => {
                 self.embedding_model_ref(model);
                 input

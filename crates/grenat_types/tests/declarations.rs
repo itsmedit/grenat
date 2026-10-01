@@ -95,3 +95,34 @@ fn prompt_caching_is_an_option_of_the_model() {
     let d = single("model :a, provider: :anthropic, name: \"claude-opus-5\", cach: true\n", "E0500", "cach:");
     assert_eq!(d.help.as_deref(), Some("did you mean `cache`?"));
 }
+
+/// What the interpreter refuses when the program loads (`program.rs`),
+/// the checker refuses where it is written as a literal.
+const REFUSED_MODEL_OPTIONS: [&str; 11] = [
+    "cache_ttl: :hour",
+    "cache_ttl: 3600",
+    "cache: nil",
+    "cache: \"agents\"",
+    "kind: :embedding, dimensions: 0",
+    "kind: :embedding, dimensions: \"3\"",
+    "kind: :embedding, dimensions: 3.5",
+    "kind: :transcription, price: {minute: -1}",
+    "kind: :transcription, price: {minute: \"x\"}",
+    "price: {input: -1, output: 2}",
+    "max_tokens: 0",
+];
+
+#[test]
+fn model_options_are_checked_as_the_program_loads_them() {
+    for options in REFUSED_MODEL_OPTIONS {
+        let src = format!("model :m, provider: :openai, name: \"whisper-1\", {options}\n");
+        let found = diags(&src);
+        assert!(found.iter().any(|d| d.code == Some("E0500")), "{options}: {found:#?}");
+    }
+    // computed values are the interpreter's to check
+    clean("RATE = 2\nmodel :m, provider: :openai, name: \"gpt-5\", price: {input: RATE, output: 8}\n");
+    // a kind written as a string is a kind
+    clean(
+        "model :e, provider: :openai, name: \"text-embedding-3-small\", kind: \"embedding\"\ndef f -> Array(Float) uses llm = embed(:e, \"x\")\n",
+    );
+}

@@ -33,6 +33,7 @@ mod embeddings;
 mod expr;
 mod functions;
 mod methods;
+mod model_options;
 mod names;
 mod natives;
 mod ops;

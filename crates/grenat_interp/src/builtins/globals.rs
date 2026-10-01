@@ -166,6 +166,13 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
         })(),
         // vectors of texts (see `eval::embeddings`)
         "embed" => (|| {
+            // a vector's size is its model's (`dimensions:` in its declaration)
+            if let Some((name, _)) = args.named.first() {
+                return raise(
+                    "ArgumentError",
+                    format!("`embed` takes no named argument `{name}:` (a model's size is declared with it)"),
+                );
+            }
             let (model, input) = match args.pos.as_slice() {
                 [Value::Symbol(model), input] => (Some(model.to_string()), input.clone()),
                 [input] => (None, input.clone()),

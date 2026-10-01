@@ -73,6 +73,13 @@ fn embed_names_an_embedding_model() {
 }
 
 #[test]
+fn embed_takes_no_named_argument() {
+    let found = diags(&format!("{MODELS}def f -> Array(Float) uses llm = embed(\"hello\", dimensions: 3)\n"));
+    let messages: Vec<&str> = found.iter().map(|d| d.message.as_str()).collect();
+    assert_eq!(messages, ["`embed` takes no named argument `dimensions:` (a model's size is declared with it)"]);
+}
+
+#[test]
 fn models_are_declared_for_what_their_provider_does() {
     single("model :d, provider: :anthropic, name: \"x\", kind: :embedding\n", "E0500", ":anthropic");
     single("model :d, provider: :voyage, name: \"voyage-3.5\"\n", "E0500", ":voyage");
