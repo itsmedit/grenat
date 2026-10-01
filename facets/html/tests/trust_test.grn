@@ -12,6 +12,7 @@ test "results from HTML the program wrote are trusted" do
   assert !links(PAGE, "https://shop.example.com/").tainted?
   assert !all_links(PAGE, "https://shop.example.com/").tainted?
   assert !table(PAGE, "table").tainted?
+  assert !matches?(PAGE, "h1").tainted?
 end
 
 test "results from a page fetched with Http are untrusted" do
@@ -26,6 +27,8 @@ test "results from a page fetched with Http are untrusted" do
   assert table(page, "table").tainted?
   assert table_records(page, "table").tainted?
   assert select_first(page, "h1").tainted?
+  assert matches?(page, "h1").tainted?
+  assert matches?(page, "nav").tainted?
   # what it says is still readable, and trusted once checked
   assert_equal ["https://shop.example.com/tea"], links(page, "https://shop.example.com/").trust!
 end

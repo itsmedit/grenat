@@ -4,8 +4,12 @@
 //! Every function is `pure`: no effect, its result depends on its arguments
 //! only, so it is as trusted as the HTML it is given — the text of a page
 //! fetched with `Http` stays untrusted. A selector that does not parse, a
-//! base URL that is not one, raise an `HtmlError` naming them.
+//! base URL that is not one, raise an `HtmlError` naming them; so do a
+//! selector too long or nested too deeply, a page nested too deeply (see
+//! `selector` and `document`): bounds that keep a hostile selector or page
+//! from overflowing the stack or running for minutes.
 
+mod document;
 mod links;
 mod query;
 mod selector;
@@ -38,16 +42,16 @@ pub fn select_html(html: String, selector: String) -> Result<Vec<String>, String
 }
 
 /// The absolute URLs of the links (`<a href>`) of `html`, a page at
-/// `base_url`, each once, in document order; `javascript:` and `mailto:`
-/// links are left out.
+/// `base_url`, each once, in document order: links to pages only, `http:`
+/// and `https:` (no `javascript:`, `mailto:`, `tel:`, `data:`…).
 #[export(pure, error = "HtmlError")]
 pub fn links(html: String, base_url: String) -> Result<Vec<String>, String> {
     links::links(&html, &base_url, Keep::Pages)
 }
 
 /// The absolute URLs of all the links (`<a href>`) of `html`, a page at
-/// `base_url`, each once, in document order: `javascript:` and `mailto:`
-/// links included.
+/// `base_url`, each once, in document order, whatever their scheme
+/// (`javascript:`, `mailto:`, `tel:`… included).
 #[export(pure, error = "HtmlError")]
 pub fn all_links(html: String, base_url: String) -> Result<Vec<String>, String> {
     links::links(&html, &base_url, Keep::All)

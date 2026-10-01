@@ -6,15 +6,15 @@ It is a **native facet**: its functions are Rust code (`native/`, a crate depend
 
 ## Installing
 
-Native code runs outside Grenat's sandbox, so the application trusts it explicitly, in its `Facetfile`:
+Native code runs outside Grenat's sandbox, so the application trusts it explicitly, in its `Facetfile`. The facet is installed from a checkout of Grenat, by its path:
 
 ```ruby
-facet "html", "~> 0.1", native: true
-# or, from a checkout of Grenat:
 facet "html", path: "../grenat/facets/html", native: true
 ```
 
 `setter install` then builds the crate (`cargo build --release`: a Rust toolchain is needed) and writes the Grenat declarations of its functions. Without `native: true`, `setter install` refuses, and says how to trust it.
+
+Not by version yet (`facet "html", "~> 0.1"`): its crate depends on `grenat_ext`, the SDK of native facets, by a path inside the Grenat checkout (`native/Cargo.toml`), which a copy of the facet fetched from an index or a git repository does not have — its build would fail. Once `grenat_ext` is published, the crate will depend on it by version, and the facet will install as any other. Until then, a copy outside the checkout installs only with its library prebuilt for the platform (`native/prebuilt/<arch>-<os>/libhtml.so|.dylib`), which `setter install` takes instead of building.
 
 ```ruby
 require "html"
@@ -24,11 +24,11 @@ require "html"
 
 | Function | Returns |
 |---|---|
-| `select(html, selector)` | the text of each element `selector` matches, in document order, blank space collapsed |
-| `select_attr(html, selector, attribute)` | the value of `attribute` (`href`, `src`…) of each match that has it |
+| `select(html, selector)` | the text of each element `selector` matches, in document order, as a reader sees it |
+| `select_attr(html, selector, attribute)` | the value of `attribute` (`href`, `src`, `viewBox`…) of each match that has it |
 | `select_html(html, selector)` | the outer HTML of each match, its tags included |
-| `links(html, base_url)` | the absolute URLs of the page's links (`<a href>`), each once, in document order; `javascript:` and `mailto:` links left out |
-| `all_links(html, base_url)` | the same, `javascript:` and `mailto:` links included |
+| `links(html, base_url)` | the absolute URLs of the page's links to pages (`<a href>`, `http:` and `https:` only), each once, in document order |
+| `all_links(html, base_url)` | the same, whatever their scheme: `javascript:`, `mailto:`, `tel:`, `data:`… included |
 | `table(html, selector)` | the rows of the first table `selector` matches, each as the text of its cells (`<th>`, `<td>`): `Array(Array(String))` |
 
 Written in Grenat on top of them (`src/lib.grn`):
@@ -66,12 +66,15 @@ end
 ```
 
 - **Documents and fragments.** `html` may be a whole page or a fragment: it is parsed as a browser parses a page, entities decoded and unclosed tags closed.
-- **Links.** Relative URLs are resolved against `base_url` — or against the page's own `<base href>`, as a browser does. An `href` that is not a valid URL is left out.
-- **Tables.** The rows of the first table matched: in `<thead>`, `<tbody>`, `<tfoot>` or directly in it, not those of a table nested in one of its cells (whose text belongs to that cell). No table matched, no rows.
+- **Text.** As a reader sees it: blank space collapsed; a line break (`<br>`) and the edges of blocks, items and cells separate words (`<li>Tea</li><li>Coffee</li>` reads `Tea Coffee`); the code of a `<script>`, the rules of a `<style>`, the content of a `<template>` or a `<noscript>` left out — unless the element selected is one of them (`select(page, "script[type='application/ld+json']")` gives its JSON).
+- **Attributes.** The name as written, or else in another case: `src` and `SRC` read the same attribute, and an SVG's camel-case ones (`viewBox`) are found.
+- **Links.** Relative URLs are resolved against `base_url` — or against the page's own `<base href>`, as a browser does. An `href` that is not a valid URL is left out, and so is what a `<template>` holds (its links, its `<base>`): inert, as in a browser.
+- **Tables.** The rows of the first table matched: in `<thead>`, `<tbody>`, `<tfoot>` or directly in it, not those of a table nested in one of its cells (whose text belongs to that cell), nor those of a `<template>` in it. No table matched, no rows.
+- **Limits.** A selector is at most 4096 bytes long and nests at most 32 parentheses (`:not(`, `:is(`…) inside one another; a page nests at most 512 elements inside one another, as deep as a browser builds a page. Beyond, an `HtmlError`: a hostile selector or page — which may come from a user, a model or the web — would otherwise overflow the stack, killing the process, or keep native code busy for minutes, out of reach of any timeout. A page's size is not limited: parsing takes a time that grows with it.
 
 ## Errors
 
-An invalid selector, a base URL that is not an absolute URL, a table selector matching another element than a `<table>`, an empty attribute name: each raises an `HtmlError` saying what is wrong and naming it, never a crash.
+An invalid selector, a base URL that is not an absolute URL, a table selector matching another element than a `<table>`, an empty attribute name, a selector or a page beyond the limits above: each raises an `HtmlError` saying what is wrong and naming it, never a crash.
 
 ```ruby
 begin

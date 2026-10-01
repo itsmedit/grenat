@@ -4,11 +4,13 @@
 #   select(html, selector)                 the text of each match
 #   select_attr(html, selector, attribute) an attribute of each match that has it
 #   select_html(html, selector)            the outer HTML of each match
-#   links(html, base_url)                  the absolute URLs of the page's links
-#   all_links(html, base_url)              the same, `javascript:` and `mailto:` included
+#   links(html, base_url)                  the absolute URLs of the page's links to pages (http, https)
+#   all_links(html, base_url)              the same, every scheme included (`mailto:`, `tel:`…)
 #   table(html, selector)                  the rows of a table, as text
 # All are pure: what they return is as trusted as the HTML they are given.
-# An invalid selector or base URL raises an `HtmlError`.
+# An invalid selector or base URL raises an `HtmlError`; so do a selector
+# longer than 4096 bytes or nesting more than 32 parentheses, and a page
+# nesting more than 512 elements inside one another.
 #
 # Below, conveniences written in Grenat on top of them.
 
@@ -17,9 +19,10 @@ def select_first(html: String, selector: String) -> String?
   select(html, selector).first
 end
 
-## Whether `selector` matches at least one element of `html`.
+## Whether `selector` matches at least one element of `html`: as trusted
+## as `html` (`any?` keeps the taint of what it asks).
 def matches?(html: String, selector: String) -> Bool
-  !select_html(html, selector).empty?
+  select_html(html, selector).any?
 end
 
 ## The rows of the first table `selector` matches, its first row naming the

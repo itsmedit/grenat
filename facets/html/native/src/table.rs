@@ -1,17 +1,18 @@
 //! The rows of an HTML table: the first `<table>` a selector matches, each
 //! of its rows (`<tr>`, in `<thead>`, `<tbody>`, `<tfoot>` or directly in
 //! it — not those of a table nested in a cell) as the text of its cells
-//! (`<th>` and `<td>`), blank space collapsed.
+//! (`<th>` and `<td>`), blank space collapsed. The rows of a `<template>`
+//! in the table are inert, as in a browser: not the table's.
 
-use scraper::{ElementRef, Html, Selector};
+use scraper::{ElementRef, Selector};
 
-use crate::{selector, text};
+use crate::{document, selector, text};
 
 /// The rows of the first table `css` matches in `html`: none if nothing
 /// matches; an error if what it matches first is not a `<table>`.
 pub fn rows(html: &str, css: &str) -> Result<Vec<Vec<String>>, String> {
     let selector = selector::parse(css)?;
-    let document = Html::parse_document(html);
+    let document = document::parse(html)?;
     let Some(table) = document.select(&selector).next() else { return Ok(Vec::new()) };
     let tag = table.value().name();
     if tag != "table" {
@@ -21,9 +22,13 @@ pub fn rows(html: &str, css: &str) -> Result<Vec<Vec<String>>, String> {
     Ok(table.select(&tr).filter(|row| owner(*row).is_some_and(|t| t.id() == table.id())).map(cells).collect())
 }
 
-/// The table a row belongs to: its nearest `<table>` ancestor.
+/// The table a row belongs to: its nearest `<table>` ancestor — none if a
+/// `<template>` comes first, whose rows are inert.
 fn owner(row: ElementRef<'_>) -> Option<ElementRef<'_>> {
-    row.ancestors().filter_map(ElementRef::wrap).find(|e| e.value().name() == "table")
+    row.ancestors()
+        .filter_map(ElementRef::wrap)
+        .find(|e| matches!(e.value().name(), "table" | "template"))
+        .filter(|e| e.value().name() == "table")
 }
 
 /// The text of each cell of a row.
@@ -67,6 +72,25 @@ mod tests {
                     <tr><td>c</td></tr></table>";
         assert_eq!(rows(html, "#outer").unwrap(), [vec!["a", "b"], vec!["c"]]);
         assert_eq!(rows(html, "#inner").unwrap(), [vec!["b"]]);
+    }
+
+    #[test]
+    fn a_templates_rows_are_not_the_tables() {
+        let html = "<table><tr><td>a</td></tr><template><tr><td>T</td></tr></template></table>";
+        assert_eq!(rows(html, "table").unwrap(), [vec!["a"]]);
+        let html = "<template><table id=\"t\"><tr><td>in</td></tr></table></template>";
+        assert_eq!(rows(html, "#t").unwrap(), [vec!["in"]]);
+    }
+
+    #[test]
+    fn a_cells_line_breaks_separate_its_words() {
+        assert_eq!(rows("<table><tr><td>a<br>b</td></tr></table>", "table").unwrap(), [vec!["a b"]]);
+    }
+
+    #[test]
+    fn a_page_too_deep_is_an_error() {
+        let e = rows(&"<table><tr><td>".repeat(1000), "table").unwrap_err();
+        assert_eq!(e, "the HTML nests too deeply: more than 512 elements inside one another");
     }
 
     #[test]

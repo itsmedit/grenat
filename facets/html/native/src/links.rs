@@ -2,23 +2,29 @@
 //! page's URL — or against its `<base href>`, as a browser does — into an
 //! absolute URL, each once, in document order.
 //!
-//! `javascript:` and `mailto:` links lead to no page: they are left out
-//! unless all links are asked for. An `href` that cannot be resolved (a
-//! broken URL in the page) is left out; a base URL that is not an absolute
-//! URL is an error.
+//! Only `http:` and `https:` links lead to a page: the others —
+//! `javascript:`, `mailto:`, `tel:`, `data:`, `ftp:`… — are left out unless
+//! all links are asked for. An `href` that cannot be resolved (a broken URL
+//! in the page) is left out; a base URL that is not an absolute URL is an
+//! error.
+//!
+//! The content of a `<template>` is inert, as in a browser: neither its
+//! links nor its `<base>` count.
 
 use std::collections::HashSet;
 
 use scraper::{Html, Selector};
 use url::Url;
 
-/// The schemes of links that are not pages, left out by default.
-const NOT_PAGES: &[&str] = &["javascript", "mailto"];
+use crate::document;
+
+/// The schemes of links to pages, the only ones kept by default.
+const PAGES: &[&str] = &["http", "https"];
 
 /// Which links to keep.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Keep {
-    /// Links to pages: not `javascript:` nor `mailto:`.
+    /// Links to pages: `http:` and `https:` only.
     Pages,
     /// Every link.
     All,
@@ -30,14 +36,14 @@ pub fn links(html: &str, base_url: &str, keep: Keep) -> Result<Vec<String>, Stri
     if page.cannot_be_a_base() {
         return Err(format!("invalid base URL `{base_url}`: links cannot be resolved against it"));
     }
-    let document = Html::parse_document(html);
+    let document = document::parse(html)?;
     let base = declared_base(&document, &page).unwrap_or(page);
     let anchors = Selector::parse("a[href]").expect("a valid selector");
     let mut seen = HashSet::new();
     let mut out = Vec::new();
-    for anchor in document.select(&anchors) {
+    for anchor in document.select(&anchors).filter(|a| !document::is_inert(*a)) {
         let Some(url) = anchor.attr("href").and_then(|href| base.join(href.trim()).ok()) else { continue };
-        if keep == Keep::Pages && NOT_PAGES.contains(&url.scheme()) {
+        if keep == Keep::Pages && !PAGES.contains(&url.scheme()) {
             continue;
         }
         let url = String::from(url);
@@ -48,10 +54,11 @@ pub fn links(html: &str, base_url: &str, keep: Keep) -> Result<Vec<String>, Stri
     Ok(out)
 }
 
-/// The document's first `<base href>`, resolved against the page's URL.
+/// The document's first `<base href>` outside a template, resolved
+/// against the page's URL.
 fn declared_base(document: &Html, page: &Url) -> Option<Url> {
     let selector = Selector::parse("base[href]").expect("a valid selector");
-    let href = document.select(&selector).next()?.attr("href")?;
+    let href = document.select(&selector).find(|b| !document::is_inert(*b))?.attr("href")?;
     page.join(href.trim()).ok().filter(|url| !url.cannot_be_a_base())
 }
 
@@ -92,6 +99,30 @@ mod tests {
             links(html, BASE, Keep::All).unwrap(),
             ["javascript:void(0)", "mailto:me@example.com", "https://example.com/a"]
         );
+    }
+
+    #[test]
+    fn only_http_and_https_links_lead_to_pages() {
+        let html = "<a href=\"data:text/html,x\">x</a><a href=\"tel:1\">t</a><a href=\"vbscript:x\">v</a>\
+                    <a href=\"ftp://files.example.com/f\">f</a><a href=\"HTTP://example.com/up\">u</a><a href=\"/a\">a</a>";
+        assert_eq!(pages(html), ["http://example.com/up", "https://example.com/a"]);
+        assert_eq!(links(html, BASE, Keep::All).unwrap().len(), 6);
+    }
+
+    #[test]
+    fn a_templates_base_and_links_are_inert() {
+        let html =
+            "<template><base href=\"https://evil.example/\"><a href=\"/hidden\">h</a></template><a href=\"next\">n</a>";
+        assert_eq!(pages(html), ["https://example.com/blog/next"]);
+        let html =
+            "<template><base href=\"https://evil.example/\"></template><base href=\"/docs/\"><a href=\"intro\">i</a>";
+        assert_eq!(pages(html), ["https://example.com/docs/intro"]);
+    }
+
+    #[test]
+    fn a_page_too_deep_is_an_error() {
+        let e = links(&"<div>".repeat(10_000), BASE, Keep::Pages).unwrap_err();
+        assert_eq!(e, "the HTML nests too deeply: more than 512 elements inside one another");
     }
 
     #[test]

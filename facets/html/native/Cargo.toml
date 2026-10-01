@@ -11,6 +11,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 grenat_ext = { path = "../../../crates/grenat_ext" }
+ego-tree = "0.11"
+html5ever = "0.39"
 scraper = { version = "0.27", default-features = false, features = ["errors", "deterministic"] }
 url = "2"
 

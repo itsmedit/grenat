@@ -3,12 +3,14 @@
 //! target directory) and shipped as the copy's prebuilt library; then
 //! installed into an application that trusts it, whose programs and tests
 //! `grenat` checks and runs with every function of the facet, error cases
-//! and taint included. The facet's own Grenat tests and Rust unit tests run
-//! here too.
+//! and taint included — a hostile selector or page too. The facet's own
+//! Grenat tests and Rust unit tests run here too, and its README is held to
+//! what its crate can do.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use grenat_native::fixture::target_dir;
 
@@ -257,6 +259,83 @@ fn the_checker_knows_the_functions() {
         )
     );
     assert!(declarations.contains("native def table(html: String, selector: String) -> Array(Array(String)) pure"));
+}
+
+const HOSTILE: &str = r##"require "html"
+
+def main
+  n = 200000
+  begin
+    puts select("<p>x</p>", ":not(" * n + "p" + ")" * n).size
+  rescue HtmlError => e
+    puts e.message
+  end
+  begin
+    puts select_html("<p>x</p>", ":not(" * 600 + "p" + ")" * 600).size
+  rescue HtmlError => e
+    puts e.message
+  end
+  deep = "<div>" * 100000
+  begin
+    puts select(deep, "div " * 100000 + "p").size
+  rescue HtmlError => e
+    puts e.message
+  end
+  begin
+    puts select(deep, "p").size
+  rescue HtmlError => e
+    puts e.message
+  end
+  begin
+    puts links(deep, "https://e.com/").size
+  rescue HtmlError => e
+    puts e.message
+  end
+  puts matches?("<p>x</p>", ":not(" * 32 + "p" + ")" * 32)
+end
+"##;
+
+/// A selector or a page an attacker wrote: an `HtmlError` the program
+/// rescues, soon — not a stack overflow killing the process (it did, with a
+/// SIGBUS), nor minutes of native code no timeout stops.
+#[test]
+fn a_hostile_selector_or_page_is_an_error_the_program_rescues() {
+    let app = app("hostile");
+    write(&app.join("src/main.grn"), HOSTILE);
+    let started = Instant::now();
+    let out = grenat_in(&app, &["run"]);
+    let elapsed = started.elapsed();
+    assert_eq!(out.status.code(), Some(0), "{:?}: {}", out.status, text(&out.stderr));
+    let too_deep = "the HTML nests too deeply: more than 512 elements inside one another";
+    assert_eq!(
+        text(&out.stdout),
+        format!(
+            "invalid CSS selector `{nots}…`: it is too long (more than 4096 bytes)\n\
+             invalid CSS selector `{nots}…`: it nests too deeply (more than 32 parentheses inside one another)\n\
+             invalid CSS selector `{divs}…`: it is too long (more than 4096 bytes)\n\
+             {too_deep}\n{too_deep}\ntrue\n",
+            nots = ":not(".repeat(8),
+            divs = "div ".repeat(10),
+        )
+    );
+    assert!(elapsed < Duration::from_secs(60), "{elapsed:?}");
+}
+
+/// Installing by version needs a crate that builds outside this checkout:
+/// while it depends on `grenat_ext` by a path into it, the README installs
+/// the facet by path only.
+#[test]
+fn the_readme_installs_the_facet_only_as_its_crate_builds() {
+    let manifest = std::fs::read_to_string(source().join("native/Cargo.toml")).unwrap();
+    let readme = std::fs::read_to_string(source().join("README.md")).unwrap();
+    let sdk_by_path = manifest.lines().any(|l| l.starts_with("grenat_ext ") && l.contains("path ="));
+    let installs: Vec<&str> = readme.lines().filter(|l| l.trim_start().starts_with("facet \"html\"")).collect();
+    assert!(!installs.is_empty(), "{readme}");
+    if sdk_by_path {
+        for line in installs {
+            assert!(line.contains(" path: ") && line.contains("native: true"), "{line}");
+        }
+    }
 }
 
 #[test]

@@ -31,6 +31,23 @@ test "select_attr gives an attribute of each match that has it" do
   assert_equal [], select_attr(PAGE, "img", "title")
 end
 
+test "select_attr reads camelCase SVG attributes" do
+  svg = "<svg viewBox=\"0 0 10 10\"><path d=\"M0 0\"/></svg>"
+  assert_equal ["0 0 10 10"], select_attr(svg, "svg", "viewBox")
+  assert_equal ["0 0 10 10"], select_attr(svg, "svg", "viewbox")
+  assert_equal ["/tea.png", "cake.png"], select_attr(PAGE, "img", "SRC")
+end
+
+test "the text is what a reader sees" do
+  page = "<body><p>Hi</p><script>var token = 1;</script><style>p { color: red }</style><div><template>hidden</template>shown</div></body>"
+  assert_equal ["Hi shown"], select(page, "body")
+  blocks = "<ul><li>Tea</li><li>Coffee</li></ul><p>a<br>b</p>"
+  assert_equal ["Tea Coffee", "a b"], select(blocks, "ul, p")
+  # a script read itself gives its code: the JSON of structured data
+  data = "<script type=\"application/ld+json\">{\"name\": \"Tea\"}</script>"
+  assert_equal ["{\"name\": \"Tea\"}"], select(data, "script")
+end
+
 test "select_html gives the outer HTML of each match" do
   assert_equal ["<li class=\"item sale\">Coffee <b>-20%</b></li>"], select_html(PAGE, "li.sale")
   assert_equal ["<b>-20%</b>"], select_html(PAGE, "li b")
@@ -54,4 +71,24 @@ test "an invalid selector raises an HtmlError naming it" do
   assert_equal "an attribute name is needed: `href`, `src`…", e.message
   e = assert_raises(HtmlError) { select_first(PAGE, "::") }
   assert e.message.start_with?("invalid CSS selector `::`: ")
+end
+
+test "a selector too long or nested too deeply raises an HtmlError, not a crash" do
+  n = 200000
+  e = assert_raises(HtmlError) { select("<p>x</p>", ":not(" * n + "p" + ")" * n) }
+  assert e.message.end_with?("it is too long (more than 4096 bytes)")
+  e = assert_raises(HtmlError) { select_html("<p>x</p>", ":not(" * 600 + "p" + ")" * 600) }
+  assert e.message.end_with?("it nests too deeply (more than 32 parentheses inside one another)")
+  assert_raises(HtmlError) { table("<table></table>", "div " * 100000 + "table") }
+  assert_equal ["x"], select("<p>x</p>", ":not(" * 32 + "p" + ")" * 32)
+end
+
+test "a page nested too deeply raises an HtmlError" do
+  deep = "<div>" * 100000
+  e = assert_raises(HtmlError) { select(deep, "p") }
+  assert_equal "the HTML nests too deeply: more than 512 elements inside one another", e.message
+  assert_raises(HtmlError) { select_attr(deep, "a", "href") }
+  assert_raises(HtmlError) { links(deep, "https://e.com/") }
+  assert_raises(HtmlError) { table(deep, "table") }
+  assert_equal ["deep"], select("<div>" * 500 + "<p>deep</p>", "p")
 end
