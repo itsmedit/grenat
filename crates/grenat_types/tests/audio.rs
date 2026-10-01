@@ -110,3 +110,14 @@ fn models_are_declared_for_what_their_provider_does() {
         single(&format!("{MODELS}prompt p(q: String) -> ~String using :whisper\n  user q\nend\n"), "E0500", ":whisper");
     assert!(d.message.contains("transcription model"), "{}", d.message);
 }
+
+#[test]
+fn a_program_cannot_declare_an_attachment_of_its_own() {
+    let d = single(
+        "struct Attachment\n  kind: String\n  media_type: String\n  source: String\n  data: String\nend\n",
+        "E0100",
+        "Attachment",
+    );
+    assert_eq!(d.message, "type `Attachment` is built in: give yours another name");
+    single("struct TranscriptSegment\n  text: String\nend\n", "E0100", "TranscriptSegment");
+}

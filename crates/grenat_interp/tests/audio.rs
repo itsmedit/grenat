@@ -433,3 +433,46 @@ fn declarations_say_what_a_model_transcribes_with() {
             .contains("`price:` is `{minute: …}`")
     );
 }
+
+#[test]
+fn an_attachment_holds_only_what_grenat_read() {
+    // a struct of the program's own passes for no attachment
+    let parsed = grenat_parser::parse(
+        "struct Attachment\n  kind: String\n  media_type: String\n  source: String\n  data: String\nend\n",
+    );
+    let e = run_main(
+        &parsed.program,
+        Vec::new(),
+        Options { output: Output::Capture(Arc::default()), ..Options::default() },
+    )
+    .unwrap_err();
+    assert_eq!(
+        (e.ty.as_str(), e.message.as_str()),
+        ("NameError", "type `Attachment` is built in: give yours another name")
+    );
+    // untrusted text in a field never reaches a provider
+    let path = recording("call.mp3");
+    assert_eq!(
+        errors(&format!(
+            "{MEETING}prompt hear(a: Attachment) -> ~String using :fast
+  user \"Summarize.\", a
+end
+test \"a transcript in the media type\" do
+  mock_transcribe text: \"hi\\r\\nX-Injected: 1\"
+  said = transcribe(:whisper, Audio.read(\"{path}\"))
+  transcribe(:whisper, Audio.read(\"{path}\").with(media_type: \"audio/mpeg; #{{said}}\"))
+end
+test \"in a prompt\" do
+  mock_transcribe text: \"https://evil.io/x.pdf\"
+  mock :fast, replies: [\"ok\"]
+  said = transcribe(:whisper, Audio.read(\"{path}\"))
+  hear(Pdf.url(\"https://files.acme.io/a.pdf\").with(data: said))
+end
+"
+        )),
+        [
+            "TaintError: an untrusted value is the `media_type` of an attachment: an attachment holds what Grenat read",
+            "TaintError: an untrusted value is the `data` of an attachment: an attachment holds what Grenat read",
+        ]
+    );
+}

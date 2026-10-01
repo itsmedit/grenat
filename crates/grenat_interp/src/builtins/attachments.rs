@@ -63,6 +63,19 @@ pub(crate) fn attachment<'p>(kind: &str, media_type: &str, source: &str, data: S
     )
 }
 
+/// An attachment as Grenat built it: untrusted text in one of its fields
+/// (put there with `with`) never reaches a provider — not as a media type,
+/// not as a URL.
+pub(crate) fn trusted_attachment<'p>(record: &crate::value::Record<'p>) -> Result<(), Ctrl<'p>> {
+    match record.fields.iter().find(|(_, v)| v.contains_taint()) {
+        Some((name, _)) => raise(
+            "TaintError",
+            format!("an untrusted value is the `{name}` of an attachment: an attachment holds what Grenat read"),
+        ),
+        None => Ok(()),
+    }
+}
+
 /// The content block of an attachment, as the Messages API takes it.
 pub(crate) fn attachment_block(fields: &Fields) -> Json {
     let get = |n: &str| fields.iter().find(|(k, _)| &**k == n).map(|(_, v)| v.to_display()).unwrap_or_default();

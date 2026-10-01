@@ -127,6 +127,12 @@ impl<'p> Shared<'p> {
                     }
                 }
                 Item::Type(def) => {
+                    if crate::builtins::RECORD_NAMES.contains(&def.name.name.as_str()) {
+                        return raise(
+                            "NameError",
+                            format!("type `{}` is built in: give yours another name", def.name.name),
+                        );
+                    }
                     let info = TypeInfo::new(def);
                     self.messages.extend(info.handlers.keys().copied());
                     if self.types.insert(&def.name.name, info).is_some() {

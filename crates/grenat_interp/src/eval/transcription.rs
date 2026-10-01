@@ -212,6 +212,7 @@ fn audio_of<'p>(value: &Value<'p>) -> Result<(String, String), Ctrl<'p>> {
     {
         return expected();
     }
+    crate::builtins::trusted_attachment(record)?;
     Ok((get("media_type").unwrap_or_default(), get("data").unwrap_or_default()))
 }
 

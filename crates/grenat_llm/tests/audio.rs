@@ -151,6 +151,19 @@ fn a_transcription_uploads_the_file_and_reads_its_segments() {
 }
 
 #[test]
+fn the_uploaded_file_carries_the_media_type_grenat_names() {
+    let (url, received) = serve(vec![(200, json!({"text": "hi"}))]);
+    let whisper = model("whisper-1");
+    let mut request = transcription(&whisper, "AAAA", false);
+    request.media_type = "audio/MP3; x\r\nX-Injected: 1\r\n\r\nINJECTED-PART\r\n".into();
+    openai(&url).transcribe(&request).unwrap();
+    let received = received.lock().unwrap();
+    let body = String::from_utf8_lossy(&received[0].body).to_string();
+    assert!(body.contains("filename=\"audio.mp3\"\r\nContent-Type: audio/mpeg\r\n\r\n\u{0}\u{0}\u{0}\r\n"), "{body:?}");
+    assert!(!body.contains("X-Injected") && !body.contains("INJECTED-PART"), "{body:?}");
+}
+
+#[test]
 fn token_usage_and_client_errors() {
     let answer =
         json!({"text": "Hi.", "usage": {"type": "tokens", "input_tokens": 40, "output_tokens": 3, "total_tokens": 43}});

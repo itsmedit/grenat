@@ -16,6 +16,10 @@ impl<'p> Checker<'p> {
                     }
                 }
                 Item::Type(def) => {
+                    if builtins::RECORD_NAMES.contains(&def.name.name.as_str()) {
+                        let message = format!("type `{}` is built in: give yours another name", def.name.name);
+                        self.error(E_NAME, def.name.span, message);
+                    }
                     let decl = TypeDecl::new(def);
                     for (message, handler) in &decl.handlers {
                         self.messages.entry(message).or_default().push((&def.name.name, handler));

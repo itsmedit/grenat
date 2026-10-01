@@ -181,7 +181,9 @@ impl Provider for OpenAi {
             form.text(name, &value);
         }
         let audio = crate::audio::decode_base64(&request.data)?;
-        form.file("file", &filename(&request.media_type), &request.media_type, audio);
+        // the media type Grenat names, never the caller's text (checked known above)
+        let media_type = crate::audio::media_type_of_header(&request.media_type).unwrap_or("application/octet-stream");
+        form.file("file", &filename(media_type), media_type, audio);
         let (content_type, body) = form.finish();
         crate::retry::with_retries(
             self.retry_delay,

@@ -343,6 +343,26 @@ pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
     })
 }
 
+/// The records Grenat builds itself, which a program cannot declare: a
+/// `struct Attachment` of its own would pass for audio read from a file.
+/// Mirrors `grenat_interp`'s `builtins::RECORD_NAMES`.
+pub const RECORD_NAMES: &[&str] = &[
+    ATTACHMENT,
+    TRANSCRIPT_SEGMENT,
+    CONVERSATION,
+    DATABASE,
+    HTTP_RESPONSE,
+    REQUEST,
+    RESPONSE,
+    MAILER,
+    SHELL_RESULT,
+    SSH_SESSION,
+    SSH_RESULT,
+    SFTP,
+    SFTP_ENTRY,
+    EVENT_STREAM,
+];
+
 pub const TYPE_NAMES: &[&str] = &[
     "Int", "Float", "String", "Bool", "Array", "Hash", "Symbol", "Nil", "Range", "Money", "Duration", "Secret",
     "Vector",

@@ -28,8 +28,12 @@ impl Form {
             let disposition = format!("Content-Disposition: form-data; name=\"{}\"", quoted(&name));
             match file {
                 Some((filename, media_type)) => body.extend_from_slice(
-                    format!("{disposition}; filename=\"{}\"\r\nContent-Type: {media_type}\r\n\r\n", quoted(&filename))
-                        .as_bytes(),
+                    format!(
+                        "{disposition}; filename=\"{}\"\r\nContent-Type: {}\r\n\r\n",
+                        quoted(&filename),
+                        one_line(&media_type)
+                    )
+                    .as_bytes(),
                 ),
                 None => body.extend_from_slice(format!("{disposition}\r\n\r\n").as_bytes()),
             }
@@ -57,6 +61,12 @@ impl Form {
 /// A name in a quoted header parameter: quotes and line breaks escaped.
 fn quoted(name: &str) -> String {
     name.replace('"', "%22").replace('\r', "%0D").replace('\n', "%0A")
+}
+
+/// A header value on one line: control characters (CR, LF…) left out, so
+/// that no value can start another header or the part's body.
+fn one_line(value: &str) -> String {
+    value.chars().filter(|c| !c.is_control()).collect()
 }
 
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
@@ -93,5 +103,15 @@ mod tests {
         form.text("a", "grenat-1f-0 and grenat-1f-1");
         assert_eq!(form.boundary_from(31), "grenat-1f-2");
         assert_eq!(quoted("a\"b\r\n"), "a%22b%0D%0A");
+    }
+
+    #[test]
+    fn a_media_type_adds_no_header_line() {
+        let mut form = Form::default();
+        form.file("file", "a.mp3", "audio/mpeg; x\r\nX-Injected: 1\r\n\r\nINJECTED", vec![1]);
+        let (_, body) = form.finish();
+        let body = String::from_utf8(body).unwrap();
+        assert!(!body.contains("\r\nX-Injected"), "{body:?}");
+        assert!(body.contains("\r\nContent-Type: audio/mpeg; xX-Injected: 1INJECTED\r\n\r\n\u{1}\r\n"), "{body:?}");
     }
 }

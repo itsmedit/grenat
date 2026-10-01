@@ -78,7 +78,12 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             let mut lines: Vec<String> = Vec::new();
             for v in &args.pos {
                 match v.untainted() {
-                    Value::Record(r) if &*r.ty == ATTACHMENT => blocks.push(attachment_block(&r.fields)),
+                    Value::Record(r) if &*r.ty == ATTACHMENT => {
+                        if let Err(refused) = trusted_attachment(r) {
+                            return Some(Err(refused));
+                        }
+                        blocks.push(attachment_block(&r.fields));
+                    }
                     other => lines.push(other.to_display()),
                 }
             }
