@@ -287,11 +287,14 @@ pub struct Transcript {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LlmError {
     pub message: String,
+    /// What the provider bills all the same: the usage a stream said before
+    /// it was stopped or broke.
+    pub billed: Option<Box<Response>>,
 }
 
 impl LlmError {
-    pub(crate) fn new(message: impl Into<String>) -> Self {
-        LlmError { message: message.into() }
+    pub fn new(message: impl Into<String>) -> Self {
+        LlmError { message: message.into(), billed: None }
     }
 }
 
@@ -302,11 +305,13 @@ pub trait Provider: Send + Sync {
     /// The answer as the model writes it: each piece given to `sink` as it
     /// arrives, then the whole response (usage, tool calls), as
     /// [`Provider::complete`] returns it. A provider that does not stream
-    /// gives its answer as one piece.
+    /// gives its answer as one piece. Stopped, it was billed all the same.
     fn stream(&self, request: &Request, sink: &mut crate::Sink) -> Result<Response, LlmError> {
         let response = self.complete(request)?;
-        crate::streaming::replay(&response, sink)?;
-        Ok(response)
+        match crate::streaming::replay(&response, sink) {
+            Ok(()) => Ok(response),
+            Err(stopped) => Err(LlmError { billed: Some(Box::new(response)), ..stopped }),
+        }
     }
 
     /// Several requests at once, answered in the same order: through a

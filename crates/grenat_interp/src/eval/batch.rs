@@ -52,7 +52,7 @@ impl BatchRun {
             state.running -= 1;
         }
         self.changed.notify_all();
-        receiver.recv().unwrap_or_else(|| Err(LlmError { message: "the batch ended without an answer".into() }))
+        receiver.recv().unwrap_or_else(|| Err(LlmError::new("the batch ended without an answer")))
     }
 
     fn finished(&self) {

@@ -31,7 +31,7 @@ impl Chunked {
     }
 
     fn next(&self) -> Result<Response, LlmError> {
-        self.replies.lock().unwrap().pop_front().ok_or(LlmError { message: "no reply left".into() })
+        self.replies.lock().unwrap().pop_front().ok_or(LlmError::new("no reply left"))
     }
 
     fn pieces(&self, text: &str) -> Vec<String> {
@@ -64,7 +64,8 @@ impl Provider for Chunked {
             }
             if sink(delta) == ControlFlow::Break(()) {
                 self.stopped.store(true, Ordering::Relaxed);
-                return Err(LlmError { message: STOPPED.into() });
+                // billed as far as it went: here, as a whole
+                return Err(LlmError { billed: Some(Box::new(response.clone())), ..LlmError::new(STOPPED) });
             }
         }
         Ok(response)
@@ -152,6 +153,33 @@ end
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert!(provider.stopped.load(Ordering::Relaxed));
+}
+
+#[test]
+fn a_call_its_block_stopped_is_counted_by_budgets() {
+    let src = format!(
+        "{MODEL}{REPLY}
+def main uses llm
+  within budget(usd: 0.15) do
+    reply(\"x\") {{ |c| }}
+    begin
+      reply(\"x\") {{ |c| raise ArgumentError, \"stop\" }}
+    rescue ArgumentError => e
+      puts \"stopped: #{{e.message}}\"
+    end
+    puts budget.spent
+    reply(\"x\") {{ |c| }}
+    puts \"a third call\"
+  end
+end
+"
+    );
+    // 100,000 tokens in at $1 a million: $0.10 each
+    let answer = || Response::text_reply("a long answer").with_usage(100_000, 0);
+    let provider = Chunked::new(2, vec![answer(), answer(), answer()]);
+    let (output, error) = run_chunked(&src, provider);
+    assert_eq!(output, "stopped: stop\n$0.20\n");
+    assert_eq!(error.as_deref(), Some("BudgetExceeded: budget exceeded: $0.20 spent, limit $0.15"));
 }
 
 #[test]

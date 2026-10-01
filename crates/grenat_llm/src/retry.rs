@@ -48,13 +48,13 @@ pub(crate) fn with_stream_retries<T>(
     delay: Duration,
     mut attempt: impl FnMut() -> Result<T, crate::streaming::Failed>,
 ) -> Result<T, LlmError> {
-    let mut last_error = String::new();
+    let mut last_error = LlmError::new("");
     for i in 0..MAX_ATTEMPTS {
         let failed = match attempt() {
             Ok(value) => return Ok(value),
             Err(failed) => failed,
         };
-        last_error = failed.message;
+        last_error = LlmError { message: failed.message, billed: failed.billed };
         if !failed.retry {
             break;
         }
@@ -63,7 +63,7 @@ pub(crate) fn with_stream_retries<T>(
             std::thread::sleep(wait.min(Duration::from_secs(30)));
         }
     }
-    Err(LlmError::new(last_error))
+    Err(last_error)
 }
 
 /// 408, 409, 429, 5xx (including 529 "overloaded"): worth another attempt.

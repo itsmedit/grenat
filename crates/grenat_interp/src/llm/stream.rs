@@ -3,20 +3,23 @@
 //! program — receives them and hands them to the program's block as they
 //! come, then accounts for the call as for any other.
 //!
-//! When the block fails (an error, a client gone), the channel is dropped:
-//! the provider stops at its next piece, and the call ends with the block's
-//! error. A batched call (`batch_map`) is answered whole, as one piece.
+//! When the block fails (an error, a client gone), the provider is told to
+//! stop: it does at its next piece, and the call ends with the block's
+//! error — once what the provider billed until then (the usage its stream
+//! said) is counted and recorded, as for a stream that broke. A batched
+//! call (`batch_map`) is answered whole, as one piece.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use crate::prelude::*;
-use grenat_llm::{Delta, Request, Response};
+use grenat_llm::{Delta, LlmError, Request, Response};
 
 /// What the provider's thread sends: a piece, or the end.
 enum Piece {
     Text(String),
     ToolInput { id: String, name: String, json: String },
-    Done(Result<Response, String>),
+    Done(Result<Response, LlmError>),
 }
 
 impl Piece {
@@ -57,6 +60,9 @@ impl<'p> Interp<'p> {
         let started = Instant::now();
         let provider = self.provider(request.model)?;
         let (sender, pieces) = grenat_green::channel();
+        // cleared when the program no longer listens: the provider stops
+        let listening = Arc::new(AtomicBool::new(true));
+        let still = listening.clone();
         let model = request.model.clone();
         let owned =
             (request.system.clone(), request.messages.clone(), request.tools.clone(), request.output_schema.clone());
@@ -66,30 +72,65 @@ impl<'p> Interp<'p> {
                 let (system, messages, tools, output_schema) = owned;
                 let request = Request { model: &model, system, messages, tools, output_schema };
                 let answer = provider.stream(&request, &mut |delta| {
-                    // the program no longer listens: stop reading
-                    if sender.send(Piece::of(delta)).is_ok() {
+                    if still.load(Ordering::Relaxed) && sender.send(Piece::of(delta)).is_ok() {
                         std::ops::ControlFlow::Continue(())
                     } else {
                         std::ops::ControlFlow::Break(())
                     }
                 });
-                let _ = sender.send(Piece::Done(answer.map_err(|e| e.message)));
+                let _ = sender.send(Piece::Done(answer));
             })
             .map_err(|e| Ctrl::Raise(Arc::new(ErrorVal::new("LlmError", format!("cannot stream: {e}")))))?;
+        // the block's error, once it failed: the rest is not given to it
+        let mut stopped = None;
         let answer = loop {
             match pieces.recv() {
                 Some(Piece::Done(answer)) => break answer,
+                Some(_) if stopped.is_some() => {}
                 Some(piece) => {
-                    // dropping `pieces` on an error stops the provider
-                    on_piece(self, piece.delta())?;
-                    self.check_cancel()?;
+                    if let Err(ctrl) = on_piece(self, piece.delta()).and_then(|()| self.check_cancel()) {
+                        listening.store(false, Ordering::Relaxed);
+                        stopped = Some(ctrl);
+                    }
                 }
-                None => break Err("the stream ended without an answer".into()),
+                None => break Err(LlmError::new("the stream ended without an answer")),
             }
         };
+        let billed = match &answer {
+            Ok(response) => Some(response),
+            Err(e) => e.billed.as_deref(),
+        };
+        if let Some(stopped) = stopped {
+            if let Some(response) = billed {
+                self.account_stopped(request, response, started);
+            }
+            return Err(stopped);
+        }
         match answer {
             Ok(response) => self.after_call(request, response, started, false),
-            Err(message) => raise("LlmError", message),
+            Err(e) => {
+                if let Some(response) = &e.billed {
+                    self.account_stopped(request, response, started);
+                }
+                raise("LlmError", e.message)
+            }
+        }
+    }
+
+    /// A call that ended before its answer — stopped by its block, or broken
+    /// — accounted for what the provider billed: counted, recorded, logged.
+    fn account_stopped(&mut self, request: &Request, billed: &Response, started: Instant) {
+        let cost = self.account(request, billed, false);
+        if self.log {
+            let line = format!(
+                "[llm] {} · {} in / {} out · {} · {:.1}s · stopped\n",
+                request.model.name,
+                billed.usage.prompt_tokens(),
+                billed.usage.output_tokens,
+                crate::value::money(cost),
+                started.elapsed().as_secs_f64()
+            );
+            self.write_err(&line);
         }
     }
 

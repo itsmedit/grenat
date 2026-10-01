@@ -108,6 +108,16 @@ impl Decoder for MessagesDecoder {
         }
         Ok(None)
     }
+
+    /// The usage `message_start` and the last `message_delta` said.
+    fn billed(&self) -> Option<Response> {
+        if !self.message["usage"].is_object() {
+            return None;
+        }
+        let mut message = self.message.clone();
+        message["content"] = json!([]);
+        parse_response(&message).ok()
+    }
 }
 
 impl MessagesDecoder {

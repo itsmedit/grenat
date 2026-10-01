@@ -294,8 +294,15 @@ fn a_stream_cut_short_fails_and_a_consumer_may_stop_it() {
         }
         ControlFlow::Break(())
     });
-    assert_eq!(result.unwrap_err().message, STOPPED);
+    let stopped = result.unwrap_err();
+    assert_eq!(stopped.message, STOPPED);
     assert_eq!(seen, ["one"]);
+    // billed all the same: the usage the stream said before it stopped
+    let billed = stopped.billed.expect("the usage so far");
+    assert_eq!(
+        (billed.model.as_str(), billed.usage.input_tokens, billed.usage.cache_read_input_tokens),
+        ("claude-opus-5", 5, 30)
+    );
 }
 
 #[test]

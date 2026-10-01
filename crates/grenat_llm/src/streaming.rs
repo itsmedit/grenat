@@ -51,15 +51,18 @@ pub(crate) struct Failed {
     pub retry: bool,
     /// Seconds to wait first, when it says how long.
     pub retry_after: Option<u64>,
+    /// What the provider bills for the attempt, when the stream said it
+    /// before failing (its usage so far).
+    pub billed: Option<Box<Response>>,
 }
 
 impl Failed {
     pub(crate) fn fatal(message: impl Into<String>) -> Failed {
-        Failed { message: message.into(), retry: false, retry_after: None }
+        Failed { message: message.into(), retry: false, retry_after: None, billed: None }
     }
 
     pub(crate) fn retry(message: impl Into<String>) -> Failed {
-        Failed { message: message.into(), retry: true, retry_after: None }
+        Failed { message: message.into(), retry: true, retry_after: None, billed: None }
     }
 
     /// An HTTP error before the stream: retried as calls without streaming are.
@@ -69,6 +72,7 @@ impl Failed {
             message: format!("HTTP {status}: {}", crate::retry::error_message(&json)),
             retry: crate::retry::retryable(status),
             retry_after,
+            billed: None,
         }
     }
 }
@@ -82,6 +86,12 @@ pub(crate) trait Decoder {
     /// The stream ended without that event: an answer, or why there is none.
     fn ended(&mut self) -> Result<Response, Failed> {
         Err(Failed::retry("the stream ended before the answer was complete"))
+    }
+
+    /// What the provider bills so far, when its events said it (a stream
+    /// stopped or broken midway is billed too).
+    fn billed(&self) -> Option<Response> {
+        None
     }
 }
 
@@ -122,7 +132,10 @@ pub(crate) fn decode(body: impl Read, decoder: &mut impl Decoder, sink: &mut Sin
         decoder.ended()
     })();
     // part of the answer was given: trying again would give it twice
-    result.map_err(|failed| if out.delivered { Failed { retry: false, ..failed } } else { failed })
+    result.map_err(|failed| {
+        let billed = failed.billed.or_else(|| decoder.billed().map(Box::new));
+        Failed { retry: failed.retry && !out.delivered, billed, ..failed }
+    })
 }
 
 /// The JSON of an event's data.
