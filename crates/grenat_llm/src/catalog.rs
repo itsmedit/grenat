@@ -26,9 +26,11 @@ pub struct EmbeddingApi {
     pub dimensions_field: &'static str,
     /// The most texts in one request.
     pub max_inputs: usize,
-    /// The most characters in one request (a text longer goes alone): its
-    /// limit in tokens, about four characters each, with a margin.
-    pub max_chars: usize,
+    /// The most tokens in one request, all texts together, as the provider
+    /// documents it (a text longer goes alone); Grenat counts no tokens, so
+    /// texts are measured by an estimate that holds for any script (see
+    /// [`crate::embeddings_wire`]).
+    pub max_tokens: usize,
 }
 
 /// How a provider takes audio in a prompt: an `input_audio` part of Chat
@@ -52,8 +54,8 @@ pub struct TranscriptionApi {
     pub formats: &'static [&'static str],
 }
 
-const fn embeddings(dimensions_field: &'static str, max_inputs: usize, max_chars: usize) -> Option<EmbeddingApi> {
-    Some(EmbeddingApi { dimensions_field, max_inputs, max_chars })
+const fn embeddings(dimensions_field: &'static str, max_inputs: usize, max_tokens: usize) -> Option<EmbeddingApi> {
+    Some(EmbeddingApi { dimensions_field, max_inputs, max_tokens })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -137,7 +139,8 @@ pub const PROVIDERS: &[Catalogued] = &[
         documents: true,
         max_tokens_field: "max_output_tokens",
         // 2,048 texts and 300,000 tokens a request
-        embeddings: embeddings("dimensions", 2048, 800_000),
+        // 2,048 texts and 300,000 tokens a request, all models
+        embeddings: embeddings("dimensions", 2048, 300_000),
         // the Responses API's last event carries the usage
         stream_usage: false,
         // through Chat Completions (the Responses API takes no audio), by
@@ -153,7 +156,8 @@ pub const PROVIDERS: &[Catalogued] = &[
     // Google's OpenAI-compatible endpoint for Gemini
     Catalogued {
         max_tokens_field: "max_completion_tokens",
-        embeddings: embeddings("dimensions", 100, 400_000),
+        // 100 texts a request; its token limit is not documented
+        embeddings: embeddings("dimensions", 100, 100_000),
         // a request is 20 MB at most, prompt and files together
         audio_input: Some(AudioInput {
             formats: &["wav", "mp3", "aiff", "aac", "ogg", "flac"],
@@ -163,7 +167,7 @@ pub const PROVIDERS: &[Catalogued] = &[
     },
     Catalogued {
         // its limits are not documented: small requests
-        embeddings: embeddings("output_dimension", 64, 32_000),
+        embeddings: embeddings("output_dimension", 64, 8_000),
         // its API documents no `stream_options`
         stream_usage: false,
         ..openai_like("mistral", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", true)
@@ -180,14 +184,15 @@ pub const PROVIDERS: &[Catalogued] = &[
     // local models; `base_url:` for another machine
     Catalogued {
         key_required: false,
-        embeddings: embeddings("dimensions", 64, 400_000),
+        embeddings: embeddings("dimensions", 64, 100_000),
         ..openai_like("ollama", "http://localhost:11434/v1", "OLLAMA_API_KEY", false)
     },
-    // embeddings only: Anthropic's recommended provider (1,000 texts and
-    // at least 120,000 tokens a request)
+    // embeddings only: Anthropic's recommended provider (1,000 texts a
+    // request; 120,000 tokens for its large and code models, more for the
+    // others: the least, whatever the model)
     Catalogued {
         protocol: Protocol::EmbeddingsOnly,
-        embeddings: embeddings("output_dimension", 1000, 400_000),
+        embeddings: embeddings("output_dimension", 1000, 120_000),
         ..openai_like("voyage", "https://api.voyageai.com/v1", "VOYAGE_API_KEY", false)
     },
 ];

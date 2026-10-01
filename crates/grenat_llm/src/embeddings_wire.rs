@@ -19,22 +19,33 @@ pub fn embeddings_body(request: &EmbeddingRequest, api: &EmbeddingApi) -> Json {
 }
 
 /// The requests `inputs` are sent in: at most `max_inputs` texts and
-/// `max_chars` characters each (a longer text goes alone).
+/// `max_tokens` tokens each, by [`estimated_tokens`], with a tenth kept as
+/// a margin (a longer text goes alone).
 pub(crate) fn chunks(inputs: &[String], api: &EmbeddingApi) -> Vec<Range<usize>> {
+    let budget = api.max_tokens - api.max_tokens / 10;
     let mut out = Vec::new();
-    let (mut start, mut chars) = (0, 0);
+    let (mut start, mut tokens) = (0, 0);
     for (i, input) in inputs.iter().enumerate() {
-        let size = input.chars().count();
-        if i > start && (i - start == api.max_inputs || chars + size > api.max_chars) {
+        let size = estimated_tokens(input);
+        if i > start && (i - start == api.max_inputs || tokens + size > budget) {
             out.push(start..i);
-            (start, chars) = (i, 0);
+            (start, tokens) = (i, 0);
         }
-        chars += size;
+        tokens += size;
     }
     if start < inputs.len() {
         out.push(start..inputs.len());
     }
     out
+}
+
+/// At least the tokens of `text`, whatever its script: two ASCII
+/// characters a token (English is about four, code two), and a token for
+/// each byte of other characters — a tokenizer working on bytes never
+/// makes more (Chinese is one or two a character, three bytes).
+pub(crate) fn estimated_tokens(text: &str) -> usize {
+    let ascii = text.bytes().filter(u8::is_ascii).count();
+    ascii.div_ceil(2) + (text.len() - ascii)
 }
 
 /// The vectors of an answer, in the order of the `expected` inputs.
@@ -69,11 +80,39 @@ mod tests {
 
     #[test]
     fn texts_are_split_by_count_and_by_size() {
-        let api = EmbeddingApi { dimensions_field: "dimensions", max_inputs: 2, max_chars: 10 };
+        // 10 tokens, 9 with the margin
+        let api = EmbeddingApi { dimensions_field: "dimensions", max_inputs: 2, max_tokens: 10 };
         let texts = |sizes: &[usize]| sizes.iter().map(|n| "x".repeat(*n)).collect::<Vec<_>>();
         assert_eq!(chunks(&texts(&[1, 1, 1, 1, 1]), &api), [0..2, 2..4, 4..5]);
-        assert_eq!(chunks(&texts(&[6, 6, 20, 1]), &api), [0..1, 1..2, 2..3, 3..4]);
+        assert_eq!(chunks(&texts(&[10, 10, 40, 1]), &api), [0..1, 1..2, 2..3, 3..4]);
+        assert_eq!(chunks(&texts(&[8, 10]), &api).len(), 1);
         assert_eq!(chunks(&texts(&[]), &api), Vec::<Range<usize>>::new());
+    }
+
+    #[test]
+    fn tokens_are_estimated_for_any_script() {
+        assert_eq!(estimated_tokens("refund"), 3);
+        assert_eq!(estimated_tokens("退款"), 6);
+        assert_eq!(estimated_tokens("café"), 4);
+        assert_eq!(estimated_tokens(""), 0);
+    }
+
+    #[test]
+    fn chinese_texts_stay_under_the_providers_token_limits() {
+        // 2,048 passages of 390 characters: as many tokens at least, at
+        // one a character — 800,000 for OpenAI, which takes 300,000
+        let passage = "退".repeat(390);
+        let inputs = vec![passage; 2048];
+        for (provider, limit) in [("openai", 300_000), ("voyage", 120_000)] {
+            let api = crate::catalog::provider(provider).unwrap().embeddings.unwrap();
+            let requests = chunks(&inputs, &api);
+            assert!(requests.len() >= 3, "{provider}: {requests:?}");
+            assert_eq!(requests.iter().map(ExactSizeIterator::len).sum::<usize>(), 2048);
+            for range in requests {
+                let characters: usize = inputs[range].iter().map(|t| t.chars().count()).sum();
+                assert!(characters <= limit, "{provider}: {characters} tokens at least in a request");
+            }
+        }
     }
 
     #[test]
