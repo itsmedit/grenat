@@ -104,7 +104,10 @@ pub fn serve(
                                 task.serve_events(&block, events, &label);
                             }
                         }
-                        None => incoming.respond(answer.status, &answer.content_type, &answer.headers, answer.body),
+                        // written off the green workers: a client that does not read holds no one
+                        None => grenat_green::blocking(move || {
+                            incoming.respond(answer.status, &answer.content_type, &answer.headers, answer.body)
+                        }),
                     }
                 });
             }

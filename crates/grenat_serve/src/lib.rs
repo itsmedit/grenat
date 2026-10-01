@@ -8,6 +8,7 @@
 pub mod calendar;
 mod cron;
 pub mod events;
+mod outbox;
 mod server;
 pub mod signature;
 

@@ -35,7 +35,7 @@ impl Incoming {
     pub fn respond_events(self, status: u16, headers: &[(String, String)]) -> std::io::Result<EventStream> {
         let http11 = *self.request.http_version() >= tiny_http::HTTPVersion(1, 1);
         // tiny_http buffers a body it writes: the stream writes its own
-        EventStream::start(self.request.into_writer(), status, headers, http11)
+        EventStream::start(self.request.into_writer(), status, headers, http11, crate::outbox::Limits::default())
     }
 }
 
