@@ -2,7 +2,7 @@
 
 use crate::prelude::*;
 use grenat_llm::catalog::{self, Protocol};
-use grenat_llm::{Anthropic, ModelConfig, OpenAi, Request, Response, cost_at, cost_usd};
+use grenat_llm::{Anthropic, ModelConfig, ModelKind, OpenAi, Request, Response, cost_at, cost_usd};
 
 use crate::value::money;
 
@@ -11,7 +11,8 @@ impl<'p> Interp<'p> {
 
     pub(crate) fn model(&mut self, selector: Option<&'p Expr>) -> Result<ModelConfig, Ctrl<'p>> {
         let Some(selector) = selector else {
-            let first = self.models.borrow().first().map(|(_, c)| c.clone());
+            // the default model answers prompts: embedding models are not candidates
+            let first = self.models.borrow().iter().find(|(_, c)| c.kind == ModelKind::Chat).map(|(_, c)| c.clone());
             return match first {
                 Some(config) => Ok(config),
                 None => raise(
@@ -92,7 +93,9 @@ impl<'p> Interp<'p> {
                 api_key.unwrap_or_default(),
                 base_url.as_deref().unwrap_or(catalogued.base_url),
             )),
-            Protocol::OpenAi | Protocol::Responses => Arc::new(OpenAi::new(*catalogued, api_key, base_url.as_deref())),
+            Protocol::OpenAi | Protocol::Responses | Protocol::EmbeddingsOnly => {
+                Arc::new(OpenAi::new(*catalogued, api_key, base_url.as_deref()))
+            }
         };
         // several tasks may create the client at the same time: the first one wins
         Ok(self.clients.borrow_mut().entry(key).or_insert(client).clone())
@@ -121,6 +124,12 @@ impl<'p> Interp<'p> {
     }
 
     pub(crate) fn llm_call(&mut self, request: &Request) -> Result<Response, Ctrl<'p>> {
+        if request.model.kind == ModelKind::Embedding {
+            return raise(
+                "LlmError",
+                format!("`{}` is an embedding model: it answers `embed`, not prompts", request.model.name),
+            );
+        }
         self.check_cancel()?;
         self.check_budgets()?;
         let started = Instant::now();

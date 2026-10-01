@@ -13,6 +13,17 @@ impl<'p> Checker<'p> {
                 let (inner, tainted) = self.resolve(inner);
                 (Ty::opt(inner), tainted)
             }
+            Type::Size(_, span) => {
+                self.error(E_TYPE, *span, "a size is only given to `Vector`: `Vector(1536)`");
+                (Ty::Unknown, false)
+            }
+            Type::Named { path, args, span } if path.last().is_some_and(|n| n.name == "Vector") => {
+                match args.as_slice() {
+                    [Type::Size(n, _)] if *n > 0 => {}
+                    _ => self.error(E_TYPE, *span, "a `Vector` has a size: `Vector(1536)`"),
+                }
+                (Ty::array(Ty::Float), false)
+            }
             Type::Named { path, args, span } => {
                 let name = path.last().expect("non-empty path").name.as_str();
                 let arg = |c: &mut Self, i: usize| args.get(i).map_or(Ty::Unknown, |a| c.resolve(a).0);
@@ -110,6 +121,7 @@ impl<'p> Checker<'p> {
         match ty {
             Type::Tainted(inner, _) => self.peek_ty(inner),
             Type::Optional(inner, _) => Ty::opt(self.peek_ty(inner)),
+            Type::Size(..) => Ty::Unknown,
             Type::Named { path, args, .. } => {
                 let arg = |i: usize| args.get(i).map_or(Ty::Unknown, |a| self.peek_ty(a));
                 match path.last().expect("path").name.as_str() {
@@ -119,6 +131,7 @@ impl<'p> Checker<'p> {
                     "Secret" => Ty::Secret,
                     "Bool" => Ty::Bool,
                     "Array" => Ty::array(arg(0)),
+                    "Vector" => Ty::array(Ty::Float),
                     "Hash" => Ty::Hash(Box::new(arg(0)), Box::new(arg(1))),
                     n if self.types.contains_key(n) => Ty::user(n),
                     _ => Ty::Unknown,

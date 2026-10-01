@@ -56,6 +56,8 @@ pub(crate) struct Shared<'p> {
     pub unpriced: Mutex<HashSet<String>>,
     /// Mocked models (`mock`): the model mocked (`None`: any), its replies.
     pub mocks: Mutex<Vec<(Option<ModelConfig>, Arc<grenat_llm::Mock>)>>,
+    /// Fake embedding models (`mock_embed`): the model faked (`None`: any).
+    pub embedding_mocks: Mutex<Vec<(Option<ModelConfig>, Arc<grenat_llm::FakeEmbeddings>)>>,
     /// Stubbed programs (`mock_shell`).
     pub shell_stubs: Mutex<Vec<crate::eval::ShellStub>>,
     /// SMTP servers (`Mail.connect`): (URL, host), by number.
@@ -187,6 +189,7 @@ impl<'p> Interp<'p> {
             clients: Mutex::new(HashMap::new()),
             unpriced: Mutex::new(HashSet::new()),
             mocks: Mutex::new(Vec::new()),
+            embedding_mocks: Mutex::new(Vec::new()),
             http_stubs: Mutex::new(Vec::new()),
             databases: Mutex::new(Vec::new()),
             ssh_sessions: Mutex::new(Vec::new()),

@@ -62,6 +62,8 @@ pub(crate) struct Checker<'p> {
     /// Message → agents that handle it.
     pub(crate) messages: HashMap<&'p str, Vec<(&'p str, &'p Handler)>>,
     pub(crate) models: Vec<&'p str>,
+    /// The models declared with `kind: :embedding`.
+    pub(crate) embedding_models: Vec<&'p str>,
     pub(crate) diags: Vec<Diagnostic>,
     pub(crate) seen: HashSet<(u32, u32, String)>,
     pub(crate) memo: HashMap<Key, (V, Vec<Eff>)>,
@@ -85,6 +87,7 @@ impl<'p> Checker<'p> {
             variants: HashMap::new(),
             messages: HashMap::new(),
             models: Vec::new(),
+            embedding_models: Vec::new(),
             diags: Vec::new(),
             seen: HashSet::new(),
             memo: HashMap::new(),

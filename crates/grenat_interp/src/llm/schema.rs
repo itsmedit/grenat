@@ -24,6 +24,7 @@ pub(crate) fn type_name(ty: &Type) -> &str {
     match ty {
         Type::Named { path, .. } => &path.last().expect("non-empty path").name,
         Type::Optional(inner, _) | Type::Tainted(inner, _) => type_name(inner),
+        Type::Size(..) => "Int",
     }
 }
 
@@ -38,6 +39,7 @@ impl<'p> Interp<'p> {
         match ty {
             Type::Tainted(inner, _) => self.ty(inner),
             Type::Optional(inner, _) => Ok(Ty::Opt(Box::new(self.ty(inner)?))),
+            Type::Size(..) => Err("a size is only given to `Vector`: `Vector(1536)`".into()),
             Type::Named { path, args, .. } => {
                 let name = path.last().expect("non-empty path").name.as_str();
                 let arg = |i: usize| -> Result<Ty<'p>, String> {
@@ -50,6 +52,8 @@ impl<'p> Interp<'p> {
                     "Bool" => Ty::Bool,
                     "Unit" | "Nil" => Ty::Nil,
                     "Array" => Ty::Array(Box::new(arg(0)?)),
+                    // `Vector(1536)`: floats (its size is checked where it is stored)
+                    "Vector" => Ty::Array(Box::new(Ty::Float)),
                     "Hash" => Ty::Hash(Box::new(arg(1)?)),
                     _ => match self.types.get(name) {
                         Some(info) => Ty::User(info.def.name.name.as_str()),

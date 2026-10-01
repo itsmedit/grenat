@@ -94,6 +94,21 @@ pub(crate) fn database_method<'p>(interp: &mut Interp<'p>, fields: &Fields<'p>, 
         }
         // the column type of an id the database gives, for portable migrations
         "primary_key" => Ok(Value::str(connection.lock().dialect().primary_key())),
+        // the column type of a vector (`Vector(1536)`), for portable migrations
+        "vector" => {
+            interp.check_effect("db.write")?;
+            let size = match args.pos.first().map(Value::untainted) {
+                Some(Value::Int(n)) if *n > 0 && *n <= i64::from(u32::MAX) => *n as u32,
+                _ => return raise("ArgumentError", "`vector` expects a size: `db.vector(1536)`"),
+            };
+            let (column, note) =
+                grenat_green::blocking(|| grenat_db::vectors::column_type(&mut **connection.lock(), size))
+                    .or_else(db_error)?;
+            if let Some(note) = note {
+                interp.write_err(&format!("warning: {note}\n"));
+            }
+            Ok(Value::str(column))
+        }
         "dialect" => Ok(Value::Symbol(match connection.lock().dialect() {
             grenat_db::Dialect::Sqlite => "sqlite".into(),
             grenat_db::Dialect::Postgres => "postgres".into(),
@@ -161,6 +176,8 @@ pub(crate) fn cell_value<'p>(cell: Cell) -> Value<'p> {
         Cell::Int(n) => Value::Int(n),
         Cell::Float(f) => Value::Float(f),
         Cell::Text(s) => Value::str(s),
+        // bytes read as a query's rows: text (a record's vector is decoded by its field's type)
+        Cell::Blob(b) => Value::str(String::from_utf8_lossy(&b)),
     }
 }
 

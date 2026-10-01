@@ -31,11 +31,35 @@ impl<'p> Checker<'p> {
     }
 
     pub(crate) fn check_model(&mut self, model: &'p grenat_ast::ModelDecl) {
-        const MODEL_OPTIONS: [&str; 8] =
-            ["provider", "name", "temperature", "max_tokens", "effort", "fallbacks", "base_url", "price"];
+        const MODEL_OPTIONS: [&str; 10] = [
+            "provider",
+            "name",
+            "temperature",
+            "max_tokens",
+            "effort",
+            "fallbacks",
+            "base_url",
+            "price",
+            "kind",
+            "dimensions",
+        ];
+        let embedding = crate::embeddings::declares_embedding(model);
         for option in &model.options {
             let Arg::Named { name, value: Some(value) } = option else { continue };
             match (name.name.as_str(), &value.kind) {
+                ("provider", ExprKind::Symbol(p)) if grenat_llm::catalog::provider(p).is_some() => {
+                    let kind = if embedding { grenat_llm::ModelKind::Embedding } else { grenat_llm::ModelKind::Chat };
+                    let provider = grenat_llm::catalog::provider(p).expect("known");
+                    if let Some(refusal) = grenat_llm::catalog::refuses(provider, kind) {
+                        self.error(E_DECL, value.span, refusal);
+                    }
+                }
+                ("kind", ExprKind::Symbol(k)) if k != "chat" && k != "embedding" => {
+                    self.error(E_DECL, value.span, format!("`kind: :{k}` is unknown: `:chat` or `:embedding`"))
+                }
+                ("dimensions", _) if !embedding => {
+                    self.error(E_DECL, name.span, "`dimensions:` is for embedding models (`kind: :embedding`)")
+                }
                 ("provider", ExprKind::Symbol(p)) if grenat_llm::catalog::provider(p).is_none() => self.error_help(
                     E_DECL,
                     value.span,
@@ -108,7 +132,15 @@ impl<'p> Checker<'p> {
                 let models = self.models.clone();
                 self.error_help(E_NAME, span, format!("model `:{name}` is not declared"), suggest(name, models));
             }
-            None if self.models.is_empty() => self.report(
+            Some((ExprKind::Symbol(name), span)) if self.embedding_models.contains(&name.as_str()) => self.report(
+                Diagnostic::new(
+                    span,
+                    format!("model `:{name}` is an embedding model: it answers `embed`, not prompts"),
+                )
+                .with_code(E_DECL),
+            ),
+            // the default model answers prompts: embedding models are not candidates
+            None if self.models.len() == self.embedding_models.len() => self.report(
                 Diagnostic::new(span, "no model declared")
                     .with_code(E_DECL)
                     .with_help("add `model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"`"),

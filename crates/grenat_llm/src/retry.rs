@@ -14,11 +14,11 @@ pub(crate) const MAX_ATTEMPTS: u32 = 4;
 pub(crate) type Attempt = Result<(u16, Option<u64>, Json), String>;
 
 /// Sends until a 200 (parsed by `parse`), a client error, or the last attempt.
-pub(crate) fn with_retries(
+pub(crate) fn with_retries<T>(
     delay: Duration,
     send: impl Fn() -> Attempt,
-    parse: impl Fn(&Json) -> Result<Response, LlmError>,
-) -> Result<Response, LlmError> {
+    parse: impl Fn(&Json) -> Result<T, LlmError>,
+) -> Result<T, LlmError> {
     let mut last_error = String::new();
     for attempt in 0..MAX_ATTEMPTS {
         let wait = match send() {
@@ -44,12 +44,12 @@ pub(crate) fn with_retries(
 }
 
 /// The message of an error body: `{"error": {"message": …}}` (also inside a
-/// list, as some providers send it).
+/// list, as some providers send it), or `{"detail": …}` (Voyage's).
 fn error_message(json: &Json) -> &str {
     // not JSON: the text itself
     if let Some(text) = json.as_str() {
         return text.trim();
     }
     let error = if json.is_array() { &json[0]["error"] } else { &json["error"] };
-    error["message"].as_str().or_else(|| error.as_str()).unwrap_or("unknown error")
+    error["message"].as_str().or_else(|| error.as_str()).or_else(|| json["detail"].as_str()).unwrap_or("unknown error")
 }

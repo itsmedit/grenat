@@ -420,6 +420,7 @@ impl Printer<'_> {
                 self.write("~");
                 self.ty(inner);
             }
+            Type::Size(n, _) => self.write(&n.to_string()),
         }
     }
 

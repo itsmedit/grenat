@@ -614,6 +614,61 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 13 status: embeddings and vector search
+
+A support desk answering from internal docs, a knowledge-base assistant: they find the passages a question is about by meaning, not by counting the words they share. A model makes the vectors, a record keeps them, `nearest` finds the closest.
+
+```yaml
+# config/models.yml
+fast:
+  provider: anthropic
+  name: claude-haiku-4-5
+docs:                        # vectors for `embed`, never prompts
+  provider: voyage           # or openai, gemini, mistral, ollama
+  name: voyage-3.5
+  kind: embedding
+  dimensions: 1024           # where the provider lets it be chosen
+  price: {input: 0.06}       # dollars per million input tokens
+```
+
+```ruby
+struct Passage
+  table :passages
+  id: Int?
+  source: String
+  text: String
+  embedding: Vector(1024)
+end
+
+migration "001_create_passages" do |db|
+  db.migrate("CREATE TABLE passages (id #{db.primary_key}, source TEXT NOT NULL, text TEXT NOT NULL, embedding #{db.vector(1024)} NOT NULL)")
+end
+
+def index(source: String, parts: Array(String)) uses llm, db
+  vectors = embed(:docs, parts)  # Array(Array(Float)): one request for many texts
+  parts.each_with_index { |text, i| Passage.create(source:, text:, embedding: vectors[i]) }
+end
+
+def search(question: String) -> Array(Passage) uses llm, db.read
+  query = embed(:docs, question)  # Array(Float)
+  Passage.nearest(:embedding, query, limit: 4, where: {source: "billing.md"})
+end
+
+test "the passage about refunds is found" do
+  mock_embed :docs  # vectors made from the texts' words
+  index("billing.md", ["A refund is asked for within 30 days.", "Invoices export to CSV."])
+  assert_equal "A refund is asked for within 30 days.", search("How do I get a refund?").first&.text
+end
+```
+
+- **Embedding models.** A model is one by declaration: `kind: :embedding` (in code or in `config/models.yml`), with `dimensions:` when the provider takes a size (OpenAI and Ollama `dimensions`, Mistral and Voyage `output_dimension`, Gemini `dimensions` on its compatible endpoint). Grenat makes embeddings through OpenAI, Gemini, Mistral, Ollama — all on OpenAI's `POST /embeddings` — and **Voyage AI**, now in the catalog (`VOYAGE_API_KEY`, or `voyage.api_key` in the credentials): Anthropic has no embeddings API and recommends Voyage, which makes nothing else. Declaring an Anthropic or Groq embedding model, a Voyage model without `kind: :embedding` or `dimensions:` on a chat model is refused by the checker (E0500) and when the program loads; a prompt, an agent or a conversation using an embedding model too, and the default model of prompts is the first *chat* model.
+- **`embed`.** `embed(:docs, text)` is an `Array(Float)`, `embed(:docs, texts)` an `Array(Array(Float))`, in the texts' order; `embed(text)` uses the first embedding model. Many texts go in as few requests as the provider accepts (OpenAI 2,048 texts a request, Voyage 1,000, Gemini 100, Ollama and Mistral 64, each under its token limit), retried as model calls are. It is an `llm` effect: counted by budgets, recorded in the ledger with its tokens and cost (`price: {input: …}`: an embedding has no output), logged by `--log` (`[embed] voyage-3.5 · 2 text(s) · 18 in · $0.0000 · 0.3s`). No secret reaches it (E0414, `SecretError`); an empty text is an `ArgumentError`. **A vector is numbers, never instructions**: it is not untrusted, even when its text is — a record keeps the vector of a question a customer typed.
+- **`Vector(n)` fields.** A record's `embedding: Vector(1536)` holds `n` floats (a vector of another size is a `TypeError` when it is saved); `db.vector(1536)` is its column's type in a migration: `vector(1536)` where PostgreSQL has the pgvector extension — enabled by the migration when the server offers it, else the migration goes on with bytes and says why — and bytes elsewhere (`BLOB` on SQLite, `BYTEA` on PostgreSQL without pgvector): 32-bit floats, the precision pgvector keeps too. A vector is never compared for equality (`where(embedding: …)` is an `ArgumentError`).
+- **`nearest`.** `Doc.nearest(:embedding, vector, limit: 5, where: {…}, max_distance: 0.6)` gives the records nearest by cosine distance (0 the same direction, 1 unrelated, 2 opposite), nearest first, those without a vector left out; `where:` filters as `where` does, `max_distance:` leaves out the farther. The checker knows the field must be a `Vector`, the vector an `Array(Float)`, and the read a `db.read`. With pgvector the database ranks (`<=>`; an index — `CREATE INDEX … USING hnsw (embedding vector_cosine_ops)` in a migration — makes it approximate and fast at any scale). **Elsewhere it is brute force**, every vector the filters keep read and compared in Rust: fine up to tens of thousands of rows — 10,000 vectors of 1,536 dimensions are 60 MB read per search, tens of milliseconds — and a reason to use PostgreSQL with pgvector beyond.
+- **Tests.** `mock_embed :docs` (or `mock_embed()`, for every embedding model) makes vectors from the texts' words — each word hashed to a dimension, the vector scaled to length 1 — so texts sharing words are near and a test checks what `nearest` finds without a model; `vectors: {"refund" => [1.0, 0.0]}` gives some, `dimensions:` their size (else the model's: its `dimensions:`, or the size its provider documents). Without it, `embed` in a test says it is not mocked. `grenat generate record doc text:String "embedding:Vector(1536)"` writes the record, a migration that works on both databases, and a test that finds the record nearest to its own vector. `examples/usecases/11_knowledge_base.grn` indexes documentation and answers from it.
+- **Verified** against each provider's documentation (October 2026): OpenAI, Voyage, Mistral and Gemini's compatible endpoint (`/v1beta/openai/embeddings`), Ollama's OpenAI compatibility (`/v1/embeddings`, `dimensions` accepted); the tests play each wire format on a local server. Not verified live: no key here. PostgreSQL is tested on a server without pgvector (the brute force); pgvector's path is written to its documented operators, its tests skipped where the server lacks it.
+- **Limits.** Text only (no image embeddings); no `input_type` for Voyage's query/document distinction yet; cassettes record chat calls, not embeddings (`mock_embed` stands for them); distances are not returned with the records.
+
 ### Phase 12 status: native facets (Rust)
 
 A facet can ship Rust code that Grenat programs call as ordinary functions, as a Ruby gem ships C: a crate (a `cdylib`) depending on `grenat_ext`, the SDK, named by `[native]` in the facet's `grenat.toml` (`path = "native"`, the default).

@@ -146,6 +146,28 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             };
             interp.mock(model.as_deref(), replies)
         })(),
+        "mock_embed" => (|| {
+            let model = match args.pos.first().map(Value::untainted) {
+                None => None,
+                Some(Value::Symbol(s)) => Some(s.to_string()),
+                Some(other) => {
+                    return raise(
+                        "TypeError",
+                        format!("`mock_embed` expects a model (`:docs`), got {}", other.inspect()),
+                    );
+                }
+            };
+            interp.mock_embed(model.as_deref(), &args)
+        })(),
+        // vectors of texts (see `eval::embeddings`)
+        "embed" => (|| {
+            let (model, input) = match args.pos.as_slice() {
+                [Value::Symbol(model), input] => (Some(model.to_string()), input.clone()),
+                [input] => (None, input.clone()),
+                _ => return raise("ArgumentError", "`embed` expects a model and a text: `embed(:docs, text)`"),
+            };
+            interp.embed(model.as_deref(), &input)
+        })(),
         "get" | "post" | "put" | "patch" | "delete" if args.block.is_some() => declare_route(interp, name, &args),
         "html" | "json" | "status" | "redirect" => response_helper(name, &args),
         "request" => test_request(interp, &args),

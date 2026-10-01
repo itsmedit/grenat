@@ -13,7 +13,7 @@ pub(crate) fn is_tainted_decl(ty: &Type) -> bool {
     match ty {
         Type::Tainted(..) => true,
         Type::Optional(inner, _) => is_tainted_decl(inner),
-        Type::Named { .. } => false,
+        Type::Named { .. } | Type::Size(..) => false,
     }
 }
 

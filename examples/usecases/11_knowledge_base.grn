@@ -1,0 +1,73 @@
+# Knowledge-base assistant: the documentation, cut into passages, embedded
+# once and searched by meaning — not by counting words — then a model
+# answers from the passages found, and says when they hold no answer.
+#
+#   grenat migrate 11_knowledge_base.grn
+#   grenat run 11_knowledge_base.grn index kb
+#   grenat run 11_knowledge_base.grn ask "How do I get my money back?"
+database Env.fetch("DATABASE_URL", "sqlite://kb.db")
+
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+model :docs, provider: :voyage, name: "voyage-3.5", kind: :embedding, price: {input: 0.06}
+
+struct Passage
+  table :passages
+  id: Int?
+  source: String
+  text: String
+  embedding: Vector(1024)
+end
+
+migration "001_create_passages" do |db|
+  db.migrate("CREATE TABLE passages (id #{db.primary_key}, source TEXT NOT NULL, text TEXT NOT NULL, embedding #{db.vector(1024)} NOT NULL)")
+end
+
+struct Reply
+  answer: String          ## from the passages only
+  sources: Array(String)  ## the pages of the passages used
+  found: Bool             ## false when the passages hold no answer
+end
+
+## Answers a support question from documentation passages.
+prompt answer_from(question: String, passages: String) -> ~Reply using :fast
+  system "You answer support questions from the passages given, and from nothing else. When they hold no answer, say so and set found to false."
+  user "Passages:\n#{passages}\n\nQuestion: #{question}"
+end
+
+## The paragraphs of a page.
+def passages(text: String) -> Array(String)
+  text.split("\n\n").map { |p| p.strip }.reject { |p| p.empty? || p.start_with?("#") }
+end
+
+## Indexes the pages of a directory: one request of embeddings per page.
+def index(root: String) -> Int uses fs.read, llm, db
+  Dir.list(root).map do |name|
+    parts = passages(File.read("#{root}/#{name}"))
+    vectors = embed(:docs, parts)
+    parts.each_with_index { |text, i| Passage.create(source: name, text:, embedding: vectors[i]) }
+    parts.size
+  end.sum
+end
+
+## The passages closest to a question.
+def search(question: String, limit: Int) -> Array(Passage) uses llm, db.read
+  Passage.nearest(:embedding, embed(:docs, question), limit:, max_distance: 0.8)
+end
+
+## The answer to a question, from the closest passages.
+def ask(question: String) -> ~Reply uses llm, db.read
+  found = search(question, 4)
+  context = found.map { |p| "[#{p.source}] #{p.text}" }.join("\n\n")
+  answer_from(question, context)
+end
+
+def main(args: Array(String)) uses fs.read, llm, db
+  case args.first
+  when "index"
+    puts "#{index(args[1])} passages indexed"
+  else
+    reply = ask(args.drop(1).join(" "))
+    puts reply.answer
+    puts "(#{reply.sources.join(", ")})"
+  end
+end

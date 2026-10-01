@@ -19,13 +19,16 @@
 //! t.delete
 //! ```
 //!
+//! A `Vector(n)` field holds an embedding, found again with `nearest` (see
+//! `eval::vectors`).
+//!
 //! Columns are the struct's fields; `id` is the primary key, given by the
 //! database. Reads are `db.read`, writes `db.write`; an untrusted value is
 //! never written unchecked. `grenat migrate` applies the migrations not
 //! applied yet; in `grenat test`, each test gets a new in-memory SQLite
 //! database, migrated.
 
-use grenat_ast::{Arg, ExprKind, Type};
+use grenat_ast::{Arg, ExprKind};
 use grenat_db::Cell;
 
 use crate::builtins::{cell, cell_value, db_error};
@@ -40,7 +43,7 @@ pub(crate) struct Migration<'p> {
 }
 
 /// `"name"`: an SQL identifier (names come from declarations, quoted anyway).
-fn quoted(name: &str) -> String {
+pub(crate) fn quoted(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
@@ -147,7 +150,7 @@ impl<'p> Interp<'p> {
         }
     }
 
-    fn app_connection(&self) -> Result<crate::SharedConnection, Ctrl<'p>> {
+    pub(crate) fn app_connection(&self) -> Result<crate::SharedConnection, Ctrl<'p>> {
         let database = self.database()?;
         Ok(self.connection_of(&database).expect("a database"))
     }
@@ -168,7 +171,7 @@ impl<'p> Interp<'p> {
             }
             "count" => {
                 self.check_effect("db.read")?;
-                let (condition, params) = conditions(&args.named)?;
+                let (condition, params) = self.conditions(ty, &args.named)?;
                 let sql = format!("SELECT count(*) AS n FROM {}{condition}", quoted(&table));
                 let connection = self.app_connection()?;
                 let rows = grenat_green::blocking(|| connection.lock().query(&sql, &params)).or_else(db_error)?;
@@ -178,9 +181,10 @@ impl<'p> Interp<'p> {
                 let record = self.construct(ty, Args { named: args.named.clone(), ..Args::default() })?;
                 self.save(ty, &table, &record)
             }
+            "nearest" => self.nearest(ty, &table, args),
             _ => raise(
                 "NoMethodError",
-                format!("unknown method `{ty}.{name}`: a record has all, where, find, count, create"),
+                format!("unknown method `{ty}.{name}`: a record has all, where, find, count, create, nearest"),
             ),
         })())
     }
@@ -211,12 +215,15 @@ impl<'p> Interp<'p> {
     fn select(&mut self, ty: &str, table: &str, conditions_of: &[(String, Value<'p>)], limit: Option<usize>) -> R<'p> {
         self.check_effect("db.read")?;
         let columns = self.columns(ty);
-        let (condition, params) = conditions(conditions_of)?;
+        let (condition, params) = self.conditions(ty, conditions_of)?;
         let order = if columns.iter().any(|c| c == "id") { " ORDER BY \"id\"" } else { "" };
         let limit = limit.map_or(String::new(), |n| format!(" LIMIT {n}"));
-        let list: Vec<String> = columns.iter().map(|c| quoted(c)).collect();
-        let sql = format!("SELECT {} FROM {}{condition}{order}{limit}", list.join(", "), quoted(table));
         let connection = self.app_connection()?;
+        let mut list = Vec::with_capacity(columns.len());
+        for column in &columns {
+            list.push(self.selected(&connection, ty, table, column)?);
+        }
+        let sql = format!("SELECT {} FROM {}{condition}{order}{limit}", list.join(", "), quoted(table));
         let rows = grenat_green::blocking(|| connection.lock().query(&sql, &params)).or_else(db_error)?;
         let mut records = Vec::with_capacity(rows.len());
         for row in rows {
@@ -237,22 +244,29 @@ impl<'p> Interp<'p> {
         let Value::Record(r) = record.untainted() else { return raise("TypeError", "not a record") };
         let id = field(&r.fields, "id").cloned().unwrap_or(Value::Nil);
         let columns: Vec<String> = self.columns(ty).into_iter().filter(|c| c != "id").collect();
+        let connection = self.app_connection()?;
         let mut params = Vec::with_capacity(columns.len() + 1);
+        let mut marks = Vec::with_capacity(columns.len());
         for column in &columns {
-            params.push(cell(field(&r.fields, column).unwrap_or(&Value::Nil))?);
+            let value = field(&r.fields, column).unwrap_or(&Value::Nil);
+            let (param, mark) = match self.vector_field(ty, column) {
+                Some(size) => self.vector_param(&connection, (ty, table, column), size, value)?,
+                None => (cell(value)?, "?"),
+            };
+            params.push(param);
+            marks.push(mark);
         }
         let has_id = r.fields.iter().any(|(k, _)| &**k == "id");
-        let connection = self.app_connection()?;
         let table_q = quoted(table);
         if !matches!(id, Value::Nil) {
-            let sets: Vec<String> = columns.iter().map(|c| format!("{} = ?", quoted(c))).collect();
+            let sets: Vec<String> = columns.iter().zip(&marks).map(|(c, m)| format!("{} = {m}", quoted(c))).collect();
             params.push(cell(&id)?);
             let sql = format!("UPDATE {table_q} SET {} WHERE \"id\" = ?", sets.join(", "));
             grenat_green::blocking(|| connection.lock().execute(&sql, &params)).or_else(db_error)?;
             return Ok(record.clone());
         }
         let list: Vec<String> = columns.iter().map(|c| quoted(c)).collect();
-        let marks = vec!["?"; columns.len()].join(", ");
+        let marks = marks.join(", ");
         if !has_id {
             let sql = format!("INSERT INTO {table_q} ({}) VALUES ({marks})", list.join(", "));
             grenat_green::blocking(|| connection.lock().execute(&sql, &params)).or_else(db_error)?;
@@ -266,19 +280,20 @@ impl<'p> Interp<'p> {
         Ok(Value::record(&r.ty, fields))
     }
 
-    fn columns(&self, ty: &str) -> Vec<String> {
+    pub(crate) fn columns(&self, ty: &str) -> Vec<String> {
         self.types[ty].fields.iter().filter(|f| !f.is_ivar).map(|f| f.name.name.clone()).collect()
     }
 
     /// A row as the record, cells converted by the fields' types.
-    fn record_of(&mut self, ty: &str, row: grenat_db::Row) -> R<'p> {
+    pub(crate) fn record_of(&mut self, ty: &str, row: grenat_db::Row) -> R<'p> {
         let fields = self.types[ty].fields.clone();
         let mut named = Vec::with_capacity(row.len());
         for (column, c) in row {
             let declared = fields.iter().find(|f| f.name.name == column).and_then(|f| f.ty.as_ref());
-            let value = match (declared.map(type_name), c) {
+            let value = match (declared.map(llm::type_name), c) {
                 (Some("Bool"), Cell::Int(n)) => Value::Bool(n != 0),
                 (Some("Float"), Cell::Int(n)) => Value::Float(n as f64),
+                (Some("Vector"), c) => crate::eval::vectors::vector_value(&c)?,
                 (_, c) => cell_value(c),
             };
             named.push((column, value));
@@ -287,29 +302,28 @@ impl<'p> Interp<'p> {
     }
 }
 
-fn type_name(ty: &Type) -> &str {
-    match ty {
-        Type::Named { path, .. } => &path.last().expect("a name").name,
-        Type::Optional(inner, _) | Type::Tainted(inner, _) => type_name(inner),
-    }
-}
-
-/// ` WHERE "a" = ? AND "b" IS NULL`, and its parameters.
-fn conditions<'p>(named: &[(String, Value<'p>)]) -> Result<(String, Vec<Cell>), Ctrl<'p>> {
-    if named.is_empty() {
-        return Ok((String::new(), Vec::new()));
-    }
-    let mut parts = Vec::new();
-    let mut params = Vec::new();
-    for (column, value) in named {
-        if matches!(value.untainted(), Value::Nil) {
-            parts.push(format!("{} IS NULL", quoted(column)));
-        } else {
-            parts.push(format!("{} = ?", quoted(column)));
-            params.push(cell(value)?);
+impl<'p> Interp<'p> {
+    /// ` WHERE "a" = ? AND "b" IS NULL`, and its parameters (a vector is
+    /// never compared for equality).
+    pub(crate) fn conditions(&self, ty: &str, named: &[(String, Value<'p>)]) -> Result<(String, Vec<Cell>), Ctrl<'p>> {
+        if named.is_empty() {
+            return Ok((String::new(), Vec::new()));
         }
+        let mut parts = Vec::new();
+        let mut params = Vec::new();
+        for (column, value) in named {
+            if self.vector_field(ty, column).is_some() {
+                return raise("ArgumentError", format!("`{ty}.{column}` is a vector: search it with `nearest`"));
+            }
+            if matches!(value.untainted(), Value::Nil) {
+                parts.push(format!("{} IS NULL", quoted(column)));
+            } else {
+                parts.push(format!("{} = ?", quoted(column)));
+                params.push(cell(value)?);
+            }
+        }
+        Ok((format!(" WHERE {}", parts.join(" AND ")), params))
     }
-    Ok((format!(" WHERE {}", parts.join(" AND ")), params))
 }
 
 /// `grenat migrate`: the migrations applied.

@@ -2,6 +2,16 @@
 
 use serde_json::{Value as Json, json};
 
+/// What a model is for.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ModelKind {
+    /// It answers prompts, agents and conversations.
+    #[default]
+    Chat,
+    /// It turns texts into vectors (`embed`).
+    Embedding,
+}
+
 /// Model configuration, from a `model :name, …` declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModelConfig {
@@ -18,6 +28,10 @@ pub struct ModelConfig {
     /// Dollars per million tokens (input, output), when Grenat does not
     /// know the model's price.
     pub price: Option<(f64, f64)>,
+    pub kind: ModelKind,
+    /// The size of an embedding model's vectors, where the provider lets
+    /// it be chosen (its default otherwise).
+    pub dimensions: Option<u32>,
 }
 
 impl ModelConfig {
@@ -34,6 +48,8 @@ impl ModelConfig {
             fallbacks,
             base_url: None,
             price: None,
+            kind: ModelKind::Chat,
+            dimensions: None,
         }
     }
 }
@@ -136,6 +152,22 @@ impl Response {
     }
 }
 
+/// Texts to turn into vectors, in one request.
+#[derive(Debug, Clone)]
+pub struct EmbeddingRequest<'a> {
+    pub model: &'a ModelConfig,
+    pub inputs: Vec<String>,
+}
+
+/// The vectors of an [`EmbeddingRequest`], in the order of its inputs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Embeddings {
+    pub vectors: Vec<Vec<f64>>,
+    /// Input tokens only: an embedding has no output.
+    pub usage: Usage,
+    pub model: String,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LlmError {
     pub message: String,
@@ -157,6 +189,11 @@ pub trait Provider: Send + Sync {
     fn batch(&self, requests: &[Request]) -> Result<Vec<Result<Response, LlmError>>, LlmError> {
         Ok(requests.iter().map(|r| self.complete(r)).collect())
     }
+
+    /// The vectors of texts, from an embedding model.
+    fn embed(&self, request: &EmbeddingRequest) -> Result<Embeddings, LlmError> {
+        Err(LlmError::new(format!("`{}` makes no embeddings here", request.model.name)))
+    }
 }
 
 impl<P: Provider + ?Sized> Provider for std::sync::Arc<P> {
@@ -166,5 +203,9 @@ impl<P: Provider + ?Sized> Provider for std::sync::Arc<P> {
 
     fn batch(&self, requests: &[Request]) -> Result<Vec<Result<Response, LlmError>>, LlmError> {
         (**self).batch(requests)
+    }
+
+    fn embed(&self, request: &EmbeddingRequest) -> Result<Embeddings, LlmError> {
+        (**self).embed(request)
     }
 }

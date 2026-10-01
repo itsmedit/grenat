@@ -29,6 +29,7 @@ mod construct;
 mod context;
 mod declarations;
 mod effects;
+mod embeddings;
 mod expr;
 mod functions;
 mod methods;

@@ -314,9 +314,8 @@ impl<'p> Checker<'p> {
             }
             "deny_all" | "approve_all" => V::new(Ty::Sym),
             // test doubles and evals
-            "mock" | "mock_http" | "mock_shell" | "mcp" | "mock_mcp" | "mock_ssh" | "mock_credentials" => {
-                V::new(Ty::Nil)
-            }
+            "mock" | "mock_http" | "mock_shell" | "mcp" | "mock_mcp" | "mock_ssh" | "mock_credentials"
+            | "mock_embed" => V::new(Ty::Nil),
             "database" | "expose" => V::new(Ty::Nil),
             // a job: its arguments are written to the database
             "enqueue" => {
@@ -365,6 +364,7 @@ impl<'p> Checker<'p> {
                 self.walk_block(cx, block, &[V::unknown()]);
                 V::new(Ty::Nil)
             }
+            "embed" => self.embed_call(cx, span, argv),
             "judge" => {
                 self.secrets_to_model(argv, "judge");
                 cx.add_effect(Eff { path: "llm".into(), arg: None, origin: span });

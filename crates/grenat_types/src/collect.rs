@@ -33,6 +33,9 @@ impl<'p> Checker<'p> {
                         self.error(E_NAME, model.name.span, message);
                     }
                     self.models.push(&model.name.name);
+                    if crate::embeddings::declares_embedding(model) {
+                        self.embedding_models.push(&model.name.name);
+                    }
                 }
                 // expanded before checking (see `grenat_macros`)
                 Item::Stmt(_) | Item::Macro(_) => {}

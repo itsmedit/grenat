@@ -3,12 +3,13 @@
 //! Queries are always parameterized, with `?` placeholders on every
 //! database (they become `$1`, `$2`… for PostgreSQL): a value never becomes
 //! SQL text. Values in and out are [`Cell`]s; the language maps them to its
-//! own values.
+//! own values. [`vectors`] stores embeddings and finds the nearest.
 
 mod cell;
 mod placeholders;
 mod postgres_db;
 mod sqlite;
+pub mod vectors;
 
 pub use cell::Cell;
 

@@ -23,6 +23,7 @@ fn value(cell: &Cell) -> Value {
         Cell::Int(n) => Value::Integer(*n),
         Cell::Float(f) => Value::Real(*f),
         Cell::Text(s) => Value::Text(s.clone()),
+        Cell::Blob(b) => Value::Blob(b.clone()),
     }
 }
 
@@ -31,7 +32,8 @@ fn cell(value: ValueRef) -> Cell {
         ValueRef::Null => Cell::Null,
         ValueRef::Integer(n) => Cell::Int(n),
         ValueRef::Real(f) => Cell::Float(f),
-        ValueRef::Text(t) | ValueRef::Blob(t) => Cell::Text(String::from_utf8_lossy(t).into_owned()),
+        ValueRef::Text(t) => Cell::Text(String::from_utf8_lossy(t).into_owned()),
+        ValueRef::Blob(b) => Cell::Blob(b.to_vec()),
     }
 }
 

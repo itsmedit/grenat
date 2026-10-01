@@ -58,6 +58,7 @@ fn ty(t: &Type) -> String {
         }
         Type::Optional(inner, _) => format!("{}?", ty(inner)),
         Type::Tainted(inner, _) => format!("~{}", ty(inner)),
+        Type::Size(n, _) => n.to_string(),
     }
 }
 

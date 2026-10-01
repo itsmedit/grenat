@@ -12,6 +12,7 @@ mod concurrency;
 mod construct;
 pub(crate) mod conversation;
 mod doubles;
+pub(crate) mod embeddings;
 
 pub(crate) use doubles::{HttpStub, ShellStub};
 mod errors;
@@ -28,6 +29,7 @@ mod pattern;
 pub(crate) mod records;
 pub(crate) mod secrets;
 pub(crate) mod store;
+pub(crate) mod vectors;
 pub(crate) mod workflow;
 
 pub(crate) use assign::set_field;

@@ -7,4 +7,6 @@ pub enum Cell {
     Int(i64),
     Float(f64),
     Text(String),
+    /// Bytes: a `BLOB` (SQLite), a `BYTEA` (PostgreSQL).
+    Blob(Vec<u8>),
 }

@@ -271,6 +271,7 @@ pub fn record_method(record: &str, name: &str) -> Option<(Ty, &'static str)> {
         (DATABASE, "first") => (Ty::Unknown, "db.read"),
         (DATABASE, "execute") => (Ty::Int, "db.write"),
         (DATABASE, "migrate") => (Ty::Nil, "db.write"),
+        (DATABASE, "vector") => (Ty::Str, "db.write"),
         (DATABASE, "transaction") => (Ty::Unknown, "db.write"),
         (MAILER, "send") => (Ty::Nil, "net"),
         (CONVERSATION, "say") => (Ty::Str, "llm"),
@@ -328,8 +329,10 @@ pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
     })
 }
 
-pub const TYPE_NAMES: &[&str] =
-    &["Int", "Float", "String", "Bool", "Array", "Hash", "Symbol", "Nil", "Range", "Money", "Duration", "Secret"];
+pub const TYPE_NAMES: &[&str] = &[
+    "Int", "Float", "String", "Bool", "Array", "Hash", "Symbol", "Nil", "Range", "Money", "Duration", "Secret",
+    "Vector",
+];
 
 pub const GLOBALS: &[&str] = &[
     "puts",
@@ -357,6 +360,7 @@ pub const GLOBALS: &[&str] = &[
     "mock_mcp",
     "mock_ssh",
     "mock_credentials",
+    "mock_embed",
     "database",
     "enqueue",
     "expose",
@@ -379,6 +383,7 @@ pub const GLOBALS: &[&str] = &[
     "call",
     "eval",
     "judge",
+    "embed",
     "loop",
     "sleep",
     "exit",

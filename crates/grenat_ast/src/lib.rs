@@ -235,12 +235,14 @@ pub enum Type {
     Optional(Box<Type>, Span),
     /// `~Summary`: produced by an LLM, not validated.
     Tainted(Box<Type>, Span),
+    /// A size given to a type: the `1536` of `Vector(1536)`.
+    Size(u64, Span),
 }
 
 impl Type {
     pub fn span(&self) -> Span {
         match self {
-            Type::Named { span, .. } | Type::Optional(_, span) | Type::Tainted(_, span) => *span,
+            Type::Named { span, .. } | Type::Optional(_, span) | Type::Tainted(_, span) | Type::Size(_, span) => *span,
         }
     }
 }

@@ -1,4 +1,4 @@
-//! Type annotations: `Array(T)`, `T?`, `~T`.
+//! Type annotations: `Array(T)`, `T?`, `~T`, and sizes (`Vector(1536)`).
 
 use grenat_ast::*;
 use grenat_lexer::TokenKind as T;
@@ -26,7 +26,7 @@ impl<'d> Parser<'d> {
                 if self.at(&T::RParen) {
                     break;
                 }
-                args.push(self.ty()?);
+                args.push(self.ty_arg()?);
                 self.skip_newlines();
                 if !self.eat(&T::Comma) {
                     break;
@@ -41,5 +41,15 @@ impl<'d> Parser<'d> {
             ty = Type::Optional(Box::new(ty), span);
         }
         Ok(ty)
+    }
+
+    /// A type's argument: a type, or a size (`Vector(1536)`).
+    fn ty_arg(&mut self) -> PResult<Type> {
+        if let T::Int(n) = *self.kind() {
+            let span = self.bump().span;
+            // the lexer reads no sign: an integer literal is never negative
+            return Ok(Type::Size(n.unsigned_abs(), span));
+        }
+        self.ty()
     }
 }

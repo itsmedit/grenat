@@ -3,13 +3,15 @@
 //! The runtime only depends on the [`Provider`] trait: the real implementation
 //! ([`Anthropic`]) talks HTTP to the Messages API, while [`Scripted`] replays
 //! prepared replies for tests, [`Mock`] shapes test answers into whatever
-//! each request expects, and [`Cassette`] records real calls once to replay
-//! them.
+//! each request expects, [`FakeEmbeddings`] makes deterministic vectors for
+//! tests, and [`Cassette`] records real calls once to replay them.
 
 mod anthropic;
 mod batch;
 mod cassette;
 pub mod catalog;
+mod embeddings_wire;
+mod fake_embeddings;
 mod mock;
 mod openai;
 mod openai_wire;
@@ -22,6 +24,8 @@ mod wire;
 
 pub use anthropic::Anthropic;
 pub use cassette::Cassette;
+pub use embeddings_wire::embeddings_body;
+pub use fake_embeddings::FakeEmbeddings;
 pub use mock::{Mock, MockReply};
 pub use openai::OpenAi;
 pub use openai_wire::chat_body;

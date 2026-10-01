@@ -1,12 +1,14 @@
 //! HTTP client for OpenAI (its Responses API) and for the providers that
 //! speak its Chat Completions: Gemini (Google's compatible endpoint),
-//! Mistral, xAI, OpenRouter, Groq, DeepSeek, Together, Ollama.
+//! Mistral, xAI, OpenRouter, Groq, DeepSeek, Together, Ollama. Embeddings
+//! go through its `/embeddings`, which Voyage speaks too.
 
 use std::time::Duration;
 
 use serde_json::Value as Json;
 
 use crate::catalog::{Catalogued, Protocol};
+use crate::embeddings_wire::{chunks, embeddings_body, parse_embeddings};
 use crate::openai_wire::{chat_body, parse_chat};
 use crate::responses_wire::{parse_responses, responses_body};
 use crate::*;
@@ -55,11 +57,40 @@ impl OpenAi {
 
 impl Provider for OpenAi {
     fn complete(&self, request: &Request) -> Result<Response, LlmError> {
+        if let Some(refusal) = crate::catalog::refuses(&self.provider, request.model.kind) {
+            return Err(LlmError::new(refusal));
+        }
         if self.provider.protocol == Protocol::Responses {
             let body = responses_body(request, &self.provider)?;
             return crate::retry::with_retries(self.retry_delay, || self.send("/responses", &body), parse_responses);
         }
         let body = chat_body(request, &self.provider)?;
         crate::retry::with_retries(self.retry_delay, || self.send("/chat/completions", &body), parse_chat)
+    }
+
+    /// Several requests when the texts are many: their vectors and tokens put together.
+    fn embed(&self, request: &EmbeddingRequest) -> Result<Embeddings, LlmError> {
+        let Some(api) = self.provider.embeddings else {
+            return Err(LlmError::new(
+                crate::catalog::refuses(&self.provider, ModelKind::Embedding).unwrap_or_default(),
+            ));
+        };
+        let mut all = Embeddings { vectors: Vec::new(), usage: Usage::default(), model: request.model.name.clone() };
+        for range in chunks(&request.inputs, &api) {
+            let part = EmbeddingRequest { model: request.model, inputs: request.inputs[range].to_vec() };
+            let body = embeddings_body(&part, &api);
+            let expected = part.inputs.len();
+            let answer = crate::retry::with_retries(
+                self.retry_delay,
+                || self.send("/embeddings", &body),
+                |json| parse_embeddings(json, expected),
+            )?;
+            all.vectors.extend(answer.vectors);
+            all.usage.input_tokens += answer.usage.input_tokens;
+            if !answer.model.is_empty() {
+                all.model = answer.model;
+            }
+        }
+        Ok(all)
     }
 }

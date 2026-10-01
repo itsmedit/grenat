@@ -306,6 +306,9 @@ impl<'p> Checker<'p> {
         if !self.is_record(t) {
             return None;
         }
+        if n == "nearest" {
+            return Some(self.nearest_call(cx, span, t, argv));
+        }
         let record = Ty::User(t.into());
         let (ty, effect) = match n {
             "all" | "where" => (Ty::array(record), "db.read"),

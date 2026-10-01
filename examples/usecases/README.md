@@ -19,6 +19,11 @@ block is gone** and each program runs against real services.
 | 8 | [`08_chat.grn`](08_chat.grn) (a Conversation, saved between sessions) | 11 | 0 | yes (terminal) | a chat connector |
 | 9 | [`09_team.grn`](09_team.grn) (planner, writers, critic) | 40 | 0 | yes | — |
 | 10 | [`10_mcp_tools.grn`](10_mcp_tools.grn) (Linear, Notion through MCP) | 27 | 0 | **yes** | — |
+| 11 | [`11_knowledge_base.grn`](11_knowledge_base.grn) (documentation embedded, searched by meaning) | 51 | 0 | **yes** | — |
+
+Case 11 came with phase 13 (embeddings and vector search): where the
+support desk's `search_docs` counts the words a page shares with a query,
+it finds passages by meaning; its tests fake the vectors (`mock_embed`).
 
 Lines of code, without blank lines and comments. A stub is shorter than
 the real code it stands for: with `Http`, cases 2 and 3 grew from 47 to 70

@@ -20,14 +20,16 @@ database Env.get(\"DATABASE_URL\") || \"sqlite://db/development.db\"
 
 pub(crate) const MODELS: &str = "\
 # The application's models: `using :fast` in a prompt, `model :smart` in an
-# agent; the first one is the default. Each provider's key comes from the
+# agent; the first chat model is the default. Each provider's key comes from the
 # credentials (`anthropic:` / `api_key: …`, with `grenat credentials edit`),
 # else from its environment variable (ANTHROPIC_API_KEY, OPENAI_API_KEY…).
 #
 # Providers: anthropic, openai, gemini, mistral, xai, openrouter, groq,
-# deepseek, together, ollama (local, no key).
+# deepseek, together, ollama (local, no key), voyage (embeddings only).
 # Options: temperature, max_tokens, effort, base_url, and price (dollars per
 # million tokens: {input: 1.25, output: 10}) for a model Grenat has no price for.
+# `kind: embedding` makes vectors for `embed` (openai, gemini, mistral, ollama,
+# voyage), with `dimensions` where the provider takes them.
 fast:
   provider: anthropic
   name: claude-haiku-4-5
@@ -37,6 +39,11 @@ smart:
 # local:
 #   provider: ollama
 #   name: llama3.3
+# docs:
+#   provider: openai
+#   name: text-embedding-3-small
+#   kind: embedding
+#   price: {input: 0.02}
 ";
 
 /// `grenat generate` adds its `require`s after the last one.
@@ -200,9 +207,18 @@ pub(crate) fn migration(names: &Names, fields: &[Field], version: &str) -> Strin
 pub(crate) fn record_test(names: &Names, fields: &[Field]) -> String {
     let values: Vec<String> = fields.iter().map(|f| format!("{}: {}", f.name, f.sample())).collect();
     let first = &fields[0].name;
+    // a vector field: the record is the nearest to its own vector
+    let nearest = fields.iter().find(|f| f.is_vector()).map_or(String::new(), |f| {
+        format!(
+            "\ntest \"the __Camel__ nearest to a vector is found\" do\n  saved = __Camel__.create({})\n  assert_equal saved.id, __Camel__.nearest(:{}, saved.{}, limit: 1).first&.id\nend\n",
+            values.join(", "),
+            f.name,
+            f.name
+        )
+    });
     fill(
         &format!(
-            "require \"../../src/app\"\n\ntest \"a __Camel__ is saved, then found\" do\n  saved = __Camel__.create({})\n  assert_equal 1, __Camel__.count\n  assert_equal saved.{first}, __Camel__.find(saved.id)&.{first}\nend\n",
+            "require \"../../src/app\"\n\ntest \"a __Camel__ is saved, then found\" do\n  saved = __Camel__.create({})\n  assert_equal 1, __Camel__.count\n  assert_equal saved.{first}, __Camel__.find(saved.id)&.{first}\nend\n{nearest}",
             values.join(", ")
         ),
         names,

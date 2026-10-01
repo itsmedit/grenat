@@ -185,6 +185,7 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
             let _ = std::fs::remove_dir_all(&journal);
             // each test declares its own mocks
             interp.mocks.borrow_mut().clear();
+            interp.embedding_mocks.borrow_mut().clear();
             interp.http_stubs.borrow_mut().clear();
             interp.shell_stubs.borrow_mut().clear();
             interp.mcp_stubs.borrow_mut().clear();

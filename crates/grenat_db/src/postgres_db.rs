@@ -43,6 +43,7 @@ fn param(cell: &Cell, ty: &Type) -> Option<Box<dyn ToSql + Sync>> {
         (Cell::Null, &Type::INT8) => Box::new(Option::<i64>::None),
         (Cell::Null, &Type::FLOAT4) => Box::new(Option::<f32>::None),
         (Cell::Null, &Type::FLOAT8) => Box::new(Option::<f64>::None),
+        (Cell::Null, &Type::BYTEA) => Box::new(Option::<Vec<u8>>::None),
         (Cell::Null, _) => Box::new(Option::<String>::None),
         (Cell::Bool(b), &Type::BOOL) => Box::new(*b),
         (Cell::Int(n), &Type::INT2) => Box::new(i16::try_from(*n).ok()?),
@@ -53,6 +54,7 @@ fn param(cell: &Cell, ty: &Type) -> Option<Box<dyn ToSql + Sync>> {
         (Cell::Float(f), &Type::FLOAT8) => Box::new(*f),
         (Cell::Float(f), &Type::FLOAT4) => Box::new(*f as f32),
         (Cell::Text(s), &Type::TEXT | &Type::VARCHAR | &Type::BPCHAR | &Type::NAME) => Box::new(s.clone()),
+        (Cell::Blob(b), &Type::BYTEA) => Box::new(b.clone()),
         _ => return None,
     })
 }
@@ -70,6 +72,7 @@ fn cell(row: &postgres::Row, i: usize) -> Result<Cell, String> {
         Type::TEXT | Type::VARCHAR | Type::BPCHAR | Type::NAME => {
             row.try_get::<_, Option<String>>(i).map_err(get)?.map_or(Cell::Null, Cell::Text)
         }
+        Type::BYTEA => row.try_get::<_, Option<Vec<u8>>>(i).map_err(get)?.map_or(Cell::Null, Cell::Blob),
         ref other => {
             return Err(format!(
                 "column `{}` has type `{other}`: cast it in the query (`{}::text`, `::float8`…)",

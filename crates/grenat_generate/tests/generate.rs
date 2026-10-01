@@ -84,6 +84,27 @@ fn a_record_its_migration_and_its_test() {
 }
 
 #[test]
+fn a_record_with_an_embedding() {
+    let dir = app("embeddings");
+    let fields = ["text:String".to_string(), "embedding:Vector(1536)".to_string()];
+    generate(&dir, Kind::Record, "doc", &fields, NOW).unwrap();
+    assert!(read(&dir, "src/records/doc.grn").contains("  text: String\n  embedding: Vector(1536)\nend"));
+    // the column's type is the database's: pgvector, or bytes
+    let migration = read(&dir, "db/migrations/20260921141320_create_docs.grn");
+    assert!(
+        migration.contains(
+            "CREATE TABLE docs (id #{db.primary_key}, text TEXT NOT NULL, embedding #{db.vector(1536)} NOT NULL)"
+        ),
+        "{migration}"
+    );
+    let test = read(&dir, "tests/records/doc_test.grn");
+    assert!(test.contains("Doc.create(text: \"text\", embedding: (1..1536).map { |i| i.to_f })"), "{test}");
+    assert!(test.contains("Doc.nearest(:embedding, saved.embedding, limit: 1).first&.id"), "{test}");
+    let refused = generate(&dir, Kind::Record, "note", &["e:Vector(0)".to_string()], NOW).unwrap_err();
+    assert!(refused.contains("1 to 16000 dimensions"), "{refused}");
+}
+
+#[test]
 fn workflows_tools_and_evals() {
     let dir = app("parts");
     generate(&dir, Kind::Workflow, "onboard", &[], NOW).unwrap();

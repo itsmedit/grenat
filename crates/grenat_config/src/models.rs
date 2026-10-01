@@ -9,6 +9,12 @@
 //!   provider: openai
 //!   name: gpt-5
 //!   price: {input: 1.25, output: 10}
+//! docs:                       # vectors for `embed`, not prompts
+//!   provider: voyage
+//!   name: voyage-3.5
+//!   kind: embedding
+//!   dimensions: 1024
+//!   price: {input: 0.06}
 //! ```
 //!
 //! Each entry becomes `model :fast, provider: :anthropic, name: '…'`, so the
@@ -21,7 +27,7 @@ use yaml_rust2::Yaml;
 pub const FILE: &str = "config/models.yml";
 
 /// Options whose value is a name (a symbol), not a text.
-const SYMBOLS: [&str; 2] = ["provider", "effort"];
+const SYMBOLS: [&str; 3] = ["provider", "effort", "kind"];
 
 /// The declarations `yaml` stands for, one per line, in its order.
 pub fn declarations(yaml: &str) -> Result<String, String> {
@@ -129,6 +135,12 @@ local:
   base_url: http://gpu:11434/v1
   fallbacks: false
   temperature:
+docs:
+  provider: openai
+  name: text-embedding-3-small
+  kind: embedding
+  dimensions: 512
+  price: {input: 0.02}
 ";
         assert_eq!(
             declarations(yaml).unwrap(),
@@ -136,6 +148,7 @@ local:
 model :fast, provider: :anthropic, name: 'claude-haiku-4-5', temperature: 0.2
 model :smart, provider: :openai, name: 'gpt-5', effort: :low, max_tokens: 4000, price: {input: 1.25, output: 10}
 model :local, provider: :ollama, name: 'it\\'s #{here}', base_url: 'http://gpu:11434/v1', fallbacks: false
+model :docs, provider: :openai, name: 'text-embedding-3-small', kind: :embedding, dimensions: 512, price: {input: 0.02}
 "
         );
         assert_eq!(declarations("").unwrap(), "");

@@ -1,0 +1,22 @@
+require "./11_knowledge_base"
+
+test "pages are cut into passages, embedded in one request each" do
+  mock_embed :docs
+  assert_equal 4, index("kb")
+  assert_equal 2, Passage.where(source: "refunds.md").size
+end
+
+test "the passages nearest a question are found by meaning" do
+  mock_embed :docs
+  index("kb")
+  assert_equal "refunds.md", search("How do I ask for a refund?", 1).first&.source
+  assert_equal "export.md", search("export my invoices to CSV", 1).first&.source
+end
+
+test "the answer comes from the passages found" do
+  mock_embed :docs
+  index("kb")
+  mock :fast, replies: [{answer: "From Settings > Billing > Refund, within 30 days.", sources: ["refunds.md"], found: true}]
+  reply = ask("How do I ask for a refund?").check { |r| r.found && r.sources.any? }?
+  assert_equal ["refunds.md"], reply.sources
+end

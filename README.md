@@ -23,7 +23,7 @@ end
 ```
 
 - Specification: [`SPEC.md`](SPEC.md)
-- Examples: [`basics.grn`](examples/basics.grn), [`reviews.grn`](examples/reviews.grn) (native statistics + validated LLM analysis), [`explorer.grn`](examples/explorer.grn) (a real agent), [`support_desk.grn`](examples/support_desk.grn) (multi-agent, human approval), [`triage.grn`](examples/triage.grn) (tests with mocks, evals with an LLM judge), [`macros.grn`](examples/macros.grn) (compile-time code generation), [`usecases/`](examples/usecases) (ten agent use cases, the phase 7 target)
+- Examples: [`basics.grn`](examples/basics.grn), [`reviews.grn`](examples/reviews.grn) (native statistics + validated LLM analysis), [`explorer.grn`](examples/explorer.grn) (a real agent), [`support_desk.grn`](examples/support_desk.grn) (multi-agent, human approval), [`triage.grn`](examples/triage.grn) (tests with mocks, evals with an LLM judge), [`macros.grn`](examples/macros.grn) (compile-time code generation), [`usecases/`](examples/usecases) (agent use cases: the ten of the phase 7 target, and a knowledge base searched by meaning)
 
 ## Status
 
@@ -235,7 +235,7 @@ end })
 | `grenat_lexer` | tokens, interpolation, heredocs, `##` doc comments |
 | `grenat_ast` | syntax tree |
 | `grenat_parser` | recursive descent + Pratt, diagnostics with error recovery |
-| `grenat_llm` | model providers: the catalog, Anthropic's Messages API and Chat Completions (OpenAI, Gemini, Mistral, Ollama…); mocks, cassettes and a scripted provider for tests |
+| `grenat_llm` | model providers: the catalog, Anthropic's Messages API and Chat Completions (OpenAI, Gemini, Mistral, Ollama…), embeddings (those and Voyage); mocks, fake embeddings, cassettes and a scripted provider for tests |
 | `grenat_types` | checker: names, types, effects, `~T` taint (E0100–E0500) |
 | `grenat_codegen` | Cranelift: typing, liveness (Perceus), translation, boundary; JIT and object files; LLVM IR for release builds |
 | `grenat_runtime` | reference-counted strings, arrays and records called by native code |
@@ -243,7 +243,7 @@ end })
 | `grenat_host` | static library linked into the executables of `grenat build` |
 | `grenat_standalone` | static library linked into `grenat build --native` executables |
 | `grenat_report` | diagnostic rendering, in the file each error points into |
-| `grenat_db` | databases: SQLite (embedded) and PostgreSQL behind one interface |
+| `grenat_db` | databases: SQLite (embedded) and PostgreSQL behind one interface; vectors (pgvector, or bytes searched by brute force) |
 | `grenat_mcp` | the Model Context Protocol: a client (stdio and HTTP), and the server side of `expose` |
 | `grenat_ssh` | SSH and SFTP: host keys verified, commands quoted, SOCKS5 proxies, a blocking API; a real server in process for tests |
 | `grenat_serve` | triggers: cron schedules, webhook signatures, the HTTP server of `grenat serve` |

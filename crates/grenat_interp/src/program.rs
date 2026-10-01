@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use grenat_ast::{Arg, Directive, Field, FnDef, Handler, Item, Member, TypeDef, TypeKind, Variant};
-use grenat_llm::ModelConfig;
+use grenat_llm::{ModelConfig, ModelKind};
 
 use crate::value::{Locked, Value};
 use crate::*;
@@ -33,6 +33,7 @@ impl<'p> Interp<'p> {
     pub(crate) fn model_config(&mut self, decl: &'p grenat_ast::ModelDecl) -> Result<ModelConfig, Ctrl<'p>> {
         let mut config = ModelConfig::new("anthropic", "");
         let mut fallbacks = None;
+        let mut prices = None;
         for option in &decl.options {
             let Arg::Named { name, value: Some(expr) } = option else {
                 return raise("ArgumentError", format!("invalid option for model `:{}`", decl.name.name));
@@ -47,7 +48,12 @@ impl<'p> Interp<'p> {
                 ("effort", Value::Symbol(s) | Value::Str(s)) => config.effort = Some(s.to_string()),
                 ("fallbacks", Value::Bool(b)) => fallbacks = Some(b),
                 ("base_url", Value::Str(url) | Value::Secret(url)) => config.base_url = Some(url.to_string()),
-                ("price", Value::Hash(pairs)) => config.price = Some(price(&pairs.borrow(), &decl.name.name)?),
+                ("price", Value::Hash(pairs)) => prices = Some(pairs.borrow().clone()),
+                ("kind", Value::Symbol(s) | Value::Str(s)) if &*s == "chat" => config.kind = ModelKind::Chat,
+                ("kind", Value::Symbol(s) | Value::Str(s)) if &*s == "embedding" => config.kind = ModelKind::Embedding,
+                ("dimensions", Value::Int(n)) if n > 0 && n <= i64::from(u32::MAX) => {
+                    config.dimensions = Some(n as u32)
+                }
                 (option, value) => {
                     return raise(
                         "ArgumentError",
@@ -59,7 +65,7 @@ impl<'p> Interp<'p> {
         if config.name.is_empty() {
             return raise("ArgumentError", format!("model `:{}` has no `name:`", decl.name.name));
         }
-        if grenat_llm::catalog::provider(&config.provider).is_none() {
+        let Some(provider) = grenat_llm::catalog::provider(&config.provider) else {
             return raise(
                 "ArgumentError",
                 format!(
@@ -69,6 +75,18 @@ impl<'p> Interp<'p> {
                     grenat_llm::catalog::names()
                 ),
             );
+        };
+        if let Some(refusal) = grenat_llm::catalog::refuses(provider, config.kind) {
+            return raise("ArgumentError", format!("model `:{}`: {refusal}", decl.name.name));
+        }
+        if config.dimensions.is_some() && config.kind == ModelKind::Chat {
+            return raise(
+                "ArgumentError",
+                format!("model `:{}`: `dimensions:` is for embedding models (`kind: :embedding`)", decl.name.name),
+            );
+        }
+        if let Some(pairs) = prices {
+            config.price = Some(price(&pairs, &decl.name.name, config.kind)?);
         }
         config.fallbacks = fallbacks.unwrap_or_else(|| ModelConfig::new("", config.name.as_str()).fallbacks);
         Ok(config)
@@ -174,7 +192,9 @@ impl<'p> TypeInfo<'p> {
 }
 
 /// `price: {input: 1.25, output: 10}`: dollars per million tokens.
-fn price<'p>(pairs: &[(Value<'p>, Value<'p>)], model: &str) -> Result<(f64, f64), Ctrl<'p>> {
+/// `{input: …, output: …}`, dollars per million tokens; an embedding model
+/// has no output, hence no output price.
+fn price<'p>(pairs: &[(Value<'p>, Value<'p>)], model: &str, kind: ModelKind) -> Result<(f64, f64), Ctrl<'p>> {
     let get = |name: &str| {
         pairs.iter().find(|(k, _)| k.to_display() == name).and_then(|(_, v)| match v {
             Value::Int(n) => Some(*n as f64),
@@ -182,7 +202,8 @@ fn price<'p>(pairs: &[(Value<'p>, Value<'p>)], model: &str) -> Result<(f64, f64)
             _ => None,
         })
     };
-    match (get("input"), get("output")) {
+    let output = get("output").or((kind == ModelKind::Embedding).then_some(0.0));
+    match (get("input"), output) {
         (Some(input), Some(output)) if input >= 0.0 && output >= 0.0 => Ok((input, output)),
         _ => raise(
             "ArgumentError",
