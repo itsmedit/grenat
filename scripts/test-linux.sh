@@ -22,7 +22,7 @@ docker run --rm $platform \
         echo "Linux $(uname -m)"
         # clang, for release builds (LLVM)
         (apt-get update -qq && apt-get install -y -qq clang >/dev/null 2>&1) || echo "no clang: release builds not tested"
-        mkdir -p /work && cd /src && tar --exclude=./target -cf - . | (cd /work && tar -xf -)
+        mkdir -p /work && cd /src && tar --exclude=./target --exclude=./.claude --exclude=./.idea -cf - . | (cd /work && tar -xf -)
         cd /work
         # linking every test program at once exhausts a small Docker VM
         export CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
