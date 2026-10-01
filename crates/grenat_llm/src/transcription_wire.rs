@@ -223,7 +223,11 @@ mod tests {
         let mut aiff = request(&whisper, false);
         aiff.media_type = "audio/aiff".into();
         let e = check(&aiff, &api).unwrap_err();
-        assert_eq!(e.message, "`whisper-1` transcribes flac, mp3, m4a, ogg, opus, wav, webm audio, not `audio/aiff`");
+        assert_eq!(e.message, "`whisper-1` transcribes flac, mp3, m4a, ogg, wav, webm audio, not `audio/aiff`");
+        // OpenAI lists no `.opus` file
+        let mut opus = request(&whisper, false);
+        opus.media_type = "audio/opus".into();
+        assert!(check(&opus, &api).unwrap_err().message.ends_with("audio, not `audio/opus`"));
         // 25 MB and a byte: 26,214,401 bytes are 34,952,536 characters of base64
         let mut large = request(&whisper, false);
         large.data = format!("{}=", "A".repeat(34_952_535));

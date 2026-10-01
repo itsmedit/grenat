@@ -476,3 +476,28 @@ end
         ]
     );
 }
+
+/// A pipe says no size: `Audio.read` stops reading it at the limit.
+#[cfg(unix)]
+#[test]
+fn a_pipe_is_read_no_further_than_the_limit() {
+    let path = temp_dir("pipe").join("live.mp3");
+    let made = std::process::Command::new("mkfifo").arg(&path).status().unwrap();
+    assert!(made.success());
+    let fifo = path.clone();
+    // 30 MiB, written as long as someone reads
+    let writer = std::thread::spawn(move || {
+        let mut pipe = std::fs::OpenOptions::new().write(true).open(&fifo).unwrap();
+        let block = vec![0u8; 1024 * 1024];
+        (0..30).map(|_| pipe.write_all(&block)).take_while(Result::is_ok).count()
+    });
+    assert_eq!(
+        errors(&format!("test \"a pipe\" do\n  Audio.read(\"{}\")\nend\n", path.display())),
+        [format!(
+            "ArgumentError: `{}` is over 25 MB: audio is given to models up to 26214400 bytes (25 MB) — compress it (mp3, m4a) or split it into parts",
+            path.display()
+        )]
+    );
+    // the reader went away before the end
+    assert!(writer.join().unwrap() < 30);
+}

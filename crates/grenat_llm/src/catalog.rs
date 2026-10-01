@@ -143,10 +143,11 @@ pub const PROVIDERS: &[Catalogued] = &[
         // through Chat Completions (the Responses API takes no audio), by
         // its audio models (`gpt-audio`…); its limit is not documented
         audio_input: Some(AudioInput { formats: &["wav", "mp3"], max_encoded_bytes: None }),
-        // 25 MB (26,214,400 bytes)
+        // 25 MB (26,214,400 bytes); the formats its API reference lists
+        // (no `.opus`: Opus audio goes up in an Ogg file, `.ogg`)
         transcription: Some(TranscriptionApi {
             max_bytes: 25 * MB,
-            formats: &["flac", "mp3", "m4a", "ogg", "opus", "wav", "webm"],
+            formats: &["flac", "mp3", "m4a", "ogg", "wav", "webm"],
         }),
     },
     // Google's OpenAI-compatible endpoint for Gemini
