@@ -50,6 +50,41 @@ impl<'p> Interp<'p> {
         0.0
     }
 
+    /// What a call cost, counted by budgets and recorded in the ledger: the
+    /// attempt that answered, and each attempt billed besides it (a model
+    /// that declined after writing, before a fallback answered), each at
+    /// its own model's rates.
+    pub(crate) fn account(&mut self, request: &Request, response: &Response, batched: bool) -> f64 {
+        self.llm_calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let attempts: Vec<(String, grenat_llm::Usage)> = std::iter::once((response.model.clone(), response.usage))
+            .chain(response.declined.iter().map(|a| (a.model.clone(), a.usage)))
+            .collect();
+        // a batch costs half, where the provider has a batch API
+        let discounted = catalog::provider(&request.model.provider).is_some_and(|p| p.protocol == Protocol::Anthropic);
+        let mut total = 0.0;
+        for (model, usage) in &attempts {
+            let (billed, cost) = self.attempt_cost(request.model, model, usage);
+            let cost = if batched && discounted { cost / 2.0 } else { cost };
+            for budget in &self.budgets {
+                budget.add(cost, usage.total_tokens());
+            }
+            self.record_call(&billed, usage, cost);
+            total += cost;
+        }
+        total
+    }
+
+    /// The model billed for an attempt, and its cost: at the price given for
+    /// the model asked; else, after a server-side fallback, at the rates of
+    /// the model that ran it.
+    fn attempt_cost(&mut self, asked: &ModelConfig, ran: &str, usage: &grenat_llm::Usage) -> (String, f64) {
+        match (asked.price, cost_usd(ran, usage)) {
+            (Some(price), _) => (asked.name.clone(), cost_at(price, usage)),
+            (None, Some(cost)) => (ran.to_string(), cost),
+            (None, None) => (asked.name.clone(), self.price_or_warn(asked, usage)),
+        }
+    }
+
     /// Who answers for `model`: its mock, else the enclosing cassette, else
     /// the forced provider, else the real one (never in offline runs).
     pub(crate) fn provider(&mut self, model: &ModelConfig) -> Result<Arc<dyn grenat_llm::Provider>, Ctrl<'p>> {
@@ -180,29 +215,19 @@ impl<'p> Interp<'p> {
         started: Instant,
         batched: bool,
     ) -> Result<Response, Ctrl<'p>> {
-        self.llm_calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        // the price given for the model; else, after a server-side fallback,
-        // the model that actually answered is billed
-        let (billed, cost) = match (request.model.price, cost_usd(&response.model, &response.usage)) {
-            (Some(price), _) => (request.model.name.clone(), cost_at(price, &response.usage)),
-            (None, Some(cost)) => (response.model.clone(), cost),
-            (None, None) => (request.model.name.clone(), self.price_or_warn(request.model, &response.usage)),
-        };
-        // a batch costs half, where the provider has a batch API
-        let discounted = catalog::provider(&request.model.provider).is_some_and(|p| p.protocol == Protocol::Anthropic);
-        let cost = if batched && discounted { cost / 2.0 } else { cost };
-        for budget in &self.budgets {
-            budget.add(cost, response.usage.total_tokens());
-        }
-        self.record_call(&billed, &response.usage, cost);
+        let cost = self.account(request, &response, batched);
         if self.log {
             let usage = &response.usage;
             let cached = match (usage.cache_read_input_tokens, usage.cache_creation_input_tokens) {
                 (0, 0) => String::new(),
                 (read, written) => format!(" ({read} cached, {written} to cache)"),
             };
+            let declined = match response.declined.len() {
+                0 => String::new(),
+                n => format!(" ({n} declined attempt(s) included)"),
+            };
             let line = format!(
-                "[llm] {} · {} in{cached} / {} out · {} · {:.1}s\n",
+                "[llm] {} · {} in{cached} / {} out · {}{declined} · {:.1}s\n",
                 request.model.name,
                 usage.prompt_tokens(),
                 usage.output_tokens,

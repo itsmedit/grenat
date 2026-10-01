@@ -4,7 +4,7 @@
 mod common;
 
 use common::*;
-use grenat_interp::{Response, Scripted};
+use grenat_interp::{Attempt, Response, Scripted};
 use grenat_ops::calls;
 use serde_json::{Value as Json, json};
 
@@ -114,6 +114,45 @@ elsewhere(\"b\")
     let expected = (100.0 * 2.0 + 9_000.0 * 0.5 + 20.0 * 8.0) / 1_000_000.0;
     assert!((given.cost_usd - expected).abs() < 1e-12, "{} != {expected}", given.cost_usd);
     assert!((calls::cached_share(&recorded) - 18_000.0 / 19_200.0).abs() < 1e-12);
+}
+
+#[test]
+fn an_attempt_declined_after_writing_is_counted_recorded_and_priced() {
+    let path = temp_dir("declined-ledger").join("app.db");
+    let url = format!("sqlite://{}", path.display());
+    let src = format!(
+        "database \"{url}\"
+{MODELS}prompt ask(t: String) -> ~String using :fast
+  user t
+end
+within budget(usd: 0.04) do
+  ask(\"a\")
+end
+"
+    );
+    // Opus 5 declined after 2,000 tokens; Opus 4.8 answered
+    let mut reply = Response::text_reply("ok");
+    reply.model = "claude-opus-4-8".into();
+    reply.usage.input_tokens = 1_000;
+    reply.usage.output_tokens = 100;
+    let mut declined = reply.usage;
+    declined.output_tokens = 2_000;
+    reply.declined = vec![Attempt { model: "claude-opus-5".into(), usage: declined }];
+    let mode = Mode { log: true, ..Mode::default() };
+    let r = run_mode(&src, Scripted::new([reply]), &[], &[], mode);
+    // $0.0075 answered, $0.055 declined: over the budget
+    let e = r.result.unwrap_err();
+    assert_eq!(e.ty, "BudgetExceeded", "{}", e.message);
+    assert!(r.output.contains("(1 declined attempt(s) included)"), "{}", r.output);
+    let recorded = calls::since(grenat_db::connect(&url).unwrap().as_mut(), 0.0).unwrap();
+    let rows: Vec<(&str, i64, i64)> =
+        recorded.iter().map(|c| (c.model.as_str(), c.input_tokens, c.output_tokens)).collect();
+    assert_eq!(rows, [("claude-opus-4-8", 1_000, 100), ("claude-opus-5", 1_000, 2_000)]);
+    // each at its own model's rates: Opus 4.8 $5 / $25, Opus 5 $5 / $25 a million
+    let expected = [(1_000.0 * 5.0 + 100.0 * 25.0) / 1e6, (1_000.0 * 5.0 + 2_000.0 * 25.0) / 1e6];
+    for (call, expected) in recorded.iter().zip(expected) {
+        assert!((call.cost_usd - expected).abs() < 1e-12, "{} != {expected}", call.cost_usd);
+    }
 }
 
 #[test]

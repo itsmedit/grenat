@@ -37,7 +37,7 @@ pub use console::console;
 pub use eval::records::migrate;
 pub use evals::{EvalReport, RowOutcome, run_evals};
 use grenat_ast::{Program, Span};
-pub use grenat_llm::{ModelConfig, Provider, Response, Scripted};
+pub use grenat_llm::{Attempt, ModelConfig, Provider, Response, Scripted};
 pub use serve::serve;
 use value::Locked;
 pub use value::Value;

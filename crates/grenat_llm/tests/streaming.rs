@@ -306,7 +306,16 @@ fn after_a_decline_mid_answer_the_fallback_model_goes_on() {
         json!({"type": "content_block_start", "index": 1, "content_block": {"type": "fallback", "from": {"model": "claude-opus-5"}, "to": {"model": "claude-opus-4-8"}}}),
     ));
     events.extend([block_stop(1), text_block(2), text_delta(2, " a time."), block_stop(2)]);
-    events.extend(message_end("end_turn", 12));
+    // the last usage says what each attempt cost
+    let iterations = json!([
+        {"type": "message", "model": "claude-opus-5", "input_tokens": 5, "output_tokens": 2000, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+        {"type": "fallback_message", "model": "claude-opus-4-8", "input_tokens": 9, "output_tokens": 12, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+    ]);
+    events.push((
+        "message_delta",
+        json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 12, "iterations": iterations}}),
+    ));
+    events.push(("message_stop", json!({"type": "message_stop"})));
     let (url, _) = serve(vec![stream(&sse(&events), 32)]);
     let model = ModelConfig::new("anthropic", "claude-opus-5");
     let (response, pieces) = collect(&anthropic(&url), &ask(&model));
@@ -316,6 +325,10 @@ fn after_a_decline_mid_answer_the_fallback_model_goes_on() {
     // the model that finished the answer is billed
     assert_eq!(response.model, "claude-opus-4-8");
     assert_eq!(response.content[1]["type"], "fallback");
+    // and the attempt that declined after writing, at its own model
+    assert_eq!(response.declined.len(), 1);
+    assert_eq!(response.declined[0].model, "claude-opus-5");
+    assert_eq!((response.declined[0].usage.input_tokens, response.declined[0].usage.output_tokens), (5, 2000));
 }
 
 // ── Chat Completions ──────────────────────────────────────────

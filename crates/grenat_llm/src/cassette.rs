@@ -112,28 +112,44 @@ fn response_to_json(r: &Response) -> Json {
         "content": r.content,
         "stop_reason": r.stop_reason,
         "model": r.model,
-        "usage": {
-            "input_tokens": r.usage.input_tokens,
-            "output_tokens": r.usage.output_tokens,
-            "cache_creation_input_tokens": r.usage.cache_creation_input_tokens,
-            "cache_read_input_tokens": r.usage.cache_read_input_tokens,
-            "cache_creation_1h_input_tokens": r.usage.cache_creation_1h_input_tokens,
-        },
+        "usage": usage_to_json(&r.usage),
+        "declined": r.declined.iter().map(|a| json!({"model": a.model, "usage": usage_to_json(&a.usage)})).collect::<Vec<_>>(),
+    })
+}
+
+fn usage_to_json(usage: &Usage) -> Json {
+    json!({
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "cache_creation_input_tokens": usage.cache_creation_input_tokens,
+        "cache_read_input_tokens": usage.cache_read_input_tokens,
+        "cache_creation_1h_input_tokens": usage.cache_creation_1h_input_tokens,
     })
 }
 
 fn response_from_json(json: &Json) -> Response {
-    let tokens = |key: &str| json["usage"][key].as_u64().unwrap_or(0);
+    let declined = json["declined"].as_array().into_iter().flatten();
     Response {
         content: json["content"].as_array().cloned().unwrap_or_default(),
         stop_reason: json["stop_reason"].as_str().unwrap_or("end_turn").to_string(),
         model: json["model"].as_str().unwrap_or_default().to_string(),
-        usage: Usage {
-            input_tokens: tokens("input_tokens"),
-            output_tokens: tokens("output_tokens"),
-            cache_creation_input_tokens: tokens("cache_creation_input_tokens"),
-            cache_read_input_tokens: tokens("cache_read_input_tokens"),
-            cache_creation_1h_input_tokens: tokens("cache_creation_1h_input_tokens"),
-        },
+        usage: usage_from_json(&json["usage"]),
+        declined: declined
+            .map(|a| Attempt {
+                model: a["model"].as_str().unwrap_or_default().to_string(),
+                usage: usage_from_json(&a["usage"]),
+            })
+            .collect(),
+    }
+}
+
+fn usage_from_json(usage: &Json) -> Usage {
+    let tokens = |key: &str| usage[key].as_u64().unwrap_or(0);
+    Usage {
+        input_tokens: tokens("input_tokens"),
+        output_tokens: tokens("output_tokens"),
+        cache_creation_input_tokens: tokens("cache_creation_input_tokens"),
+        cache_read_input_tokens: tokens("cache_read_input_tokens"),
+        cache_creation_1h_input_tokens: tokens("cache_creation_1h_input_tokens"),
     }
 }

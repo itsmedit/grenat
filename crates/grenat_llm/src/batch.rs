@@ -2,7 +2,8 @@
 //! answered within 24 hours (usually minutes).
 //!
 //! Submit, look at the batch until it has ended, then read its results
-//! (JSON Lines, one per request, by `custom_id`).
+//! (JSON Lines, one per request, by `custom_id`). Server-side fallback
+//! is not available there: no item asks for it.
 
 use serde_json::{Value as Json, json};
 
@@ -13,11 +14,8 @@ pub(crate) fn run(client: &Anthropic, requests: &[Request]) -> Result<Vec<Result
     if requests.is_empty() {
         return Ok(Vec::new());
     }
-    let items: Vec<Json> = requests
-        .iter()
-        .enumerate()
-        .map(|(i, r)| json!({"custom_id": format!("r{i}"), "params": request_body(r)}))
-        .collect();
+    let items: Vec<Json> =
+        requests.iter().enumerate().map(|(i, r)| json!({"custom_id": format!("r{i}"), "params": params(r)})).collect();
     let base = client.base_url();
     let created =
         expect_json(client.call("POST", &format!("{base}/v1/messages/batches"), Some(&json!({"requests": items}))))?;
@@ -55,6 +53,16 @@ pub(crate) fn run(client: &Anthropic, requests: &[Request]) -> Result<Vec<Result
         };
     }
     Ok(results)
+}
+
+/// A request as a batch item takes it: without `fallbacks`, which the
+/// Batches API does not take (an item carrying it comes back errored).
+fn params(request: &Request) -> Json {
+    let mut body = request_body(request);
+    if let Some(fields) = body.as_object_mut() {
+        fields.remove("fallbacks");
+    }
+    body
 }
 
 fn expect_json(reply: Result<(u16, String), String>) -> Result<Json, LlmError> {

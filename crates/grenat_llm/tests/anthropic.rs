@@ -123,6 +123,38 @@ fn sends_a_well_formed_request_and_parses_the_reply() {
 }
 
 #[test]
+fn the_attempts_a_fallback_followed_are_read_from_the_iterations() {
+    let mut reply = message("Hi");
+    reply["model"] = json!("claude-opus-4-8");
+    reply["usage"] = json!({
+        "input_tokens": 412, "output_tokens": 264, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,
+        "iterations": [
+            // declined before writing: billed in some categories only, not named here
+            {"type": "message", "model": "claude-fable-5", "input_tokens": 535, "output_tokens": 0},
+            // declined after writing: billed
+            {"type": "message", "model": "claude-opus-5", "input_tokens": 400, "output_tokens": 2000, "cache_read_input_tokens": 100, "cache_creation_input_tokens": 0},
+            {"type": "fallback_message", "model": "claude-opus-4-8", "input_tokens": 412, "output_tokens": 264}
+        ]
+    });
+    // without a fallback, iterations are not attempts besides the answer
+    let mut alone = message("Hi");
+    alone["usage"]["iterations"] =
+        json!([{"type": "message", "model": "claude-opus-5", "input_tokens": 12, "output_tokens": 3}]);
+    let (url, _) = serve(vec![(200, vec![], reply), (200, vec![], alone)]);
+    let model = ModelConfig::new("anthropic", "claude-opus-5");
+    let response = client(&url).complete(&request(&model)).unwrap();
+    assert_eq!((response.model.as_str(), response.usage.output_tokens), ("claude-opus-4-8", 264));
+    assert_eq!(response.declined.len(), 1);
+    let declined = &response.declined[0];
+    assert_eq!(declined.model, "claude-opus-5");
+    assert_eq!(
+        (declined.usage.input_tokens, declined.usage.output_tokens, declined.usage.cache_read_input_tokens),
+        (400, 2000, 100)
+    );
+    assert!(client(&url).complete(&request(&model)).unwrap().declined.is_empty());
+}
+
+#[test]
 fn an_agent_s_prefix_is_cached_and_what_the_cache_did_is_read_back() {
     let mut reply = message("ok");
     reply["usage"] = json!({
@@ -236,4 +268,23 @@ fn a_batch_is_submitted_polled_and_read_in_order() {
     assert_eq!(items[2]["custom_id"], "r2");
     assert_eq!(items[0]["params"]["model"], "claude-haiku-4-5");
     assert_eq!(received[3].headers["x-api-key"], received[0].headers["x-api-key"]);
+}
+
+#[test]
+fn a_batch_never_asks_for_server_side_fallback() {
+    let jsonl = format!("{}\n", json!({"custom_id": "r0", "result": {"type": "succeeded", "message": message("ok")}}));
+    let (url, received) = serve(vec![
+        (200, vec![], json!({"id": "b1", "processing_status": "ended", "results_url": "BASE/results/b1"})),
+        (200, vec![], Json::String(jsonl)),
+    ]);
+    // fallbacks by default for claude-opus-5, sent to the Messages API
+    let model = ModelConfig::new("anthropic", "claude-opus-5");
+    assert!(model.fallbacks);
+    let client = client(&url).with_poll_interval(Duration::from_millis(5));
+    assert_eq!(client.batch(&[request(&model)]).unwrap()[0].as_ref().unwrap().text(), "ok");
+    let received = received.lock().unwrap();
+    let params = &received[0].body["requests"][0]["params"];
+    assert_eq!(params["model"], "claude-opus-5");
+    assert!(params.get("fallbacks").is_none(), "{params}");
+    assert!(!received[0].headers.contains_key("anthropic-beta"));
 }

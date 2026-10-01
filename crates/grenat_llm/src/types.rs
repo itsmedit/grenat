@@ -163,8 +163,19 @@ pub struct Response {
     /// Raw content blocks, to be sent back unchanged in the history.
     pub content: Vec<Json>,
     pub stop_reason: String,
+    /// What the model that answered (`model`) used.
     pub usage: Usage,
     pub model: String,
+    /// The attempts billed besides it: models that declined after writing
+    /// part of an answer, before a server-side fallback answered.
+    pub declined: Vec<Attempt>,
+}
+
+/// An attempt of a call, billed at its own model's rates.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Attempt {
+    pub model: String,
+    pub usage: Usage,
 }
 
 impl Response {
@@ -205,6 +216,7 @@ impl Response {
             stop_reason: stop_reason.into(),
             usage: Usage { input_tokens: 100, output_tokens: 20, ..Usage::default() },
             model: "scripted".into(),
+            declined: Vec::new(),
         }
     }
 

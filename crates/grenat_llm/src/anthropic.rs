@@ -65,7 +65,7 @@ impl Anthropic {
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json");
-        if body.is_some_and(|b| b.to_string().contains("\"fallbacks\"")) {
+        if body.is_some_and(|b| b.get("fallbacks").is_some()) {
             builder = builder.header("anthropic-beta", "server-side-fallback-2026-07-01");
         }
         let request =

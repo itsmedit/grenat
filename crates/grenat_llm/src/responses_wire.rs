@@ -154,5 +154,6 @@ pub(crate) fn parse_responses(body: &Json) -> Result<Response, LlmError> {
             tokens(&usage["output_tokens"]),
         ),
         model: body["model"].as_str().unwrap_or_default().to_string(),
+        declined: Vec::new(),
     })
 }

@@ -210,5 +210,6 @@ pub(crate) fn parse_chat(body: &Json) -> Result<Response, LlmError> {
             tokens(&usage["completion_tokens"]),
         ),
         model: body["model"].as_str().unwrap_or_default().to_string(),
+        declined: Vec::new(),
     })
 }
