@@ -1,0 +1,57 @@
+require "../src/lib"
+
+PAGE = <<~HTML
+  <html>
+    <head><title>The shop</title></head>
+    <body>
+      <h1 class="title">  Our   shop </h1>
+      <ul id="menu">
+        <li class="item">Tea</li>
+        <li class="item sale">Coffee <b>-20%</b></li>
+        <li>Water &amp; ice</li>
+      </ul>
+      <img src="/tea.png" alt="Tea"><img alt="no source"><img src="cake.png">
+    </body>
+  </html>
+HTML
+
+test "select gives the text of each match, in document order" do
+  assert_equal ["Tea", "Coffee -20%", "Water & ice"], select(PAGE, "#menu li")
+  assert_equal ["Tea", "Coffee -20%"], select(PAGE, "li.item")
+  assert_equal ["Our shop"], select(PAGE, "h1.title")
+  assert_equal ["The shop"], select(PAGE, "title")
+  assert_equal [], select(PAGE, "table")
+  assert_equal ["one", "two"], select("<p>one</p><p>two</p>", "p")
+end
+
+test "select_attr gives an attribute of each match that has it" do
+  assert_equal ["/tea.png", "cake.png"], select_attr(PAGE, "img", "src")
+  assert_equal ["Tea", "no source"], select_attr(PAGE, "img", "alt")
+  assert_equal ["item", "item sale"], select_attr(PAGE, "li", "class")
+  assert_equal [], select_attr(PAGE, "img", "title")
+end
+
+test "select_html gives the outer HTML of each match" do
+  assert_equal ["<li class=\"item sale\">Coffee <b>-20%</b></li>"], select_html(PAGE, "li.sale")
+  assert_equal ["<b>-20%</b>"], select_html(PAGE, "li b")
+end
+
+test "the Grenat conveniences" do
+  assert_equal "Tea", select_first(PAGE, "li")
+  assert_equal nil, select_first(PAGE, "nav")
+  assert matches?(PAGE, "img[src]")
+  assert !matches?(PAGE, "nav a")
+end
+
+test "an invalid selector raises an HtmlError naming it" do
+  e = assert_raises(HtmlError) { select(PAGE, "li[") }
+  assert_equal "invalid CSS selector `li[`: it ends too early", e.message
+  e = assert_raises(HtmlError) { select_attr(PAGE, "p >", "href") }
+  assert_equal "invalid CSS selector `p >`: dangling combinator", e.message
+  e = assert_raises(HtmlError) { select_html(PAGE, "") }
+  assert_equal "invalid CSS selector ``: it is empty", e.message
+  e = assert_raises(HtmlError) { select_attr(PAGE, "img", "") }
+  assert_equal "an attribute name is needed: `href`, `src`…", e.message
+  e = assert_raises(HtmlError) { select_first(PAGE, "::") }
+  assert e.message.start_with?("invalid CSS selector `::`: ")
+end

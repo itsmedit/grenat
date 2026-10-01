@@ -1,0 +1,37 @@
+# The facet `html`: CSS selectors on HTML.
+#
+# Its native functions (Rust, `native/src/lib.rs`), declared by `setter install`:
+#   select(html, selector)                 the text of each match
+#   select_attr(html, selector, attribute) an attribute of each match that has it
+#   select_html(html, selector)            the outer HTML of each match
+#   links(html, base_url)                  the absolute URLs of the page's links
+#   all_links(html, base_url)              the same, `javascript:` and `mailto:` included
+#   table(html, selector)                  the rows of a table, as text
+# All are pure: what they return is as trusted as the HTML they are given.
+# An invalid selector or base URL raises an `HtmlError`.
+#
+# Below, conveniences written in Grenat on top of them.
+
+## The text of the first element `selector` matches in `html`, or nil.
+def select_first(html: String, selector: String) -> String?
+  select(html, selector).first
+end
+
+## Whether `selector` matches at least one element of `html`.
+def matches?(html: String, selector: String) -> Bool
+  !select_html(html, selector).empty?
+end
+
+## The rows of the first table `selector` matches, its first row naming the
+## columns: a hash per following row, from each column's name to the row's
+## cell in that column ("" where the row is shorter).
+def table_records(html: String, selector: String) -> Array(Hash(String, String))
+  rows = table(html, selector)
+  return [] if rows.empty?
+  header = rows.first
+  rows.drop(1).map do |row|
+    record = {}
+    header.each_with_index { |name, i| record[name] = row[i] || "" }
+    record
+  end
+end

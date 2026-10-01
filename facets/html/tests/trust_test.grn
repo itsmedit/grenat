@@ -1,0 +1,31 @@
+require "../src/lib"
+
+PAGE = "<h1>Shop</h1><a href=\"/tea\">Tea</a><img src=\"/tea.png\"><table><tr><td>x</td></tr></table>"
+
+# The facet's functions are pure: their results are as trusted as the HTML
+# they are given.
+
+test "results from HTML the program wrote are trusted" do
+  assert !select(PAGE, "h1").tainted?
+  assert !select_attr(PAGE, "img", "src").tainted?
+  assert !select_html(PAGE, "a").tainted?
+  assert !links(PAGE, "https://shop.example.com/").tainted?
+  assert !all_links(PAGE, "https://shop.example.com/").tainted?
+  assert !table(PAGE, "table").tainted?
+end
+
+test "results from a page fetched with Http are untrusted" do
+  mock_http "GET https://shop.example.com/*", body: PAGE
+  page = Http.get("https://shop.example.com/").body
+  assert page.tainted?
+  assert select(page, "h1").tainted?
+  assert select_attr(page, "img", "src").tainted?
+  assert select_html(page, "a").tainted?
+  assert links(page, "https://shop.example.com/").tainted?
+  assert all_links(page, "https://shop.example.com/").tainted?
+  assert table(page, "table").tainted?
+  assert table_records(page, "table").tainted?
+  assert select_first(page, "h1").tainted?
+  # what it says is still readable, and trusted once checked
+  assert_equal ["https://shop.example.com/tea"], links(page, "https://shop.example.com/").trust!
+end

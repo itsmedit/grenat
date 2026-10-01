@@ -1,0 +1,50 @@
+require "../src/lib"
+
+BASE = "https://shop.example.com/blog/post.html"
+
+PAGE = <<~HTML
+  <nav>
+    <a href="/about">About</a>
+    <a href="next.html">Next</a>
+    <a href="../up">Up</a>
+    <a href="https://other.org/x?y=1#z">Elsewhere</a>
+    <a href="//cdn.example.com/f">CDN</a>
+    <a href="#top">Top</a>
+    <a href="javascript:void(0)">Menu</a>
+    <a href="mailto:hello@example.com">Write</a>
+    <a href="/about">About, again</a>
+    <a>No href</a>
+  </nav>
+HTML
+
+test "links are absolute, each once, in document order" do
+  expected = [
+    "https://shop.example.com/about",
+    "https://shop.example.com/blog/next.html",
+    "https://shop.example.com/up",
+    "https://other.org/x?y=1#z",
+    "https://cdn.example.com/f",
+    "https://shop.example.com/blog/post.html#top",
+  ]
+  assert_equal expected, links(PAGE, BASE)
+end
+
+test "javascript: and mailto: links only when all are asked for" do
+  all = all_links(PAGE, BASE)
+  assert all.include?("javascript:void(0)")
+  assert all.include?("mailto:hello@example.com")
+  assert_equal 8, all.size
+  assert !links(PAGE, BASE).include?("mailto:hello@example.com")
+end
+
+test "a base element changes where links lead" do
+  page = "<head><base href=\"/docs/\"></head><body><a href=\"intro\">Intro</a></body>"
+  assert_equal ["https://shop.example.com/docs/intro"], links(page, BASE)
+end
+
+test "a base URL that is not absolute raises an HtmlError" do
+  e = assert_raises(HtmlError) { links(PAGE, "/blog") }
+  assert e.message.start_with?("invalid base URL `/blog`: ")
+  e = assert_raises(HtmlError) { all_links(PAGE, "mailto:x@example.com") }
+  assert_equal "invalid base URL `mailto:x@example.com`: links cannot be resolved against it", e.message
+end

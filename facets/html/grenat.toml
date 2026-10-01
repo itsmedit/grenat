@@ -1,0 +1,7 @@
+[package]
+name = "html"
+version = "0.1.0"
+
+# Rust code this facet ships: the crate in native/, built by `setter install`
+[native]
+path = "native"
