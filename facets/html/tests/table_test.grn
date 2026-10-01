@@ -1,0 +1,57 @@
+require "../src/lib"
+
+PAGE = <<~HTML
+  <table id="prices">
+    <thead><tr><th>Item</th><th>Price</th></tr></thead>
+    <tbody>
+      <tr><td> Tea </td><td>3.50</td></tr>
+      <tr><td>Coffee <small>(large)</small></td><td>4</td></tr>
+      <tr><td>Cake</td></tr>
+    </tbody>
+  </table>
+  <div id="note">Prices include taxes.</div>
+HTML
+
+test "table gives the rows of a table as text" do
+  rows = table(PAGE, "#prices")
+  assert_equal ["Item", "Price"], rows[0]
+  assert_equal ["Tea", "3.50"], rows[1]
+  assert_equal ["Coffee (large)", "4"], rows[2]
+  assert_equal ["Cake"], rows[3]
+  assert_equal 4, rows.size
+end
+
+test "a table nested in a cell keeps its rows" do
+  page = "<table id=\"outer\"><tr><td>a</td><td><table><tr><td>b</td></tr></table></td></tr><tr><td>c</td></tr></table>"
+  assert_equal [["a", "b"], ["c"]], table(page, "#outer")
+end
+
+test "a template's rows are not the table's" do
+  page = "<table><tr><td>a</td></tr><template><tr><td>T</td></tr></template></table>"
+  assert_equal [["a"]], table(page, "table")
+end
+
+test "a line break in a cell separates its words" do
+  assert_equal [["a b"]], table("<table><tr><td>a<br>b</td></tr></table>", "table")
+end
+
+test "no table matched, no rows" do
+  assert_equal [], table(PAGE, "#missing")
+  assert_equal [], table_records(PAGE, "#missing")
+end
+
+test "table_records names each cell by its column" do
+  records = table_records(PAGE, "#prices")
+  assert_equal 3, records.size
+  assert_equal "Tea", records[0]["Item"]
+  assert_equal "3.50", records[0]["Price"]
+  assert_equal "Coffee (large)", records[1]["Item"]
+  assert_equal "", records[2]["Price"]
+end
+
+test "a match that is not a table, or an invalid selector, raises an HtmlError" do
+  e = assert_raises(HtmlError) { table(PAGE, "#note") }
+  assert_equal "`#note` matches a <div>, not a <table>", e.message
+  e = assert_raises(HtmlError) { table(PAGE, "table[") }
+  assert_equal "invalid CSS selector `table[`: it ends too early", e.message
+end

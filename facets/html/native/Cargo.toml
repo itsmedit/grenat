@@ -1,0 +1,20 @@
+[package]
+name = "html_native"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The native part of Grenat's official facet `html`: CSS selectors on HTML"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+grenat_ext = { path = "../../../crates/grenat_ext" }
+ego-tree = "0.11"
+html5ever = "0.39"
+scraper = { version = "0.27", default-features = false, features = ["errors", "deterministic"] }
+url = "2"
+
+# a crate of its own, not a member of Grenat's workspace
+[workspace]

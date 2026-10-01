@@ -1,0 +1,62 @@
+require "../src/lib"
+
+BASE = "https://shop.example.com/blog/post.html"
+
+PAGE = <<~HTML
+  <nav>
+    <a href="/about">About</a>
+    <a href="next.html">Next</a>
+    <a href="../up">Up</a>
+    <a href="https://other.org/x?y=1#z">Elsewhere</a>
+    <a href="//cdn.example.com/f">CDN</a>
+    <a href="#top">Top</a>
+    <a href="javascript:void(0)">Menu</a>
+    <a href="mailto:hello@example.com">Write</a>
+    <a href="/about">About, again</a>
+    <a>No href</a>
+  </nav>
+HTML
+
+test "links are absolute, each once, in document order" do
+  expected = [
+    "https://shop.example.com/about",
+    "https://shop.example.com/blog/next.html",
+    "https://shop.example.com/up",
+    "https://other.org/x?y=1#z",
+    "https://cdn.example.com/f",
+    "https://shop.example.com/blog/post.html#top",
+  ]
+  assert_equal expected, links(PAGE, BASE)
+end
+
+test "only http and https links lead to pages" do
+  page = "<a href=\"data:text/html,x\">x</a><a href=\"tel:1\">t</a><a href=\"vbscript:x\">v</a><a href=\"ftp://f.example.com/\">f</a><a href=\"http://e.com/\">e</a>"
+  assert_equal ["http://e.com/"], links(page, BASE)
+  all = ["data:text/html,x", "tel:1", "vbscript:x", "ftp://f.example.com/", "http://e.com/"]
+  assert_equal all, all_links(page, BASE)
+end
+
+test "a template's base and links are inert, as in a browser" do
+  page = "<template><base href=\"https://evil.example/\"><a href=\"/hidden\">h</a></template><a href=\"next\">n</a>"
+  assert_equal ["https://shop.example.com/blog/next"], links(page, BASE)
+end
+
+test "javascript: and mailto: links only when all are asked for" do
+  all = all_links(PAGE, BASE)
+  assert all.include?("javascript:void(0)")
+  assert all.include?("mailto:hello@example.com")
+  assert_equal 8, all.size
+  assert !links(PAGE, BASE).include?("mailto:hello@example.com")
+end
+
+test "a base element changes where links lead" do
+  page = "<head><base href=\"/docs/\"></head><body><a href=\"intro\">Intro</a></body>"
+  assert_equal ["https://shop.example.com/docs/intro"], links(page, BASE)
+end
+
+test "a base URL that is not absolute raises an HtmlError" do
+  e = assert_raises(HtmlError) { links(PAGE, "/blog") }
+  assert e.message.start_with?("invalid base URL `/blog`: ")
+  e = assert_raises(HtmlError) { all_links(PAGE, "mailto:x@example.com") }
+  assert_equal "invalid base URL `mailto:x@example.com`: links cannot be resolved against it", e.message
+end
