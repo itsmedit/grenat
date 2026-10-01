@@ -52,10 +52,12 @@ test "records back to rows" do
   assert_equal "b,a\n2,1\n4,3\n", Sheets.to_csv(Sheets.table(records, ["b", "a"]))
 end
 
-test "bad delimiters, duplicate columns, ragged records, unreadable files: CsvError" do
+test "bad delimiters, bad quotes, duplicate columns, ragged records, unreadable files: CsvError" do
   assert_raises(CsvError) { Sheets.parse_csv("a,b", delimiter: "") }
   assert_raises(CsvError) { Sheets.parse_csv("a,b", delimiter: "\"") }
   assert_raises(CsvError) { Sheets.to_csv([["a"]], delimiter: ";;") }
+  assert_raises(CsvError) { Sheets.parse_csv("a,\"never closed\nb,c\n") }
+  assert_raises(CsvError) { Sheets.parse_csv("\"a\"b,c\n") }
   assert_raises(CsvError) { Sheets.parse_csv_records("a,a\n1,2\n") }
   assert_raises(CsvError) { Sheets.read_csv_records("tests/fixtures/ragged.csv") }
   assert_raises(CsvError) { Sheets.read_csv("tests/fixtures/latin1.csv") }

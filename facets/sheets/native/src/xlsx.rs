@@ -5,7 +5,10 @@
 //! `typed`: then a cell that is a number ([`crate::number`]: one that
 //! reads back as the same text, such as `42` or `-3.5`) is written as a
 //! number, which a spreadsheet sums and sorts as one. Either way, reading
-//! the file back gives the same rows.
+//! the file back gives the rows' used range ([`crate::workbook`]): the
+//! same rows when they are all as wide and their first and last rows and
+//! columns each have a non-empty cell; otherwise empty rows and columns at
+//! the edges are dropped, and shorter rows padded with `""`.
 
 use grenat_ext::{GrenatType, export};
 use rust_xlsxwriter::Workbook;
@@ -93,7 +96,8 @@ mod tests {
 
     #[test]
     fn text_is_written_as_text_and_reads_back_the_same() {
-        let path = scratch::text("text.xlsx");
+        let dir = scratch::Dir::new();
+        let path = dir.text("text.xlsx");
         sheets_write_xlsx(path.clone(), sheets(), false).unwrap();
         assert_eq!(sheets_names(path.clone()).unwrap(), ["Prices", "Notes"]);
         assert_eq!(sheets_rows(path.clone(), None).unwrap(), sheets()[0].rows);
@@ -104,7 +108,8 @@ mod tests {
 
     #[test]
     fn typed_writing_writes_numbers_and_keeps_the_rest() {
-        let path = scratch::text("typed.xlsx");
+        let dir = scratch::Dir::new();
+        let path = dir.text("typed.xlsx");
         sheets_write_xlsx(path.clone(), sheets(), true).unwrap();
         assert_eq!(cell(&path, "Prices", 2, 1), Data::Float(42.0));
         assert_eq!(cell(&path, "Prices", 1, 1), Data::Float(1.5));
@@ -114,8 +119,28 @@ mod tests {
     }
 
     #[test]
+    fn reading_back_gives_the_used_range() {
+        let dir = scratch::Dir::new();
+        let back = |name: &str, written: &[&[&str]]| {
+            let path = dir.text(name);
+            let sheet = Worksheet { name: "S".into(), rows: rows(written) };
+            sheets_write_xlsx(path.clone(), vec![sheet], false).unwrap();
+            sheets_rows(path, None).unwrap()
+        };
+        // as wide, with a non-empty cell in the first and last rows and columns
+        let same: &[&[&str]] = &[&["a", "", ""], &["", "", "b"], &["c", "", ""]];
+        assert_eq!(back("same.xlsx", same), rows(same));
+        // empty rows and columns at the edges are dropped, shorter rows padded
+        assert_eq!(back("column.xlsx", &[&["", "a"], &["", "b"]]), rows(&[&["a"], &["b"]]));
+        assert_eq!(back("row.xlsx", &[&[""], &["x"]]), rows(&[&["x"]]));
+        assert_eq!(back("trailing.xlsx", &[&["a", ""], &["", ""]]), rows(&[&["a"]]));
+        assert_eq!(back("ragged.xlsx", &[&["a", "b"], &["c"]]), rows(&[&["a", "b"], &["c", ""]]));
+    }
+
+    #[test]
     fn wrong_workbooks_are_errors() {
-        let path = scratch::text("wrong.xlsx");
+        let dir = scratch::Dir::new();
+        let path = dir.text("wrong.xlsx");
         assert_eq!(
             sheets_write_xlsx(path.clone(), Vec::new(), false).unwrap_err(),
             "a workbook has one sheet at least"
@@ -128,7 +153,7 @@ mod tests {
         let long = Worksheet { name: "L".into(), rows: vec![vec!["x".repeat(40_000)]] };
         let e = sheets_write_xlsx(path, vec![long], false).unwrap_err();
         assert!(e.starts_with("the sheet `L`, row 1, column 1: "), "{e}");
-        let nowhere = scratch::text("no/such/dir/x.xlsx");
+        let nowhere = dir.text("no/such/dir/x.xlsx");
         let e = sheets_write_xlsx(nowhere.clone(), sheets(), false).unwrap_err();
         assert!(e.starts_with(&format!("cannot write {nowhere}")), "{e}");
         assert!(position(1_048_576, 0, "S").unwrap_err().contains("too large"));

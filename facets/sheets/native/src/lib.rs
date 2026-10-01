@@ -2,9 +2,11 @@
 //! programs, as Rust functions exported through `grenat_ext`.
 //!
 //! - [`workbook`]: reading `.xlsx`, `.xlsm`, `.xlsb`, `.xls` and `.ods`
-//!   files (calamine): sheet names, rows of text, records;
+//!   files (calamine): sheet names, rows of text, records — a sheet's
+//!   used range within a budget of cells ([`grid`]);
 //! - [`xlsx`]: writing `.xlsx` files (rust_xlsxwriter), as text or typed;
-//! - [`csv_read`], [`csv_write`]: CSV text and files (the `csv` crate).
+//! - [`csv_read`], [`csv_write`]: CSV text and files (the `csv` crate),
+//!   whose quotes are checked first ([`quotes`]).
 //!
 //! What a function reads from a file is untrusted in Grenat (`~T`: it
 //! declares `fs.read`); a function on text only (`pure`) gives back a
@@ -19,7 +21,9 @@ pub mod cells;
 pub mod csv_read;
 pub mod csv_write;
 pub mod delimiter;
+pub mod grid;
 pub mod number;
+pub mod quotes;
 pub mod records;
 pub mod workbook;
 pub mod xlsx;

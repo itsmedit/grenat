@@ -21,7 +21,8 @@ module Sheets
     sheets_rows(path, sheet)
   end
 
-  ## The records of a sheet of a workbook: its first row names the columns.
+  ## The records of a sheet of a workbook: its first row names the columns
+  ## (a record's keys come in alphabetical order, not in the columns').
   def self.records(path: String, sheet: String? = nil) -> ~Array(Hash(String, String)) uses fs.read
     sheets_records(path, sheet)
   end
@@ -42,7 +43,8 @@ module Sheets
     sheets_parse_csv(text, delimiter)
   end
 
-  ## The records of a CSV text whose first row names the columns.
+  ## The records of a CSV text whose first row names the columns (a
+  ## record's keys come in alphabetical order, not in the columns').
   def self.parse_csv_records(text: String, delimiter: String = ",") -> Array(Hash(String, String))
     sheets_parse_csv_records(text, delimiter)
   end
@@ -52,7 +54,8 @@ module Sheets
     sheets_read_csv(path, delimiter)
   end
 
-  ## The records of a CSV file whose first row names the columns.
+  ## The records of a CSV file whose first row names the columns (a
+  ## record's keys come in alphabetical order, not in the columns').
   def self.read_csv_records(path: String, delimiter: String = ",") -> ~Array(Hash(String, String)) uses fs.read
     sheets_read_csv_records(path, delimiter)
   end

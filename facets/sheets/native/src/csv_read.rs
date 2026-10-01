@@ -3,11 +3,14 @@
 //!
 //! Quoted cells may hold delimiters, quotes (doubled: `""`) and line
 //! breaks; rows may differ in length; blank lines are skipped; a UTF-8
-//! byte order mark (as Excel writes one) is dropped.
+//! byte order mark (as Excel writes one) is dropped. A quoted cell never
+//! closed, or followed by more than a delimiter or the end of its line, is
+//! an error ([`crate::quotes`]).
 
 use grenat_ext::export;
 
 use crate::delimiter::delimiter;
+use crate::quotes;
 use crate::records::{Record, records};
 
 /// The rows of a CSV text, each a list of its cells.
@@ -38,11 +41,10 @@ pub fn sheets_read_csv_records(path: String, delimiter: String) -> Result<Vec<Re
 /// The rows of `text`, split on `delimiter`.
 pub fn parse(text: &str, delimiter: &str) -> Result<Vec<Vec<String>>, String> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-    let mut reader = csv::ReaderBuilder::new()
-        .delimiter(self::delimiter(delimiter)?)
-        .has_headers(false)
-        .flexible(true)
-        .from_reader(text.as_bytes());
+    let delimiter = self::delimiter(delimiter)?;
+    quotes::check(text, delimiter)?;
+    let mut reader =
+        csv::ReaderBuilder::new().delimiter(delimiter).has_headers(false).flexible(true).from_reader(text.as_bytes());
     let mut rows = Vec::new();
     for record in reader.records() {
         let record = record.map_err(|e| e.to_string())?;
@@ -88,6 +90,23 @@ mod tests {
     }
 
     #[test]
+    fn malformed_quotes_are_errors() {
+        let dir = scratch::Dir::new();
+        let e = sheets_parse_csv("a,\"unterminated\nb,c\nd,e\n".into(), ",".into()).unwrap_err();
+        assert_eq!(e, "line 1: a quoted cell is never closed");
+        let e = sheets_parse_csv("x\n\"a\"b,c\n".into(), ",".into()).unwrap_err();
+        assert_eq!(e, "line 2: a quoted cell is followed by 'b', where a delimiter or the end of the line must be");
+        let e = sheets_parse_csv_records("name\n\"Ada\n".into(), ",".into()).unwrap_err();
+        assert_eq!(e, "line 2: a quoted cell is never closed");
+        let path = dir.text("unterminated.csv");
+        std::fs::write(&path, "id;label\n1;\"un\n2;deux\n").unwrap();
+        let e = sheets_read_csv_records(path.clone(), ";".into()).unwrap_err();
+        assert_eq!(e, format!("{path}: line 2: a quoted cell is never closed"));
+        // a quote inside a cell is one of its characters
+        assert_eq!(sheets_parse_csv("5\" disk,a\n".into(), ",".into()).unwrap(), rows(&[&["5\" disk", "a"]]));
+    }
+
+    #[test]
     fn records_from_text() {
         let got = sheets_parse_csv_records("city,zip\nParis,75001\nLyon\n".into(), ",".into()).unwrap();
         assert_eq!(got.len(), 2);
@@ -100,7 +119,8 @@ mod tests {
 
     #[test]
     fn files_are_read() {
-        let path = scratch::text("read.csv");
+        let dir = scratch::Dir::new();
+        let path = dir.text("read.csv");
         std::fs::write(&path, "id;label\n1;\"un; deux\"\n").unwrap();
         assert_eq!(sheets_read_csv(path.clone(), ";".into()).unwrap(), rows(&[&["id", "label"], &["1", "un; deux"]]));
         let got = sheets_read_csv_records(path.clone(), ";".into()).unwrap();
@@ -111,18 +131,19 @@ mod tests {
 
     #[test]
     fn unreadable_files_are_errors() {
-        let missing = scratch::text("missing.csv");
+        let dir = scratch::Dir::new();
+        let missing = dir.text("missing.csv");
         assert!(
             sheets_read_csv(missing.clone(), ",".into()).unwrap_err().starts_with(&format!("cannot read {missing}"))
         );
         assert!(sheets_read_csv_records(missing, ",".into()).is_err());
-        let binary = scratch::text("binary.csv");
+        let binary = dir.text("binary.csv");
         std::fs::write(&binary, b"ok,\xff\xfe\n").unwrap();
         assert_eq!(
             sheets_read_csv(binary.clone(), ",".into()).unwrap_err(),
             format!("{binary} is not UTF-8 text (byte 3)")
         );
-        let ragged = scratch::text("ragged.csv");
+        let ragged = dir.text("ragged.csv");
         std::fs::write(&ragged, "a\n1,2\n").unwrap();
         assert_eq!(
             sheets_read_csv_records(ragged.clone(), ",".into()).unwrap_err(),

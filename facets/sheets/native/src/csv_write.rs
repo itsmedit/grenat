@@ -64,10 +64,11 @@ mod tests {
 
     #[test]
     fn files_are_written() {
-        let path = scratch::text("written.csv");
+        let dir = scratch::Dir::new();
+        let path = dir.text("written.csv");
         sheets_write_csv(path.clone(), rows(&[&["id", "label"], &["1", "un, deux"]]), ",".into()).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "id,label\n1,\"un, deux\"\n");
-        let nowhere = scratch::text("no/such/dir/x.csv");
+        let nowhere = dir.text("no/such/dir/x.csv");
         let e = sheets_write_csv(nowhere.clone(), Vec::new(), ",".into()).unwrap_err();
         assert!(e.starts_with(&format!("cannot write {nowhere}")), "{e}");
         assert!(sheets_write_csv(path, Vec::new(), "ab".into()).is_err());

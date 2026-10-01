@@ -5,6 +5,10 @@
 //! - a row with fewer cells than names gets `""` for the missing ones;
 //!   one with more fails, unless the extra cells are empty;
 //! - a row whose cells are all empty (a blank line in a sheet) is skipped.
+//!
+//! A record crosses to Grenat as a JSON object, whose keys Grenat sorts:
+//! a record's keys come in alphabetical order, not in the columns' (the
+//! header row gives those).
 
 use std::collections::BTreeMap;
 

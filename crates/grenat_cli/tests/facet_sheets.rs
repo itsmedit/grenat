@@ -2,7 +2,8 @@
 //! its crate built once, the facet trusted in the application's Facetfile
 //! (`native: true`) and installed, then Grenat programs that read and write
 //! workbooks and CSV — run, checked and tested, errors included. The
-//! facet's own Grenat tests and its crate's Rust tests pass too.
+//! facet's own Grenat tests and its crate's Rust tests pass too, the
+//! README says what its examples print, and no test leaves files behind.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -83,20 +84,43 @@ fn facet_copy(dir: &Path) -> PathBuf {
     facet
 }
 
-/// An application `dir/app` using the facet `dir/sheets`, trusted and
+/// A test's scratch directory, removed when the test ends (passed or
+/// failed): each holds a copy of the facet's library, megabytes.
+struct Scratch(PathBuf);
+
+impl Scratch {
+    /// The empty directory of the test `name`.
+    fn new(name: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("grenat-cli-facet-sheets-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        Scratch(dir.canonicalize().unwrap())
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// An application using the facet, in a scratch directory of its own.
+struct World {
+    app: PathBuf,
+    _dir: Scratch,
+}
+
+/// An application `app` using the facet `sheets` next to it, trusted and
 /// installed; `main` is its `src/main.grn`.
-fn world(name: &str, main: &str) -> (PathBuf, PathBuf) {
-    let dir = std::env::temp_dir().join(format!("grenat-cli-facet-sheets-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let dir = dir.canonicalize().unwrap();
-    let facet = facet_copy(&dir);
-    let app = dir.join("app");
+fn world(name: &str, main: &str) -> World {
+    let dir = Scratch::new(name);
+    facet_copy(&dir.0);
+    let app = dir.0.join("app");
     write(&app.join("grenat.toml"), "[package]\nname = \"app\"\n");
     write(&app.join("Facetfile"), "facet \"sheets\", path: \"../sheets\", native: true\n");
     write(&app.join("src/main.grn"), main);
     grenat_package::facets::install(&app, false).unwrap();
-    (app, facet)
+    World { app, _dir: dir }
 }
 
 /// Every function of the facet, from text to files and back.
@@ -124,7 +148,8 @@ end
 
 #[test]
 fn an_application_reads_and_writes_sheets_and_csv() {
-    let (app, _) = world("tour", TOUR);
+    let world = world("tour", TOUR);
+    let app = world.app.clone();
     let out = grenat_in(&app, &["check"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
     let out = grenat_in(&app, &["run", "--log"]);
@@ -203,17 +228,29 @@ def main uses fs.read, fs.write
   rescue CsvError => e
     puts "latin1: CsvError: #{e.message}"
   end
+  begin
+    Sheets.parse_csv("a,\"unterminated\nb,c\nd,e\n")
+  rescue CsvError => e
+    puts "quote: CsvError: #{e.message}"
+  end
+  begin
+    Sheets.read_csv_records("stray.csv")
+  rescue CsvError => e
+    puts "stray: CsvError: #{e.message}"
+  end
   Sheets.rows("book.xlsx", sheet: "Nope")
 end
 "#;
-    let (app, _) = world("errors", main);
+    let world = world("errors", main);
+    let app = world.app.clone();
     write(&app.join("ragged.csv"), "a,b\n1,2,3\n");
     std::fs::write(app.join("latin1.csv"), b"caf\xe9\n").unwrap();
+    write(&app.join("stray.csv"), "x\n\"a\"b,c\n");
     let out = grenat_in(&app, &["run"]);
     // `book.xlsx` does not exist: the first attempt fails on the file
     let stdout = text(&out.stdout);
     let lines: Vec<&str> = stdout.lines().collect();
-    assert_eq!(lines.len(), 8, "{stdout}\n{}", text(&out.stderr));
+    assert_eq!(lines.len(), 10, "{stdout}\n{}", text(&out.stderr));
     assert!(lines[0].starts_with("sheet: SheetError: cannot read the workbook book.xlsx: "), "{stdout}");
     assert!(lines[1].starts_with("file: SheetError: cannot read the workbook missing.xlsx: "), "{stdout}");
     assert_eq!(lines[2], "empty: SheetError: a workbook has one sheet at least");
@@ -225,6 +262,11 @@ end
     assert_eq!(lines[5], "columns: CsvError: the column `a` appears twice in the header row");
     assert_eq!(lines[6], "ragged: CsvError: ragged.csv: row 2 has 3 cells, the header row 2");
     assert_eq!(lines[7], "latin1: CsvError: latin1.csv is not UTF-8 text (byte 3)");
+    assert_eq!(lines[8], "quote: CsvError: line 1: a quoted cell is never closed");
+    assert_eq!(
+        lines[9],
+        "stray: CsvError: stray.csv: line 2: a quoted cell is followed by 'b', where a delimiter or the end of the line must be"
+    );
     // unrescued, the error ends the program
     let err = text(&out.stderr);
     assert_eq!(out.status.code(), Some(1), "{err}");
@@ -244,7 +286,8 @@ end
 
 #[test]
 fn the_checker_keeps_untrusted_rows_out_of_files_and_effects_declared() {
-    let (app, _) = world("checker", "require \"sheets\"\n\ndef main\nend\n");
+    let world = world("checker", "require \"sheets\"\n\ndef main\nend\n");
+    let app = world.app.clone();
     let bad = r#"require "sheets"
 
 def copy uses fs.read, fs.write
@@ -299,7 +342,8 @@ end
 
 #[test]
 fn an_application_tests_its_use_of_sheets() {
-    let (app, _) = world("tests", "require \"sheets\"\n\ndef main\nend\n");
+    let world = world("tests", "require \"sheets\"\n\ndef main\nend\n");
+    let app = world.app.clone();
     let tests = r#"require "sheets"
 
 test "a report round-trips through a workbook" do
@@ -324,7 +368,8 @@ end
 
 #[test]
 fn the_facet_must_be_trusted() {
-    let (app, _) = world("trust", "require \"sheets\"\n\ndef main\n  p Sheets.parse_csv(\"a\")\nend\n");
+    let world = world("trust", "require \"sheets\"\n\ndef main\n  p Sheets.parse_csv(\"a\")\nend\n");
+    let app = world.app.clone();
     let out = grenat_in(&app, &["run"]);
     assert_eq!(text(&out.stdout), "[[\"a\"]]\n", "{}", text(&out.stderr));
     write(&app.join("Facetfile"), "facet \"sheets\", path: \"../sheets\"\n");
@@ -343,9 +388,8 @@ fn the_facet_must_be_trusted() {
 
 #[test]
 fn the_facet_passes_its_own_grenat_tests() {
-    let dir = std::env::temp_dir().join(format!("grenat-cli-facet-sheets-{}-own", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    let facet = facet_copy(&dir);
+    let dir = Scratch::new("own");
+    let facet = facet_copy(&dir.0);
     grenat_package::facets::install(&facet, false).unwrap();
     let out = grenat_in(&facet, &["test"]);
     let err = text(&out.stderr);
@@ -355,14 +399,76 @@ fn the_facet_passes_its_own_grenat_tests() {
 
 #[test]
 fn the_facet_crate_passes_its_own_rust_tests() {
+    // a temporary directory of their own, to see that they leave nothing in it
+    let tmp = Scratch::new("crate-tmp");
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let out = Command::new(cargo)
         .args(["test", "--quiet", "--manifest-path"])
         .arg(source().join("native/Cargo.toml"))
         .arg("--target-dir")
         .arg(target_dir())
+        .env("TMPDIR", &tmp.0)
         .output()
         .unwrap();
     assert!(out.status.success(), "{}\n{}", text(&out.stdout), text(&out.stderr));
     assert!(text(&out.stdout).contains(" 0 failed"), "{}", text(&out.stdout));
+    let left: Vec<_> = std::fs::read_dir(&tmp.0)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("sheets-native-tests"))
+        .collect();
+    assert!(left.is_empty(), "the crate's tests left {left:?}");
+}
+
+#[test]
+fn a_world_is_removed_when_its_test_ends() {
+    let world = world("removed", "require \"sheets\"\n\ndef main\nend\n");
+    let dir = world.app.parent().unwrap().to_path_buf();
+    assert!(dir.join("sheets").is_dir() && dir.join("app/src/main.grn").is_file());
+    drop(world);
+    assert!(!dir.exists(), "{} is left behind", dir.display());
+    let scratch = Scratch::new("removed-too");
+    let dir = scratch.0.clone();
+    drop(scratch);
+    assert!(!dir.exists());
+}
+
+/// The README's examples, run: each printed line is a result the README
+/// states (`# …`).
+const README_EXAMPLES: &str = r#"require "sheets"
+
+def main uses fs.read, fs.write
+  Sheets.write("people.xlsx", [
+    Worksheet(name: "People", rows: [["name", "age"], ["Ada", "36"]]),
+    Worksheet(name: "Totals", rows: [["checked by Linus"]]),
+  ])
+  p Sheets.names("people.xlsx")
+  p Sheets.rows("people.xlsx")
+  p Sheets.records("stock.ods", sheet: "Stock").trust![0]
+  p Sheets.parse_csv("name,note\n\"Doe, Jane\",\"said \"\"hi\"\"\"\n")
+  records = Sheets.parse_csv_records("name;age\nAda;36\n", delimiter: ";")
+  p records
+  p Sheets.to_csv([["a", "b, c"]])
+  p Sheets.table(records, ["name", "age"])
+end
+"#;
+
+#[test]
+fn the_readme_says_what_its_examples_print() {
+    let world = world("readme", README_EXAMPLES);
+    let app = world.app.clone();
+    std::fs::copy(source().join("tests/fixtures/stock.ods"), app.join("stock.ods")).unwrap();
+    let out = grenat_in(&app, &["run"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let readme = std::fs::read_to_string(source().join("README.md")).unwrap();
+    let printed = text(&out.stdout);
+    assert_eq!(printed.lines().count(), 7, "{printed}");
+    for line in printed.lines() {
+        assert!(readme.contains(&format!("# {line}\n")), "the README does not say `# {line}`");
+    }
+    // the keys of a record come sorted, not in the columns' order (as the README says)
+    let keys = "require \"sheets\"\n\ndef main\n  p Sheets.parse_csv_records(\"name,age,city\\nAda,36,London\\n\")[0].keys\nend\n";
+    write(&app.join("src/keys.grn"), keys);
+    let out = grenat_in(&app, &["run", "src/keys.grn"]);
+    assert_eq!(text(&out.stdout), "[\"age\", \"city\", \"name\"]\n", "{}", text(&out.stderr));
 }

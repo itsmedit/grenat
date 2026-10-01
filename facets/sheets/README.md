@@ -46,13 +46,29 @@ end
 
 ## Workbooks
 
-Cells are read as text, as the sheet shows them: numbers in their usual
-form (`"36"`, `"2.5"`, never `"36.0"`), booleans as `"true"` and `"false"`,
-dates as `"2024-01-15"` (`"2024-01-15 10:30:00"` with a time, `"10:30:00"`
-for a time alone), durations as `"27:15:00"`, errors as `"#DIV/0!"`, empty
-cells as `""`; a formula gives the value the file saved for it. A sheet's
-rows are its used range — from its first non-empty row and column to its
-last — every row as wide as the widest.
+Cells are read as text: numbers at full precision, in the shortest form
+that reads back as the same number (`"36"`, `"2.5"`, never `"36.0"` nor an
+exponent) — not always as the sheet shows them: a cell holding 0.1 + 0.2
+reads `"0.30000000000000004"` where the sheet shows `0.3`, and 1E+20 reads
+`"100000000000000000000"`. Booleans read as `"true"` and `"false"`, dates
+as `"2024-01-15"` (`"2024-01-15 10:30:00"` with a time, `"10:30:00"` for a
+time alone), durations as `"27:15:00"`, errors as `"#DIV/0!"`, empty cells
+as `""`; a date out of Excel's calendar (before 1900, after 9999, where
+the sheet shows `#####`) reads as its number. A formula gives the value the
+file saved for it. A sheet's rows are its used range — from its first
+non-empty row and column to its last — every row as wide as the widest.
+
+**A sheet holds 10,000,000 cells at most** — its used range, rows times
+columns: a thousand columns of ten thousand rows, ten columns of a million
+rows. What a sheet needs in memory grows with that area, not with the size
+of its file: two cells at A1 and XFD1048576 make a file of a few kilobytes
+and a range of 17 billion cells. So the range is measured before it is
+read, and a larger one raises a `SheetError`. An `.xlsx`, `.xlsm` or
+`.xlsb` sheet is measured cell by cell, as it is read. An `.xls` or `.ods`
+workbook is read whole by calamine as soon as it is opened, before the
+facet can measure it (calamine caps an `.ods` sheet at 100 million cells,
+and an `.xls` sheet has no cap): read those formats only from files you
+trust.
 
 | Function | Returns |
 |---|---|
@@ -65,7 +81,7 @@ last — every row as wide as the widest.
 ```ruby
 Sheets.names("people.xlsx")                     # ~["People", "Totals"]
 Sheets.rows("people.xlsx")                      # ~[["name", "age"], ["Ada", "36"]]
-Sheets.records("stock.ods", sheet: "Stock")     # ~[{"item" => "pens", "count" => "12"}]
+Sheets.records("stock.ods", sheet: "Stock").trust![0]   # {"count" => "12", "item" => "pens", "price" => "1.5"}
 
 Sheets.write("report.xlsx", [
   Worksheet(name: "People", rows: [["name", "age"], ["Ada", "36"]]),
@@ -81,7 +97,12 @@ a file written from data cannot run anything when it is opened. With
 spreadsheet sums and sorts): exactly the cells whose number reads back as
 the same text, such as `"42"`, `"-3.5"` or `"0.25"`; `"007"`, `"1.50"`,
 `"1e3"`, `"+1"` and numbers with more digits than a number keeps stay text.
-Either way, reading the file back gives the same rows.
+Either way, reading the file back gives the rows' used range: the same
+rows when they are all as wide and their first and last rows and columns
+each have a non-empty cell. Otherwise, empty rows and columns at the edges
+are dropped — `[["", "a"], ["", "b"]]` reads back as `[["a"], ["b"]]` — and
+shorter rows are padded with `""`: `[["a", "b"], ["c"]]` reads back as
+`[["a", "b"], ["c", ""]]`.
 
 A workbook has one sheet at least; a sheet's name has at most 31
 characters and none of `[]:*?/\`, and names are unique; Excel's limits
@@ -93,10 +114,11 @@ these, a missing file or sheet, or a file that is no workbook raises a
 
 Quoted cells may hold delimiters, quotes (doubled: `""`) and line breaks;
 rows may differ in length; blank lines are skipped; a UTF-8 byte order mark
-(as Excel writes one) is dropped. The delimiter is one ASCII character —
-`","` unless given, `";"`, `"\t"`, `"|"` — never a quote or a line break.
-When writing, a cell is quoted when it must be, and each row ends with
-`\n`.
+(as Excel writes one) is dropped. A quote opens a quoted cell only at its
+start: elsewhere it is a character of its cell (`5" disk`). The delimiter
+is one ASCII character — `","` unless given, `";"`, `"\t"`, `"|"` — never a
+quote or a line break. When writing, a cell is quoted when it must be, and
+each row ends with `\n`.
 
 | Function | Returns |
 |---|---|
@@ -112,19 +134,24 @@ When writing, a cell is quoted when it must be, and each row ends with
 Sheets.parse_csv("name,note\n\"Doe, Jane\",\"said \"\"hi\"\"\"\n")
 # [["name", "note"], ["Doe, Jane", "said \"hi\""]]
 Sheets.parse_csv_records("name;age\nAda;36\n", delimiter: ";")
-# [{"name" => "Ada", "age" => "36"}]
+# [{"age" => "36", "name" => "Ada"}]
 Sheets.to_csv([["a", "b, c"]])                  # "a,\"b, c\"\n"
 Sheets.write_csv("out.tsv", rows, delimiter: "\t")
 Sheets.table(records, ["name", "age"])          # [["name", "age"], ["Ada", "36"]]
 ```
 
-A file that is not UTF-8, a bad delimiter, or records whose table is
-ambiguous raise a `CsvError`.
+A file that is not UTF-8, a bad delimiter, a quoted cell that is never
+closed (which would take every line after it) or that is followed by more
+than a delimiter or the end of its line (`"a"b`), or records whose table is
+ambiguous raise a `CsvError`, which names the line.
 
 **Records** (for workbooks and CSV alike): the first row names the columns,
 and each name appears once; a row with fewer cells gets `""` for the
 missing ones, one with more (non-empty) cells is an error, and a row whose
-cells are all empty is skipped.
+cells are all empty is skipped. **A record's keys come in alphabetical
+order**, not in the columns' order: a hash crosses from native code as a
+JSON object, whose keys Grenat sorts. For the columns' order, take the
+header row: `Sheets.table(records, Sheets.rows(path).trust![0])`.
 
 **CSV and spreadsheets.** A CSV file holds no types: a spreadsheet that
 opens one may read a cell such as `=1+1` as a formula. Rows written to a
