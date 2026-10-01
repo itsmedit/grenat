@@ -1,16 +1,20 @@
 //! HTTP client for OpenAI (its Responses API) and for the providers that
 //! speak its Chat Completions: Gemini (Google's compatible endpoint),
 //! Mistral, xAI, OpenRouter, Groq, DeepSeek, Together, Ollama. Embeddings
-//! go through its `/embeddings`, which Voyage speaks too.
+//! go through its `/embeddings`, which Voyage speaks too. Streamed answers
+//! are read by [`crate::responses_stream`] and [`crate::chat_stream`].
 
 use std::time::Duration;
 
-use serde_json::Value as Json;
+use serde_json::{Value as Json, json};
 
 use crate::catalog::{Catalogued, Protocol};
+use crate::chat_stream::ChatDecoder;
 use crate::embeddings_wire::{chunks, embeddings_body, parse_embeddings};
 use crate::openai_wire::{chat_body, parse_chat};
+use crate::responses_stream::ResponsesDecoder;
 use crate::responses_wire::{parse_responses, responses_body};
+use crate::streaming::{Decoder, Failed};
 use crate::*;
 
 pub struct OpenAi {
@@ -39,19 +43,41 @@ impl OpenAi {
         self
     }
 
-    fn send(&self, path: &str, body: &Json) -> crate::retry::Attempt {
+    /// `POST <path>`: (status, `retry-after` seconds, the body unread).
+    fn post(&self, path: &str, body: &Json) -> Result<(u16, Option<u64>, ureq::Body), String> {
         let mut request =
             self.agent.post(format!("{}{path}", self.base_url)).header("content-type", "application/json");
         if let Some(key) = &self.api_key {
             request = request.header("authorization", &format!("Bearer {key}"));
         }
-        let mut response = request.send_json(body).map_err(|e| format!("connection failed: {e}"))?;
+        let response = request.send_json(body).map_err(|e| format!("connection failed: {e}"))?;
         let status = response.status().as_u16();
         let retry_after =
             response.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok());
-        let text = response.body_mut().read_to_string().map_err(|e| format!("unreadable response: {e}"))?;
+        Ok((status, retry_after, response.into_body()))
+    }
+
+    fn send(&self, path: &str, body: &Json) -> crate::retry::Attempt {
+        let (status, retry_after, mut response) = self.post(path, body)?;
+        let text = response.read_to_string().map_err(|e| format!("unreadable response: {e}"))?;
         let json = serde_json::from_str(&text).unwrap_or(Json::String(text));
         Ok((status, retry_after, json))
+    }
+
+    /// One streamed attempt.
+    fn stream_once(
+        &self,
+        path: &str,
+        body: &Json,
+        decoder: &mut impl Decoder,
+        sink: &mut Sink,
+    ) -> Result<Response, Failed> {
+        let (status, retry_after, mut response) = self.post(path, body).map_err(Failed::retry)?;
+        if status != 200 {
+            let text = response.read_to_string().unwrap_or_default();
+            return Err(Failed::status(status, retry_after, &text));
+        }
+        crate::streaming::decode(response.into_reader(), decoder, sink)
     }
 }
 
@@ -66,6 +92,28 @@ impl Provider for OpenAi {
         }
         let body = chat_body(request, &self.provider)?;
         crate::retry::with_retries(self.retry_delay, || self.send("/chat/completions", &body), parse_chat)
+    }
+
+    /// Each attempt reads the stream with a decoder of its own.
+    fn stream(&self, request: &Request, sink: &mut Sink) -> Result<Response, LlmError> {
+        if let Some(refusal) = crate::catalog::refuses(&self.provider, request.model.kind) {
+            return Err(LlmError::new(refusal));
+        }
+        if self.provider.protocol == Protocol::Responses {
+            let mut body = responses_body(request, &self.provider)?;
+            body["stream"] = json!(true);
+            return crate::retry::with_stream_retries(self.retry_delay, || {
+                self.stream_once("/responses", &body, &mut ResponsesDecoder::default(), sink)
+            });
+        }
+        let mut body = chat_body(request, &self.provider)?;
+        body["stream"] = json!(true);
+        if self.provider.stream_usage {
+            body["stream_options"] = json!({"include_usage": true});
+        }
+        crate::retry::with_stream_retries(self.retry_delay, || {
+            self.stream_once("/chat/completions", &body, &mut ChatDecoder::default(), sink)
+        })
     }
 
     /// Several requests when the texts are many: their vectors and tokens put together.

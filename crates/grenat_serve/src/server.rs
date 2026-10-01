@@ -1,4 +1,7 @@
-//! An HTTP server: requests in, one response each.
+//! An HTTP server: requests in, one response each — whole, or a stream
+//! of events.
+
+use crate::EventStream;
 
 /// A request received, to answer with [`Incoming::respond`].
 pub struct Incoming {
@@ -25,6 +28,14 @@ impl Incoming {
             }
         }
         let _ = self.request.respond(response);
+    }
+
+    /// Starts a response of Server-Sent Events: its head is sent now, its
+    /// events as they are written.
+    pub fn respond_events(self, status: u16, headers: &[(String, String)]) -> std::io::Result<EventStream> {
+        let http11 = *self.request.http_version() >= tiny_http::HTTPVersion(1, 1);
+        // tiny_http buffers a body it writes: the stream writes its own
+        EventStream::start(self.request.into_writer(), status, headers, http11)
     }
 }
 

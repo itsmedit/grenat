@@ -130,6 +130,7 @@ pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &s
             "remaining" => Some(Ok(b.max_usd.map_or(Value::Nil, |max| Value::Money((max - b.spent()).max(0.0))))),
             _ => None,
         },
+        Value::Events(events) => events_method(interp, events, name, &args),
         Value::Closure(_) => match name {
             "call" => Some(interp.call_block(&recv, args.pos.clone())),
             _ => None,

@@ -119,13 +119,13 @@ pub(crate) fn deliver_webhook<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R
         _ => {}
     }
     let answer = interp.handle_webhook(raw)?;
-    Ok(answer_value(answer))
+    Ok(answer_value(answer, None))
 }
 
 impl<'p> Interp<'p> {
     /// Answers a webhook request. A request that does not prove where it
     /// comes from never reaches its handler.
-    pub(crate) fn handle_webhook(&mut self, raw: RawRequest) -> Result<HttpAnswer, Ctrl<'p>> {
+    pub(crate) fn handle_webhook(&mut self, raw: RawRequest) -> Result<HttpAnswer<'p>, Ctrl<'p>> {
         let found =
             self.webhooks.borrow().iter().find(|w| w.path == raw.path).map(|w| (w.proof.clone(), w.block.clone()));
         let Some((proof, handler)) = found else { return Ok(HttpAnswer::text(404, "no such webhook")) };

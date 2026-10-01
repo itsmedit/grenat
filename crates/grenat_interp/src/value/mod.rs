@@ -62,6 +62,8 @@ pub enum Value<'p> {
     Pool(Arc<Vec<Arc<AgentRef<'p>>>>),
     /// Produced by an LLM, not validated: `~T`.
     Tainted(Arc<Value<'p>>),
+    /// The `out` of a streamed response (`stream do |out| … end`).
+    Events(Arc<crate::builtins::Events>),
     /// A secret (`Credentials.fetch`): shown as `[secret]`, never sent to a
     /// model nor stored; revealed only where it serves (a header, a URL, a
     /// connection).

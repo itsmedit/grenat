@@ -176,10 +176,12 @@ impl<'p> Interp<'p> {
         self.types.get(ty).and_then(|info| info.methods.get(name).copied())
     }
 
-    pub(crate) fn call_fn(&mut self, def: &'p FnDef, args: Args<'p>, self_val: Option<Value<'p>>) -> R<'p> {
+    pub(crate) fn call_fn(&mut self, def: &'p FnDef, mut args: Args<'p>, self_val: Option<Value<'p>>) -> R<'p> {
         if def.is_abstract {
             return raise("NotImplementedError", format!("`{}` is abstract", def.name.name));
         }
+        // a prompt's block receives its answer as it is written
+        let stream = if def.kind == FnKind::Prompt { args.block.take() } else { None };
         if args.block.is_some() {
             return raise("ArgumentError", format!("`{}` does not take a block", def.name.name));
         }
@@ -219,7 +221,7 @@ impl<'p> Interp<'p> {
             self.capabilities.push((def.name.name.clone(), caps));
         }
         let result = self.bind_params(&def.params, args, &def.name.name).and_then(|()| match (def.kind, workflow) {
-            (FnKind::Prompt, _) => self.run_prompt(def),
+            (FnKind::Prompt, _) => self.run_prompt(def, stream),
             (FnKind::Native, _) => self.call_foreign(def),
             (FnKind::Workflow, Some(run)) => self.run_workflow(def, run),
             _ => self.eval_body(&def.body),

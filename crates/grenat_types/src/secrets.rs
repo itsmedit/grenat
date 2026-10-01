@@ -44,6 +44,15 @@ impl<'p> Checker<'p> {
         );
     }
 
+    /// A secret sent to a client in a streamed response.
+    pub(crate) fn secret_to_client(&mut self, span: Span) {
+        self.report(
+            Diagnostic::new(span, "a secret is sent to a client through a streamed response")
+                .with_code(E_SECRET)
+                .with_help(HELP),
+        );
+    }
+
     /// A method of a secret: only `to_s` (still a secret).
     pub(crate) fn secret_method(&mut self, span: Span, name: &str) -> V {
         if name != "to_s" {

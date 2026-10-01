@@ -25,8 +25,7 @@ pub(crate) fn with_retries<T>(
             Ok((200, _, json)) => return parse(&json),
             Ok((status, retry_after, json)) => {
                 last_error = format!("HTTP {status}: {}", error_message(&json));
-                // 408, 409, 429, 5xx (including 529 "overloaded"): retry
-                if !(matches!(status, 408 | 409 | 429) || status >= 500) {
+                if !retryable(status) {
                     break;
                 }
                 retry_after.map_or(delay * (1 << attempt), Duration::from_secs)
@@ -43,9 +42,38 @@ pub(crate) fn with_retries<T>(
     Err(LlmError::new(last_error))
 }
 
+/// Sends a stream until it is read whole, a failure not to retry, or the
+/// last attempt.
+pub(crate) fn with_stream_retries<T>(
+    delay: Duration,
+    mut attempt: impl FnMut() -> Result<T, crate::streaming::Failed>,
+) -> Result<T, LlmError> {
+    let mut last_error = String::new();
+    for i in 0..MAX_ATTEMPTS {
+        let failed = match attempt() {
+            Ok(value) => return Ok(value),
+            Err(failed) => failed,
+        };
+        last_error = failed.message;
+        if !failed.retry {
+            break;
+        }
+        if i + 1 < MAX_ATTEMPTS {
+            let wait = failed.retry_after.map_or(delay * (1 << i), Duration::from_secs);
+            std::thread::sleep(wait.min(Duration::from_secs(30)));
+        }
+    }
+    Err(LlmError::new(last_error))
+}
+
+/// 408, 409, 429, 5xx (including 529 "overloaded"): worth another attempt.
+pub(crate) fn retryable(status: u16) -> bool {
+    matches!(status, 408 | 409 | 429) || status >= 500
+}
+
 /// The message of an error body: `{"error": {"message": …}}` (also inside a
 /// list, as some providers send it), or `{"detail": …}` (Voyage's).
-fn error_message(json: &Json) -> &str {
+pub(crate) fn error_message(json: &Json) -> &str {
     // not JSON: the text itself
     if let Some(text) = json.as_str() {
         return text.trim();

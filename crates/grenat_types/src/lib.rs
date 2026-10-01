@@ -40,6 +40,7 @@ mod pattern;
 mod resolve;
 mod secrets;
 mod ssh;
+mod streams;
 mod suggest;
 mod taint;
 mod ty;

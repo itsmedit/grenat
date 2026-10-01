@@ -1,9 +1,12 @@
-//! HTTP client for Anthropic's Messages API, with retries.
+//! HTTP client for Anthropic's Messages API, with retries; streamed
+//! answers are read by [`crate::anthropic_stream`].
 
 use std::time::Duration;
 
-use serde_json::Value as Json;
+use serde_json::{Value as Json, json};
 
+use crate::anthropic_stream::MessagesDecoder;
+use crate::streaming::Failed;
 use crate::*;
 
 /// HTTP client for Anthropic's Messages API.
@@ -77,7 +80,8 @@ impl Anthropic {
         &self.base_url
     }
 
-    fn send(&self, body: &Json) -> Result<(u16, Option<u64>, Json), String> {
+    /// `POST /v1/messages`: (status, `retry-after` seconds, the body unread).
+    fn post(&self, body: &Json) -> Result<(u16, Option<u64>, ureq::Body), String> {
         let mut request = self
             .agent
             .post(format!("{}/v1/messages", self.base_url))
@@ -87,12 +91,27 @@ impl Anthropic {
         if body.get("fallbacks").is_some() {
             request = request.header("anthropic-beta", "server-side-fallback-2026-07-01");
         }
-        let mut response = request.send_json(body).map_err(|e| format!("connection failed: {e}"))?;
+        let response = request.send_json(body).map_err(|e| format!("connection failed: {e}"))?;
         let status = response.status().as_u16();
         let retry_after =
             response.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|s| s.parse().ok());
-        let json = response.body_mut().read_json::<Json>().map_err(|e| format!("unreadable response: {e}"))?;
+        Ok((status, retry_after, response.into_body()))
+    }
+
+    fn send(&self, body: &Json) -> Result<(u16, Option<u64>, Json), String> {
+        let (status, retry_after, mut response) = self.post(body)?;
+        let json = response.read_json::<Json>().map_err(|e| format!("unreadable response: {e}"))?;
         Ok((status, retry_after, json))
+    }
+
+    /// One streamed attempt.
+    fn stream_once(&self, body: &Json, sink: &mut Sink) -> Result<Response, Failed> {
+        let (status, retry_after, mut response) = self.post(body).map_err(Failed::retry)?;
+        if status != 200 {
+            let text = response.read_to_string().unwrap_or_default();
+            return Err(Failed::status(status, retry_after, &text));
+        }
+        crate::streaming::decode(response.into_reader(), &mut MessagesDecoder::default(), sink)
     }
 }
 
@@ -100,6 +119,12 @@ impl Provider for Anthropic {
     fn complete(&self, request: &Request) -> Result<Response, LlmError> {
         let body = request_body(request);
         crate::retry::with_retries(self.retry_delay, || self.send(&body), parse_response)
+    }
+
+    fn stream(&self, request: &Request, sink: &mut Sink) -> Result<Response, LlmError> {
+        let mut body = request_body(request);
+        body["stream"] = json!(true);
+        crate::retry::with_stream_retries(self.retry_delay, || self.stream_once(&body, sink))
     }
 
     fn batch(&self, requests: &[Request]) -> Result<Vec<Result<Response, LlmError>>, LlmError> {

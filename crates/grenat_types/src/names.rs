@@ -12,6 +12,7 @@ pub(crate) const ERROR_NAMES: &[&str] = &[
     "NoMatchingPattern",
     "AgentDown",
     "Cancelled",
+    "StreamClosed",
 ];
 
 pub(crate) fn is_error_name(name: &str) -> bool {

@@ -31,6 +31,9 @@ pub(crate) struct AgentFrame<'p> {
     /// Agent state (the handler's `self` object).
     pub agent: Arc<Object<'p>>,
     pub handler: &'p Handler,
+    /// The block of an `ask` that streams: it receives the answer of the
+    /// handler's `run` as the model writes it.
+    pub stream: Option<Value<'p>>,
 }
 
 /// A database connection, used by one task at a time.

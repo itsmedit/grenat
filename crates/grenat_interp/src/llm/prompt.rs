@@ -1,7 +1,8 @@
-//! Running `prompt`s: building the request, structured output, validation.
+//! Running `prompt`s: building the request, structured output, validation;
+//! streaming text answers to a block.
 
 use crate::prelude::*;
-use grenat_llm::Request;
+use grenat_llm::{Delta, Request};
 use serde_json::{Value as Json, json};
 
 use super::*;
@@ -10,8 +11,10 @@ impl<'p> Interp<'p> {
     // ── prompt ───────────────────────────────────────────────
 
     /// Body of a `prompt`: its `system`/`user` calls build the request.
-    /// Called by `call_fn`, with parameters already bound.
-    pub(crate) fn run_prompt(&mut self, def: &'p FnDef) -> R<'p> {
+    /// Called by `call_fn`, with parameters already bound. With a block, a
+    /// prompt answering a `String` streams: the block receives each piece of
+    /// the answer, untrusted, as it arrives.
+    pub(crate) fn run_prompt(&mut self, def: &'p FnDef, block: Option<Value<'p>>) -> R<'p> {
         self.prompts.push(crate::PromptCtx::default());
         let body = self.eval_body(&def.body);
         let ctx = self.prompts.pop().expect("prompt context");
@@ -31,6 +34,12 @@ impl<'p> Interp<'p> {
             Ty::Str => None,
             ref other => Some(self.output_schema(other).or_else(type_error)?),
         };
+        if block.is_some() && output.is_some() {
+            return raise(
+                "TypeError",
+                format!("`{}` answers a structure: only a prompt answering a `String` streams", def.name.name),
+            );
+        }
         let request = Request {
             model: &model,
             system: (!system.is_empty()).then(|| system.join("\n\n")),
@@ -40,6 +49,10 @@ impl<'p> Interp<'p> {
         };
 
         let mut last_error = String::new();
+        if let Some(block) = block {
+            let response = self.llm_stream(&request, &mut text_to(block))?;
+            return Ok(Value::str(response.text()).taint());
+        }
         for _attempt in 0..2 {
             let response = self.llm_call(&request)?;
             let text = response.text();
@@ -71,6 +84,15 @@ impl<'p> Interp<'p> {
             ctx.messages.push((role, blocks));
         }
         true
+    }
+}
+
+/// Gives the text of a streamed answer to a block, piece by piece,
+/// untrusted: it comes from a model.
+pub(crate) fn text_to<'p>(block: Value<'p>) -> impl FnMut(&mut Interp<'p>, Delta) -> Result<(), Ctrl<'p>> {
+    move |interp, delta| match delta {
+        Delta::Text(text) => interp.call_block(&block, vec![Value::str(text).taint()]).map(drop),
+        Delta::ToolInput { .. } => Ok(()),
     }
 }
 

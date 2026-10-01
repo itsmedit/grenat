@@ -150,6 +150,9 @@ impl<'p> Interp<'p> {
         };
         match method {
             "ask" => Some(self.agent_ask(agent, args)),
+            "tell" if args.block.is_some() => {
+                Some(raise("ArgumentError", "`tell` waits for no answer: only `ask` streams one to a block"))
+            }
             "tell" => {
                 let child = self.fork();
                 self.spawn_task(child, move |task| {
@@ -202,9 +205,10 @@ impl<'p> Interp<'p> {
         Ok(())
     }
 
-    pub(crate) fn agent_ask(&mut self, agent: Arc<AgentRef<'p>>, args: Args<'p>) -> R<'p> {
+    pub(crate) fn agent_ask(&mut self, agent: Arc<AgentRef<'p>>, mut args: Args<'p>) -> R<'p> {
         // the slot reserved by `send` is released when the turn starts, or if sending fails before that
         let reservation = Reservation(&agent);
+        let stream = args.block.take();
         let Some(message) = args.pos.into_iter().next() else {
             return raise("ArgumentError", "`ask` expects a message, e.g. `ask(Research(topic: t))`");
         };
@@ -243,7 +247,7 @@ impl<'p> Interp<'p> {
         if let Some(b) = &agent.budget {
             self.budgets.push(b.clone());
         }
-        self.agents.push(AgentFrame { agent: state.clone(), handler });
+        self.agents.push(AgentFrame { agent: state.clone(), handler, stream });
         let pushed = self.push_frame(Some(Value::Object(state)), new_scope(None));
         let result = pushed.and_then(|()| {
             let r = self

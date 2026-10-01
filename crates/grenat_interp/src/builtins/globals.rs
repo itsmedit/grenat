@@ -170,6 +170,7 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
         })(),
         "get" | "post" | "put" | "patch" | "delete" if args.block.is_some() => declare_route(interp, name, &args),
         "html" | "json" | "status" | "redirect" => response_helper(name, &args),
+        "stream" if args.block.is_some() => stream_response(&args),
         "request" => test_request(interp, &args),
         "database" => interp.declare_database(&args),
         "expose" => interp.declare_exposure(&args),

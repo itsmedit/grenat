@@ -48,6 +48,7 @@ impl<'p> Value<'p> {
             Value::Type(_) => "Type".into(),
             Value::Error(e) => e.ty.to_string(),
             Value::Budget(_) => "Budget".into(),
+            Value::Events(_) => crate::builtins::EVENT_STREAM.into(),
             Value::Agent(a) => a.ty.to_string(),
             Value::Pool(p) => p.first().map_or("Pool".into(), |a| a.ty.to_string()),
             Value::Tainted(inner) => format!("~{}", inner.type_name()),
@@ -151,6 +152,7 @@ impl<'p> Value<'p> {
                 }
             }
             Value::Closure(_) => out.push_str("#<Block>"),
+            Value::Events(_) => out.push_str("#<EventStream>"),
             Value::Type(name) => out.push_str(name),
             Value::Error(e) => {
                 let _ = write!(out, "{}(\"{}\")", e.ty, e.message.escape_debug());

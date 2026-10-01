@@ -5,21 +5,27 @@
 //! prepared replies for tests, [`Mock`] shapes test answers into whatever
 //! each request expects, [`FakeEmbeddings`] makes deterministic vectors for
 //! tests, and [`Cassette`] records real calls once to replay them.
+//! [`Provider::stream`] gives an answer as the model writes it.
 
 mod anthropic;
+mod anthropic_stream;
 mod batch;
 mod caching;
 mod cassette;
 pub mod catalog;
+mod chat_stream;
 mod embeddings_wire;
 mod fake_embeddings;
 mod mock;
 mod openai;
 mod openai_wire;
 mod pricing;
+mod responses_stream;
 mod responses_wire;
 mod retry;
 mod scripted;
+mod sse;
+mod streaming;
 mod types;
 mod wire;
 
@@ -33,6 +39,7 @@ pub use openai_wire::chat_body;
 pub use pricing::{Price, cost_at, cost_usd};
 pub use responses_wire::responses_body;
 pub use scripted::Scripted;
+pub use streaming::{Delta, STOPPED, Sink, replay};
 pub use types::*;
 pub(crate) use wire::parse_response;
 pub use wire::request_body;

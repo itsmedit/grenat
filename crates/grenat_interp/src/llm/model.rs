@@ -124,14 +124,7 @@ impl<'p> Interp<'p> {
     }
 
     pub(crate) fn llm_call(&mut self, request: &Request) -> Result<Response, Ctrl<'p>> {
-        if request.model.kind == ModelKind::Embedding {
-            return raise(
-                "LlmError",
-                format!("`{}` is an embedding model: it answers `embed`, not prompts", request.model.name),
-            );
-        }
-        self.check_cancel()?;
-        self.check_budgets()?;
+        self.before_call(request)?;
         let started = Instant::now();
         let batched = self.batch.clone();
         let answer = match &batched {
@@ -147,6 +140,31 @@ impl<'p> Interp<'p> {
             Ok(r) => r,
             Err(e) => return raise("LlmError", e.message),
         };
+        self.after_call(request, response, started, batched.is_some())
+    }
+
+    /// What every model call checks first: a chat model, not cancelled,
+    /// within its budgets.
+    pub(crate) fn before_call(&mut self, request: &Request) -> Result<(), Ctrl<'p>> {
+        if request.model.kind == ModelKind::Embedding {
+            return raise(
+                "LlmError",
+                format!("`{}` is an embedding model: it answers `embed`, not prompts", request.model.name),
+            );
+        }
+        self.check_cancel()?;
+        self.check_budgets()
+    }
+
+    /// A call answered: counted, priced, recorded, logged; a refusal or a
+    /// truncated answer raises.
+    pub(crate) fn after_call(
+        &mut self,
+        request: &Request,
+        response: Response,
+        started: Instant,
+        batched: bool,
+    ) -> Result<Response, Ctrl<'p>> {
         self.llm_calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         // the price given for the model; else, after a server-side fallback,
         // the model that actually answered is billed
@@ -157,7 +175,7 @@ impl<'p> Interp<'p> {
         };
         // a batch costs half, where the provider has a batch API
         let discounted = catalog::provider(&request.model.provider).is_some_and(|p| p.protocol == Protocol::Anthropic);
-        let cost = if batched.is_some() && discounted { cost / 2.0 } else { cost };
+        let cost = if batched && discounted { cost / 2.0 } else { cost };
         for budget in &self.budgets {
             budget.add(cost, response.usage.total_tokens());
         }

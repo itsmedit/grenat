@@ -221,8 +221,11 @@ pub const MAILER: &str = "Mailer";
 /// What a route or webhook handler receives.
 pub const REQUEST: &str = "Request";
 
-/// What `html`, `json`, `status` and `redirect` build.
+/// What `html`, `json`, `status`, `redirect` and `stream` build.
 pub const RESPONSE: &str = "Response";
+
+/// The `out` of `stream do |out| … end`: it takes events.
+pub const EVENT_STREAM: &str = "EventStream";
 
 /// Built-in functions that make an untrusted value safe (escaping).
 pub fn sanitizes(module: &str, name: &str) -> bool {
@@ -375,6 +378,7 @@ pub const GLOBALS: &[&str] = &[
     "json",
     "status",
     "redirect",
+    "stream",
     "request",
     "on_webhook",
     "deliver_webhook",

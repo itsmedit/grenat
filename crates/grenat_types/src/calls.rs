@@ -199,7 +199,9 @@ impl<'p> Checker<'p> {
         argv: Vec<ArgV>,
         block: Option<&'p Block>,
     ) -> V {
-        if block.is_some() {
+        if block.is_some() && def.kind == FnKind::Prompt {
+            self.prompt_stream(cx, span, def, block);
+        } else if block.is_some() {
             self.error(E_TYPE, span, format!("`{}` does not take a block", def.name.name));
             self.walk_block(cx, block, &[]);
         }
@@ -354,6 +356,7 @@ impl<'p> Checker<'p> {
                 V::new(Ty::User(builtins::RESPONSE.into()))
             }
             "json" | "status" => V::new(Ty::User(builtins::RESPONSE.into())),
+            "stream" if block.is_some() => self.stream_response(cx, block),
             "cassette" => self.walk_block(cx, block, &[]).unwrap_or_else(V::unknown),
             "fixture" => {
                 cx.add_effect(Eff { path: "fs.read".into(), arg: None, origin: span });

@@ -87,6 +87,18 @@ impl Provider for Cassette {
             }
         }
     }
+
+    /// Recording, the real call streams; replayed, the answer is one piece.
+    fn stream(&self, request: &Request, sink: &mut Sink) -> Result<Response, LlmError> {
+        let Mode::Record { real, calls } = &self.mode else {
+            let response = self.complete(request)?;
+            replay(&response, sink)?;
+            return Ok(response);
+        };
+        let response = real.stream(request, sink)?;
+        calls.lock().unwrap_or_else(PoisonError::into_inner).push((key(request), response.clone()));
+        Ok(response)
+    }
 }
 
 /// The body that finds a call: the request's, without cache breakpoints.

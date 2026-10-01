@@ -239,6 +239,16 @@ impl LlmError {
 pub trait Provider: Send + Sync {
     fn complete(&self, request: &Request) -> Result<Response, LlmError>;
 
+    /// The answer as the model writes it: each piece given to `sink` as it
+    /// arrives, then the whole response (usage, tool calls), as
+    /// [`Provider::complete`] returns it. A provider that does not stream
+    /// gives its answer as one piece.
+    fn stream(&self, request: &Request, sink: &mut crate::Sink) -> Result<Response, LlmError> {
+        let response = self.complete(request)?;
+        crate::streaming::replay(&response, sink)?;
+        Ok(response)
+    }
+
     /// Several requests at once, answered in the same order: through a
     /// batch API where the provider has one (cheaper, slower), one by one
     /// otherwise.
@@ -255,6 +265,10 @@ pub trait Provider: Send + Sync {
 impl<P: Provider + ?Sized> Provider for std::sync::Arc<P> {
     fn complete(&self, request: &Request) -> Result<Response, LlmError> {
         (**self).complete(request)
+    }
+
+    fn stream(&self, request: &Request, sink: &mut crate::Sink) -> Result<Response, LlmError> {
+        (**self).stream(request, sink)
     }
 
     fn batch(&self, requests: &[Request]) -> Result<Vec<Result<Response, LlmError>>, LlmError> {

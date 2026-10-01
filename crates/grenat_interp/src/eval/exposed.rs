@@ -159,7 +159,7 @@ impl<'p> Interp<'p> {
     }
 
     /// The answer to a request under an exposed path; `None` for other paths.
-    pub(crate) fn handle_exposed(&mut self, raw: &RawRequest) -> Option<Result<HttpAnswer, Ctrl<'p>>> {
+    pub(crate) fn handle_exposed(&mut self, raw: &RawRequest) -> Option<Result<HttpAnswer<'p>, Ctrl<'p>>> {
         let exposure = self
             .exposures
             .borrow()
@@ -193,7 +193,7 @@ impl<'p> Interp<'p> {
         })
     }
 
-    fn answer_mcp(&mut self, exposure: &Exposure<'p>, body: &[u8]) -> Result<HttpAnswer, Ctrl<'p>> {
+    fn answer_mcp(&mut self, exposure: &Exposure<'p>, body: &[u8]) -> Result<HttpAnswer<'p>, Ctrl<'p>> {
         let mut host = Served { interp: self, exposure, failure: None };
         let reply = grenat_mcp::server::handle_body(&mut host, body);
         if let Some(ctrl) = host.failure {
@@ -206,7 +206,7 @@ impl<'p> Interp<'p> {
     }
 
     /// `POST /path/tool` with the arguments as a JSON object.
-    fn answer_call(&mut self, exposure: &Exposure<'p>, tool: &str, body: &[u8]) -> Result<HttpAnswer, Ctrl<'p>> {
+    fn answer_call(&mut self, exposure: &Exposure<'p>, tool: &str, body: &[u8]) -> Result<HttpAnswer<'p>, Ctrl<'p>> {
         let Some(entry) = exposure.entries.iter().find(|e| e.spec.name == tool) else {
             return Ok(json_answer(404, &json!({"error": format!("unknown tool `{tool}`")})));
         };
@@ -318,11 +318,17 @@ impl Host for Served<'_, '_> {
     }
 }
 
-fn json_answer(status: u16, body: &Json) -> HttpAnswer {
-    HttpAnswer { status, content_type: "application/json".into(), headers: Vec::new(), body: body.to_string() }
+fn json_answer<'p>(status: u16, body: &Json) -> HttpAnswer<'p> {
+    HttpAnswer {
+        status,
+        content_type: "application/json".into(),
+        headers: Vec::new(),
+        body: body.to_string(),
+        stream: None,
+    }
 }
 
-fn not_allowed() -> HttpAnswer {
+fn not_allowed<'p>() -> HttpAnswer<'p> {
     let mut answer = HttpAnswer::text(405, "method not allowed");
     answer.headers.push(("Allow".into(), "GET, POST".into()));
     answer

@@ -1,9 +1,11 @@
-//! Agentic loop of `run`: LLM ↔ tools until the typed final answer.
+//! Agentic loop of `run`: LLM ↔ tools until the typed final answer —
+//! streamed to the block of the `ask` that sent the message, if it has one.
 
 use crate::prelude::*;
-use grenat_llm::{ModelConfig, Request, ToolSpec, ToolUse};
+use grenat_llm::{Delta, ModelConfig, Request, ToolSpec, ToolUse};
 use serde_json::{Value as Json, json};
 
+use super::answer_text::AnswerText;
 use super::*;
 
 pub(crate) const DEFAULT_MAX_TURNS: usize = 20;
@@ -99,7 +101,7 @@ impl<'p> Interp<'p> {
     /// `run "instruction"` in an agent handler: LLM ↔ tools loop until `final_answer`.
     pub(crate) fn agent_run(&mut self, args: Args<'p>) -> R<'p> {
         let frame = self.agents.last().expect("inside an agent");
-        let (agent_ty, handler) = (frame.agent.ty.clone(), frame.handler);
+        let (agent_ty, handler, stream) = (frame.agent.ty.clone(), frame.handler, frame.stream.clone());
         let Some(instruction) = args.pos.first() else {
             return raise("ArgumentError", "`run` expects an instruction: `run \"…\"`");
         };
@@ -111,6 +113,15 @@ impl<'p> Interp<'p> {
             None => Ty::Str,
         };
         let (final_schema, wrapped) = self.output_schema(&ret).or_else(type_error)?;
+        if stream.is_some() && !(matches!(ret, Ty::Str) && wrapped) {
+            return raise(
+                "TypeError",
+                format!(
+                    "`{agent_ty}` answers `{}` with a structure: only an answer that is a `String` streams",
+                    handler.message.name
+                ),
+            );
+        }
 
         let mut tools = Vec::new();
         for name in &config.tools {
@@ -150,7 +161,10 @@ impl<'p> Interp<'p> {
                 tools: tools.clone(),
                 output_schema: None,
             };
-            let response = self.llm_call(&request)?;
+            let response = match &stream {
+                Some(block) => self.llm_stream(&request, &mut answer_to(block.clone()))?,
+                None => self.llm_call(&request)?,
+            };
             messages.push(json!({"role": "assistant", "content": response.content}));
             let uses = response.tool_uses();
             if uses.is_empty() {
@@ -264,6 +278,26 @@ impl<'p> Interp<'p> {
             self.write_err(&line);
         }
         self.call_fn(def, args, None)
+    }
+}
+
+/// Gives the text of the final answer, as the model writes it, to a block
+/// (untrusted: it comes from a model); the rest of the turn — text before
+/// tool calls, the calls — is not the answer.
+fn answer_to<'p>(block: Value<'p>) -> impl FnMut(&mut Interp<'p>, Delta) -> Result<(), Ctrl<'p>> {
+    // the turn's first final answer: the one `run` returns
+    let mut reading: Option<(String, AnswerText)> = None;
+    move |interp, delta| {
+        let Delta::ToolInput { id, name, json } = delta else { return Ok(()) };
+        if name != FINAL_TOOL {
+            return Ok(());
+        }
+        let (first, reader) = reading.get_or_insert_with(|| (id.to_string(), AnswerText::new()));
+        let text = if first == id { reader.feed(json) } else { String::new() };
+        if text.is_empty() {
+            return Ok(());
+        }
+        interp.call_block(&block, vec![Value::str(text).taint()]).map(drop)
     }
 }
 

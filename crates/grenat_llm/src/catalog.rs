@@ -53,6 +53,10 @@ pub struct Catalogued {
     pub max_tokens_field: &'static str,
     /// Its embeddings API, if it has one.
     pub embeddings: Option<EmbeddingApi>,
+    /// A streamed answer asks for its usage (`stream_options: {"include_usage":
+    /// true}`, Chat Completions); the others send it unasked, or would
+    /// refuse the option.
+    pub stream_usage: bool,
 }
 
 const fn openai_like(
@@ -71,6 +75,7 @@ const fn openai_like(
         documents: false,
         max_tokens_field: "max_tokens",
         embeddings: None,
+        stream_usage: true,
     }
 }
 
@@ -86,6 +91,7 @@ pub const PROVIDERS: &[Catalogued] = &[
         max_tokens_field: "max_tokens",
         // none: Anthropic recommends Voyage AI
         embeddings: None,
+        stream_usage: false,
     },
     Catalogued {
         name: "openai",
@@ -98,6 +104,8 @@ pub const PROVIDERS: &[Catalogued] = &[
         max_tokens_field: "max_output_tokens",
         // 2,048 texts and 300,000 tokens a request
         embeddings: embeddings("dimensions", 2048, 800_000),
+        // the Responses API's last event carries the usage
+        stream_usage: false,
     },
     // Google's OpenAI-compatible endpoint for Gemini
     Catalogued {
@@ -108,13 +116,19 @@ pub const PROVIDERS: &[Catalogued] = &[
     Catalogued {
         // its limits are not documented: small requests
         embeddings: embeddings("output_dimension", 64, 32_000),
+        // its API documents no `stream_options`
+        stream_usage: false,
         ..openai_like("mistral", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", true)
     },
     openai_like("xai", "https://api.x.ai/v1", "XAI_API_KEY", true),
     openai_like("openrouter", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", true),
     openai_like("groq", "https://api.groq.com/openai/v1", "GROQ_API_KEY", false),
     openai_like("deepseek", "https://api.deepseek.com", "DEEPSEEK_API_KEY", false),
-    openai_like("together", "https://api.together.xyz/v1", "TOGETHER_API_KEY", false),
+    // its API documents no `stream_options`: the last chunk has the usage
+    Catalogued {
+        stream_usage: false,
+        ..openai_like("together", "https://api.together.xyz/v1", "TOGETHER_API_KEY", false)
+    },
     // local models; `base_url:` for another machine
     Catalogued {
         key_required: false,

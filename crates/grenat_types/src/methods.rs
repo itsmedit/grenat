@@ -108,8 +108,24 @@ impl<'p> Checker<'p> {
         }
         let kind = self.types.get(t).map(|d| d.def.kind);
         if kind == Some(TypeKind::Agent) && matches!(n, "ask" | "tell") {
+            match block {
+                Some(_) if n == "ask" => self.ask_stream(cx, span, t, &argv, block),
+                Some(_) => {
+                    self.error(E_TYPE, span, "`tell` waits for no answer: only `ask` streams one to a block");
+                    self.walk_block(cx, block, &[]);
+                }
+                None => {}
+            }
             let v = self.ask(cx, span, t, argv);
             return if n == "tell" { V::new(Ty::Nil) } else { v };
+        }
+        if kind.is_none() && t == builtins::EVENT_STREAM {
+            self.walk_block(cx, block, &[]);
+            return self.event_method(span, n, &argv);
+        }
+        if kind.is_none() && t == builtins::CONVERSATION && n == "say" && block.is_some() {
+            self.answer_block(cx, span, block);
+            return self.record_method(cx, span, (Ty::Str, "llm"), (t, n), &argv, None);
         }
         if kind.is_none()
             && let Some((ty, effect)) = builtins::record_method(t, n)

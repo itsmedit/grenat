@@ -15,7 +15,8 @@
 //! What a request carries is untrusted. A page is a sink: `html` refuses an
 //! untrusted value that was not escaped (`Html.escape`), so a page cannot
 //! carry a script someone slipped in; `redirect` refuses an untrusted URL.
-//! Tests send requests without a server: `request :get, "/tickets/1"`.
+//! Tests send requests without a server: `request :get, "/tickets/1"`. A
+//! route may answer as a stream of events ([`super::events`]).
 
 use crate::prelude::*;
 
@@ -36,16 +37,25 @@ pub(crate) struct RawRequest {
 }
 
 /// What goes back to the client.
-pub(crate) struct HttpAnswer {
+pub(crate) struct HttpAnswer<'p> {
     pub status: u16,
     pub content_type: String,
     pub headers: Vec<(String, String)>,
     pub body: String,
+    /// A streamed response's block (`stream do |out| … end`): it writes the
+    /// body, as events, once the head is sent.
+    pub stream: Option<Value<'p>>,
 }
 
-impl HttpAnswer {
-    pub(crate) fn text(status: u16, body: &str) -> HttpAnswer {
-        HttpAnswer { status, content_type: "text/plain; charset=utf-8".into(), headers: Vec::new(), body: body.into() }
+impl<'p> HttpAnswer<'p> {
+    pub(crate) fn text(status: u16, body: &str) -> HttpAnswer<'p> {
+        HttpAnswer {
+            status,
+            content_type: "text/plain; charset=utf-8".into(),
+            headers: Vec::new(),
+            body: body.into(),
+            stream: None,
+        }
     }
 }
 
@@ -149,7 +159,7 @@ pub(crate) fn request_value<'p>(raw: &RawRequest, path_params: Vec<(String, Stri
 }
 
 /// What a handler's value means as an answer.
-pub(crate) fn answer_of<'p>(value: &Value<'p>) -> HttpAnswer {
+pub(crate) fn answer_of<'p>(value: &Value<'p>) -> HttpAnswer<'p> {
     match value.untainted() {
         Value::Nil => HttpAnswer::text(204, ""),
         Value::Int(status) => HttpAnswer::text(u16::try_from(*status).unwrap_or(500), ""),
@@ -169,6 +179,7 @@ pub(crate) fn answer_of<'p>(value: &Value<'p>) -> HttpAnswer {
                 content_type: field("content_type").to_display(),
                 headers,
                 body: field("body").to_display(),
+                stream: Some(field("stream")).filter(|s| matches!(s, Value::Closure(_))),
             }
         }
         other => HttpAnswer {
@@ -176,6 +187,7 @@ pub(crate) fn answer_of<'p>(value: &Value<'p>) -> HttpAnswer {
             content_type: "application/json".into(),
             headers: Vec::new(),
             body: crate::llm::value_to_json(other).to_string(),
+            stream: None,
         },
     }
 }
@@ -268,26 +280,43 @@ pub(crate) fn test_request<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p
             }
         }
     }
-    let answer = interp.handle_request(raw)?;
-    Ok(answer_value(answer))
+    let mut answer = interp.handle_request(raw)?;
+    let Some(block) = answer.stream.take() else { return Ok(answer_value(answer, None)) };
+    // a streamed body, collected: its events, and their text
+    let collected = Collected::default();
+    interp.run_events(&block, Box::new(collected.clone()))?;
+    let events = collected.borrow().clone();
+    answer.body = events.iter().map(|(name, data)| grenat_serve::events::event(name.as_deref(), data)).collect();
+    Ok(answer_value(answer, Some(events)))
 }
 
-/// An answer as a hash, for tests.
-pub(crate) fn answer_value<'p>(answer: HttpAnswer) -> Value<'p> {
+/// An answer as a hash, for tests; a streamed one has its `events` too:
+/// `{"event" => name, "data" => data}`, `message` naming the unnamed.
+pub(crate) fn answer_value<'p>(answer: HttpAnswer<'p>, events: Option<Vec<(Option<String>, String)>>) -> Value<'p> {
     let headers = answer.headers.into_iter().map(|(k, v)| (Value::str(k), Value::str(v))).collect();
-    let pairs = vec![
+    let mut pairs = vec![
         (Value::str("status"), Value::Int(i64::from(answer.status))),
         (Value::str("body"), Value::str(answer.body)),
         (Value::str("content_type"), Value::str(answer.content_type)),
         (Value::str("headers"), Value::Hash(Arc::new(Mutex::new(headers)))),
     ];
+    if let Some(events) = events {
+        let events = events.into_iter().map(|(name, data)| {
+            let pairs = vec![
+                (Value::str("event"), Value::str(name.as_deref().unwrap_or("message"))),
+                (Value::str("data"), Value::str(data)),
+            ];
+            Value::Hash(Arc::new(Mutex::new(pairs)))
+        });
+        pairs.push((Value::str("events"), Value::array(events.collect())));
+    }
     Value::Hash(Arc::new(Mutex::new(pairs)))
 }
 
 impl<'p> Interp<'p> {
     /// Answers a request: exposed tools, else a webhook, else a route, else
     /// 404 (405 when the path exists for another method).
-    pub(crate) fn handle_request(&mut self, raw: RawRequest) -> Result<HttpAnswer, Ctrl<'p>> {
+    pub(crate) fn handle_request(&mut self, raw: RawRequest) -> Result<HttpAnswer<'p>, Ctrl<'p>> {
         if let Some(answer) = self.handle_exposed(&raw) {
             return answer;
         }

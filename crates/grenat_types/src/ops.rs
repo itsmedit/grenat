@@ -41,6 +41,10 @@ impl<'p> Checker<'p> {
             BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::Match => Bool,
             BinOp::Cmp => Int,
             BinOp::And | BinOp::Or => join(&l.ty, &r.ty),
+            BinOp::Shl if lt == Ty::user(builtins::EVENT_STREAM) => {
+                self.event_data(&r, span);
+                l.ty.clone()
+            }
             BinOp::Shl if matches!(lt, Array(_)) => {
                 self.taint_container(cx, lhs, r.taint);
                 l.ty.clone()

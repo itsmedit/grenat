@@ -3,6 +3,7 @@
 //! ```ruby
 //! chat = Conversation.new(model: :fast, system: "You are a helpful assistant.", keep: 10)
 //! chat.say("I am Ada")        # the answer (untrusted); the history is sent every time
+//! chat.say("Hi") { |chunk| }  # the answer, given to the block as it is written
 //! chat.history                # [{"role" => "user", "text" => …}, …]
 //! chat.summary                # what older turns were compacted into
 //! chat.save("memory.json")    # Conversation.load("memory.json", model: :fast, …)
@@ -103,7 +104,7 @@ impl<'p> Interp<'p> {
                 let message = arg(args, 0, name)?;
                 crate::eval::secrets::not_for_models(std::slice::from_ref(&message))?;
                 let message = message.to_display();
-                let (reply, state) = self.say(state, message)?;
+                let (reply, state) = self.say(state, message, args.block.clone())?;
                 *shared.borrow_mut() = state;
                 Ok(Value::str(reply).taint())
             }
@@ -130,8 +131,14 @@ impl<'p> Interp<'p> {
         }
     }
 
-    /// One exchange, then compaction if the history grew beyond `keep`.
-    fn say(&mut self, mut state: ConversationState, message: String) -> Result<(String, ConversationState), Ctrl<'p>> {
+    /// One exchange — its answer streamed to `block`, if given — then
+    /// compaction if the history grew beyond `keep`.
+    fn say(
+        &mut self,
+        mut state: ConversationState,
+        message: String,
+        block: Option<Value<'p>>,
+    ) -> Result<(String, ConversationState), Ctrl<'p>> {
         state.turns.push(("user".into(), message));
         let reply = {
             let request = Request {
@@ -141,7 +148,10 @@ impl<'p> Interp<'p> {
                 tools: Vec::new(),
                 output_schema: None,
             };
-            self.llm_call(&request)?.text()
+            match block {
+                Some(block) => self.llm_stream(&request, &mut crate::llm::text_to(block))?.text(),
+                None => self.llm_call(&request)?.text(),
+            }
         };
         state.turns.push(("assistant".into(), reply.clone()));
         if state.turns.len() > state.keep * 2 {

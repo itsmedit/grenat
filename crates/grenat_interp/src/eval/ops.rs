@@ -60,6 +60,11 @@ impl<'p> Interp<'p> {
         match (op, &l, &r) {
             (BinOp::Eq, ..) => Ok(Bool(equal(&l, &r))),
             (BinOp::NotEq, ..) => Ok(Bool(!equal(&l, &r))),
+            // `out << chunk`: an event
+            (BinOp::Shl, Events(events), _) => {
+                self.send_event(events, None, &r)?;
+                Ok(l.clone())
+            }
             (BinOp::Shl, Array(items), _) => {
                 items.borrow_mut().push(r.clone());
                 Ok(l.clone())
