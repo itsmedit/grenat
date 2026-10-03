@@ -1,0 +1,263 @@
+# Grenat — reference for LLMs writing Grenat code
+
+Grenat is a compiled language for AI agents: Ruby's syntax, static types (inferred inside bodies), effects checked by the compiler, and agents, prompts, tools and durable workflows built in. Files end in `.grn`. Read this whole page before writing code: Grenat is NOT Ruby, and code that looks like Ruby but ignores the rules below does not compile.
+
+## Toolchain
+
+```sh
+grenat new --app desk        # an application: src/app.grn, src/config.grn, config/models.yml, tests/, db/migrations/
+grenat check [file]          # type, effect and taint check: run it after every edit, fix every error
+grenat test [file]           # offline tests (models, HTTP, shell, mail mocked)
+grenat run file.grn args…    # runs `main`
+grenat serve                 # routes, webhooks, schedules, job workers
+grenat fmt                   # canonical layout
+```
+
+`grenat check` errors carry codes: E0100 unknown name, E0200 type, E0300 effect not granted, E0310 non-deterministic effect outside a workflow `step`, E0412 untrusted value reaching a sink, E0414 secret reaching a model, E0500 bad declaration. Fix the cause; never silence E0412 with `.trust!` unless the value is genuinely safe.
+
+## Differences from Ruby (the rules that matter)
+
+- Types are written on `def`/`tool`/`prompt` parameters and returns, and on struct fields; inferred everywhere else. `def total(items: Array(Item), rate: Float = 0.2) -> Float`.
+- Types: `Int`, `Float`, `Bool`, `String`, `Money`, `Path`, `Email`, `Array(T)`, `Hash(K, V)`, `T?` (optional), `Result(T, E)`, `~T` (untrusted), `Secret`, `Attachment`.
+- Optionals instead of nil everywhere: `user&.email || "unknown"`. Errors are values: `?` propagates a `Result`; `raise "msg"` and `begin … rescue E => e … end` also work.
+- No `method_missing`, `send`, `eval`, monkey-patching, `require "json"`, gems, `async`/`await`, `attr_accessor` (use a struct field or a `macro`). `require "./file"` only for your own files, at the top level.
+- Construct a struct by calling its name: `Point(x: 1.0, y: 2.0)`; hash shorthand `{query:}`, keyword shorthand `f(to:, body:)`.
+- One-line methods: `def norm = Math.sqrt(x * x + y * y)`. Class methods: `def self.load(...)`. Constants: `LIMIT = 10`, `API = "…"` inside a module (`GitHub::API`).
+- Everything is concurrent without coloring: `xs.parallel_map(limit: 5) { |x| … }`, `race do … end`.
+- Locals cannot be annotated (`x: Int = 1` does not parse); keywords (`until`, `end`, `in`…) cannot be parameter names; no `\` line continuation (break after an operator or a comma instead).
+- Missing Ruby methods (don't use them): `Array#flatten` (use `flat_map`), `str[i, n]` / `str[a..b]` slicing (use `s.chars.take(n).join`, `split`), `delete_suffix`, `then`, `strftime`, date parsing.
+- Time: `Time.now` is a `Float` (epoch seconds), `Time.today` a `"YYYY-MM-DD"` string; `7.days`, `1.hour`, `2.min` are `Duration`s for options (`budget`, `every`, `enqueue(in:)`), not for arithmetic with `Time.now` (write `7 * 86400.0`). ISO 8601 timestamps from APIs must be parsed by hand (split on `-`, `T`, `:`). Time cannot be faked in tests: pass `now` as a parameter.
+
+```ruby
+struct Point
+  x: Float
+  y: Float
+
+  def norm = Math.sqrt(x * x + y * y)
+end
+
+class Counter                    # a reference; @ivars need a type or a default
+  @count: Int = 0
+
+  def incr! = @count += 1
+end
+
+enum Shape
+  Circle(radius: Float)
+  Rect(w: Float, h: Float)
+end
+
+def area(s: Shape) -> Float
+  case s
+  in Circle(r) then 3.14159 * r * r
+  in Rect(w, h) then w * h
+  end
+end
+
+module Greeting
+  def self.hello(name: String) -> String = "Hello, #{name}"
+end
+```
+
+## Effects (capabilities)
+
+A function that does I/O declares it with `uses`; a caller must cover its callees' effects, and `main` is the root. Missing one is E0300.
+
+`llm` (calls a model) · `net("api.github.com")` (HTTP, SMTP or IMAP to that host; `net` alone = any host — use it when the host comes from configuration, e.g. `Mail.connect(Credentials.fetch(:smtp, :url))`: a host checked at run time must be granted) · `fs.read("./docs")`, `fs.write("out")` (path prefix) · `shell("git")` (that program) · `ssh("host")` · `db.read`, `db.write` (`db` = both) · `mcp("server")` · `env` (environment, credentials) · `human` (approval) · `time`, `random`.
+
+```ruby
+def main(args: Array(String)) uses llm, net("api.github.com"), env, fs.read("./docs")
+  puts args.first
+end
+```
+
+## Models and prompts
+
+Models are configured in `config/models.yml` (the first is the default); keys come from `grenat credentials edit` (`openai: {api_key: …}`) or the provider's variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`…). Providers: anthropic, openai, gemini, mistral, xai, openrouter, groq, deepseek, together, ollama.
+
+```yaml
+fast:
+  provider: anthropic
+  name: claude-haiku-4-5
+smart:
+  provider: anthropic
+  name: claude-opus-5
+```
+
+In a single file, declare them in code instead: `model :fast, provider: :anthropic, name: "claude-haiku-4-5"`.
+
+A `prompt` is a function implemented by a model. Its return type becomes a JSON schema; the answer is validated and retried if malformed. `##` comments (on the prompt, on fields) are sent to the model as descriptions.
+
+```ruby
+enum Sentiment
+  Positive
+  Neutral
+  Negative
+end
+
+struct Summary
+  title: String         ## 8 words at most
+  bullets: Array(String)  ## 3 to 5 key points
+  sentiment: Sentiment
+end
+
+## Summarizes an article.
+prompt summarize(article: String) -> ~Summary using :fast
+  system "You are a concise analyst."
+  user "Summarize:\n#{article}"
+end
+```
+
+`user` also takes attachments: `user "Extract this invoice.", Pdf.read(path)` (`Image.read`, `Pdf.url`, `Image.url`).
+
+## Untrusted values `~T` (taint)
+
+Whatever comes from outside is untrusted: model answers, HTTP bodies, files read from the web, webhook payloads, shell output, tool arguments, MCP results. You may read, print, or pass it to another prompt. It may NOT reach a sink — HTTP request, shell argument, file write, email, database write, HTML page, approval text — until cleaned (E0412):
+
+```ruby
+s = summarize(text)                                        # ~Summary
+ok = s.check { |x| x.bullets.size.between?(3, 5) }?        # Summary, or the CheckError propagates
+ok2 = s.check { |x| x.title.size > 0 }.or_else { s.approve(by: :human) }
+fine = s.trust!                                            # explicit, grep-able: only when truly safe
+```
+
+A field read from an untrusted value is untrusted too: `res.json["id"].check { |i| i > 0 }?`.
+
+## Tools and agents
+
+A `tool` is a function a model may call; its `##` doc and parameter types become the tool's description and schema. Tool arguments arrive validated: the tool is the trust boundary.
+
+```ruby
+## Reads a documentation page.
+tool read_doc(path: String) -> String uses fs.read("./docs")
+  File.read("./docs/#{path}")
+end
+
+## Opens a ticket in the tracker. Requires human approval.
+tool open_ticket(title: String) -> Int uses net("tracker.acme.io"), human
+  approve! "Open ticket “#{title}”?"
+  Http.post("https://tracker.acme.io/tickets", json: {title:}).status
+end
+```
+
+An `agent` is an actor with a mailbox. `run` is the built-in loop (model → tools → model…) that ends when the model produces the handler's return type, or when `budget`/`max_turns` runs out.
+
+```ruby
+struct Answer
+  body: String            ## the reply, in the customer's language
+  sources: Array(String)  ## pages used
+end
+
+agent Support
+  model :smart
+  tools read_doc, open_ticket
+  budget usd: 0.50, time: 2.min
+  max_turns 12
+  instructions "Answer from the documentation only. Open a ticket for bugs."
+
+  @handled: Int = 0
+
+  on Ask(question: String) -> ~Answer
+    @handled += 1
+    run "Customer question: #{question}"
+  end
+end
+
+def answer(question: String) -> String uses llm, fs.read("./docs"), net("tracker.acme.io"), human
+  reply = spawn(Support).ask(Ask(question:))
+  reply.check { |a| a.sources.any? }?.body
+end
+```
+
+When a tool raises (including `approve!` denied, which raises `ApprovalDenied`), the error is sent back to the model as the tool's result and the loop goes on: that is how the model learns a denial. A tool is also an ordinary function: tests may call it directly. `run` raises `MaxTurnsExceeded` after `max_turns`, `BudgetExceeded` when the budget is spent.
+
+`a.tell(Msg(...))` sends without waiting; `spawn_pool(Support, size: 4)` is a load-balanced pool; `within budget(usd: 1.00) do … rescue BudgetExceeded => e … end` caps spending; `tool_timeout 20` in an agent bounds each tool call. Agents can use MCP servers: `mcp :linear, url: "…", headers: {…}` then `tools mcp(:linear)`.
+
+## Durable workflows, jobs, approvals
+
+A `workflow` journals each `step`: after a crash or a human wait, finished steps are replayed, never re-billed. Inside a workflow, every `llm`/`net`/`time`/`random`/`human` effect must be inside a `step` (E0310).
+
+```ruby
+workflow publish(topic: String) uses llm, net("blog.acme.io"), human
+  post = step(:draft) { summarize(topic).trust! }
+  step(:review) { approve! "Publish “#{post.title}”?" }
+  step(:publish) { Http.post("https://blog.acme.io/posts", json: {title: post.title}) }
+end
+```
+
+A workflow run is identified by its name and arguments: calling it again with the same arguments (after a crash) replays the finished steps from the journal and runs the rest; pass a key such as the week's Monday (`weekly(monday: "2026-09-28")`) to get one run per period.
+
+`enqueue(:publish, "rust")` (or `enqueue(:digest, in: 1.hour)`) queues a call for `grenat serve`'s workers; in a job, `approve!` waits for `Approvals.approve(id)` (also from `grenat console`).
+
+## Standard library (most used)
+
+- `Http.get/post/put/patch/delete(url, query:, headers:, json:, body:, timeout:)` → `status`, `ok?`, `headers`, `body`, `json` (body/headers/json untrusted).
+- `Credentials.fetch(:github, :token)` → `Secret` (works in HTTP headers/URLs, `Db.connect`, `Mail.connect`, `Ssh.connect`; never printed, never sent to a model; a missing one raises `KeyError`). Use it for every token, password and connection URL: a spec's `GITHUB_TOKEN` becomes `Credentials.fetch(:github, :token)` (`github: {token: …}` in `grenat credentials edit`). `"Bearer #{token}"` is itself a `Secret`; comparing a secret to a string works (`assert_equal "Bearer t", header`). In tests without credentials, `Credentials.fetch(:a, :b)` is the stand-in secret `"test-a-b"`; `mock_credentials` sets others. `Env.fetch("NAME")`, `Env.fetch("NAME", "default")` give plain strings (non-secret settings).
+- `File.read(path)`, `File.write(path, text)`, `File.lines(path)`, `Dir.list(dir)`; `Json.parse(text)`, `Json.generate(v)`.
+- `Shell.run(["git", "status"], timeout: 60, network: false)` → `status`, `ok?`, `stdout`, `stderr` (argument vector, never a shell line).
+- `Mail.connect(url).send(from:, to: [...], subject:, body:)`.
+- `Db.connect(url)` → `query(sql, [params], as: Row)`, `first`, `execute`, `transaction do … end`; `?` placeholders.
+- Records: `database Env.fetch("DATABASE_URL")`, a struct with `table :tickets` and `id: Int?` gets `create`, `find`, `where`, `all`, `count`, `save`, `delete`, `with(field: v)`; `migration "001_x" do |db| db.migrate("CREATE TABLE …") end`, applied by `grenat migrate`.
+- `embed(:docs, texts)` (an embedding model: `kind: embedding` in models.yml) + record field `embedding: Vector(1024)` + `Doc.nearest(:embedding, vector, limit: 4)`.
+- `Conversation.load("chat.json", model: :fast, system: "…")` → `say(text)` (untrusted answer), `save(path)`.
+- `xs.batch_map { |x| prompt_call(x) }`: batch API, half price, answers within 24 h.
+- `transcribe(:whisper, Audio.read("call.mp3"))`, `Html.text(html)`, `Html.escape(s)`, `Ssh.connect("user@host", key: secret).run(["uptime"])`.
+- Arrays/hashes/strings: Ruby's usual methods (`map`, `select`, `each_with_index`, `sort_by`, `take`, `join`, `split`, `include?`, `upcase`, `strip`, `to_i`, `to_f`, `to_s`, `size`, `first`, `any?`, `all?`, `partition`, `group_by`, `sum`…).
+
+## Serving: routes, webhooks, schedules
+
+```ruby
+get "/tickets/:id" do |req|
+  id = req.params["id"].check { |i| i.to_i > 0 }?.to_i
+  json({id:})
+end
+
+on_webhook "/github", secret: Credentials.fetch(:github, :webhook_secret), signature: :github do |req|
+  event = req.json.check { |e| e["action"] == "opened" }?
+  enqueue(:publish, "pull request")
+  "ok"
+end
+
+every cron: "0 8 * * MON" do
+  enqueue(:publish, "weekly digest")
+end
+```
+
+A handler's value is the response: a string, a hash/record (JSON), `json(v)`, `html(page)` (escape untrusted with `Html.escape`), `status(201, v)`, `redirect(url)`, an integer status, `nil` (204). `stream do |out| … end` answers as Server-Sent Events; `expose "/mcp", tools: [:read_doc], agents: [Support], token: Credentials.fetch(:api, :token)` serves tools and agents over MCP.
+
+## Tests
+
+Tests run offline; every external call must be mocked. Put them in `tests/*_test.grn` (or `x_test.grn` with `require "./x"`).
+
+```ruby
+test "the agent answers from the docs" do
+  mock :smart, replies: [
+    call(:read_doc, path: "refunds.md"),                         # the model calls a tool…
+    {body: "Refunds take 30 days.", sources: ["refunds.md"]},    # …then answers
+  ]
+  File.write("./docs/refunds.md", "Refunds: 30 days.")
+  assert_equal "Refunds take 30 days.", answer("How long for a refund?")
+end
+
+test "a summary" do
+  mock :fast, replies: [{title: "Rust 2.0", bullets: ["a", "b", "c"], sentiment: "Positive"}]
+  assert_equal "Rust 2.0", summarize("…").trust!.title
+end
+```
+
+Doubles: `mock :model, replies: [...]` (a reply is a value of the return type as a hash, a string, or `call(:tool, args…)`), `mock_http "GET https://api.x.com/*", json: {…}` (or `status:`, `body:`), `mock_shell "git status*", stdout: "…"`, `mock_mcp :linear, tools: {"create_issue" => "L-1"}`, `mock_embed :docs`, `mock_credentials({"github" => {"token" => "t"}})`, `with_human(approve_all) do … end` (or `deny_all`), `request :get, "/tickets/1"`, `deliver_webhook "/github", json: {…}`, `Jobs.perform`, `Mail.deliveries`. Assertions: `assert x`, `assert_equal expected, actual`, `assert_raises TaintError { … }`.
+
+- `mock :model, replies: [...]` fails the test ("mock has no reply left") when the model is called more often than replies were given: that is how a test proves a workflow did not call the model again.
+- `mock_http` options: `json:`, `body:`, `status:`, `headers:` (the response's). It answers; it does not record what was sent. To test a request's JSON and headers, build them in a function of their own and assert on it; an unstubbed request fails the test, which proves nothing was sent.
+- `Mail.deliveries` is an array of hashes with string keys: `m["from"]`, `m["to"]` (an array), `m["subject"]`, `m["body"]`.
+- To simulate a crash between two workflow steps, make the later step fail (e.g. its credential missing: `mock_credentials` without it raises `KeyError`), then run the workflow again with the same arguments.
+- Error classes: `TaintError`, `CapabilityError`, `SecretError`, `CheckError`, `ApprovalDenied`, `BudgetExceeded`, `MaxTurnsExceeded`, `TimeoutError`, `HttpError`, `KeyError`, `ArgumentError`, `TypeError`, `LlmError`, `RuntimeError` (a bare `raise "msg"`). `rescue` names the class.
+- `GRENAT_LOG=1 grenat test …` prints each model, tool and HTTP call.
+
+## Checklist before answering
+
+1. Every function doing I/O has `uses …`, and `main` covers everything.
+2. Every value from a model, HTTP, a webhook or a tool's output is `check`ed (or `approve`d) before reaching a sink.
+3. Secrets come from `Credentials.fetch` and never go into a prompt.
+4. Prompts and handlers return typed structs with `##` field docs.
+5. `grenat check` passes, then `grenat test`.
