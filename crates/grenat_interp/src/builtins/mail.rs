@@ -5,9 +5,11 @@
 //! mailer.send(from: "bot@acme.com", to: "team@acme.com", subject: "Hi", body: "…")
 //! ```
 //!
-//! Sending is a `net` effect on the SMTP server's host; nothing untrusted
-//! goes out (a message reaches people). Tests never send: messages are kept
-//! in `Mail.deliveries`, as hashes.
+//! Reaching the SMTP server is a `net` effect on its host, checked when the
+//! mailer is made and when it sends: `uses net("smtp.example.com")`, or
+//! `net` when the URL comes from configuration. Nothing untrusted goes out
+//! (a message reaches people, a URL names the server). Tests never send:
+//! messages are kept in `Mail.deliveries`, as hashes.
 
 use crate::mail::Email;
 use crate::prelude::*;
@@ -20,6 +22,12 @@ pub(crate) const MAILER: &str = "Mailer";
 pub(crate) fn call_mail<'p>(interp: &mut Interp<'p>, name: &str, args: &Args<'p>) -> R<'p> {
     match name {
         "connect" => {
+            if args.pos.iter().any(Value::contains_taint) {
+                return raise(
+                    "TaintError",
+                    "an untrusted value reaches `Mail.connect` (effect `net`) without validation",
+                );
+            }
             let url = text_arg(args, 0, name)?;
             let Some(host) = url
                 .split("://")
@@ -30,6 +38,7 @@ pub(crate) fn call_mail<'p>(interp: &mut Interp<'p>, name: &str, args: &Args<'p>
                 return raise("ArgumentError", format!("`Mail.connect` expects smtp://… or smtps://…, got {url:?}"));
             };
             let host = host.to_string();
+            interp.check_net(&host, &format!("smtp://{host}"))?;
             let mut mailers = interp.mailers.borrow_mut();
             mailers.push((url, host));
             Ok(Value::record(MAILER, vec![("id".into(), Value::Int(mailers.len() as i64 - 1))]))

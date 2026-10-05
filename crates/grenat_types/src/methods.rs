@@ -247,14 +247,18 @@ impl<'p> Checker<'p> {
             let block_v = self.walk_block(cx, block, &[]);
             if let Some(path) = effect {
                 let mut arg = argv.first().and_then(|a| a.lit.clone());
-                if path == "net" {
+                if path == "net" && t == "Mail" {
+                    // a mail server's host: that of a literal `smtp://` URL
+                    arg = arg.and_then(|url| crate::effects::server_host(&url).map(str::to_string));
+                } else if path == "net" {
                     // `net` is restricted by host: that of a literal URL
                     arg = arg.and_then(|url| crate::effects::url_host(&url).map(str::to_string));
                 } else if path == "ssh" {
                     // `ssh` too: that of a literal `user@host`
                     arg = arg.and_then(|target| crate::effects::ssh_host(&target).map(str::to_string));
                 }
-                cx.add_effect(Eff { path: path.into(), arg, origin: span });
+                let effect = Eff { path: path.into(), arg, origin: span };
+                if builtins::opens_nothing(t, n) { cx.require_effect(effect) } else { cx.add_effect(effect) }
             }
             if let Some(sink @ ("fs.write" | "net" | "shell" | "ssh" | "mcp")) = effect {
                 for arg in &argv {

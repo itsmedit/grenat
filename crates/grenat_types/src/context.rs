@@ -94,6 +94,12 @@ impl<'p> Ctx<'p> {
         if self.steps == 0 && NONDETERMINISTIC.contains(&effect.path.as_str()) {
             self.unstepped.push(effect.clone());
         }
+        self.require_effect(effect);
+    }
+
+    /// An effect to be granted, though using it gives the same result on
+    /// every run: a workflow needs no `step` for it.
+    pub(crate) fn require_effect(&mut self, effect: Eff) {
         if !self.effects.iter().any(|e| e.path == effect.path && e.arg == effect.arg) {
             self.effects.push(effect);
         }

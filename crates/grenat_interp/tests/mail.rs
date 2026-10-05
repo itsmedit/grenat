@@ -60,3 +60,20 @@ fn the_server_is_a_capability_and_nothing_untrusted_is_sent() {
     );
     assert_eq!(e.ty, "MailError");
 }
+
+#[test]
+fn the_server_is_checked_when_the_mailer_is_made() {
+    // no email needs to be sent: making the mailer is reaching for the server
+    let e = run_err(
+        "def mailer uses net(\"api.github.com\")\n  Mail.connect(\"smtps://bot:pw@smtp.acme.com:465\")\nend\nmailer\n",
+        Vec::new(),
+    );
+    assert_eq!(e.ty, "CapabilityError");
+    assert!(e.message.contains("`net` to `smtp://smtp.acme.com`"), "{}", e.message);
+    assert!(!e.message.contains("pw"), "{}", e.message);
+    run("def mailer uses net(\"smtp.acme.com\")\n  Mail.connect(\"smtp://smtp.acme.com\")\nend\nmailer\n");
+    run("def mailer uses net\n  Mail.connect(\"smtp://smtp.acme.com\")\nend\nmailer\n");
+    // a server named by a model's answer is not reached
+    let src = format!("{SUMMARY}s = summarize(\"x\")\nMail.connect(\"smtp://#{{s.title}}\")\n");
+    assert_eq!(run_err(&src, vec![summary_reply()]).ty, "TaintError");
+}

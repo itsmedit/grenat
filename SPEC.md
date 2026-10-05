@@ -1276,7 +1276,7 @@ def notify(summary: String) uses net("smtp.mail.com"), env
 end
 ```
 
-Sending is a `net` effect on the SMTP server's host, checked when sending. A message reaches people: nothing untrusted goes in it (E0412, `TaintError`). Tests never send: in `grenat test`, messages are kept in `Mail.deliveries` (hashes: `from`, `to`, `subject`, `body`), empty at the start of each test.
+Reaching the SMTP server is a `net` effect on its host, checked when the mailer is made and when it sends (and by the checker since phase 14: the host of a literal URL, any `net` for a configured one). A message reaches people: nothing untrusted goes in it (E0412, `TaintError`). Tests never send: in `grenat test`, messages are kept in `Mail.deliveries` (hashes: `from`, `to`, `subject`, `body`), empty at the start of each test.
 
 ### Phase 7 status: batches (`batch_map`)
 

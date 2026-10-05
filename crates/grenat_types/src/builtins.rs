@@ -248,7 +248,8 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Audio", "read") => (User(ATTACHMENT.into()), Some("fs.read")),
         // no provider fetches audio: Grenat downloads it
         ("Audio", "url") => (User(ATTACHMENT.into()), Some("net")),
-        ("Mail", "connect") => (User(MAILER.into()), None),
+        // the SMTP server's host: `net("smtp.acme.io")` for a literal URL
+        ("Mail", "connect") => (User(MAILER.into()), Some("net")),
         ("Html", "text" | "escape") => (Str, None),
         ("Conversation", "new") => (User(CONVERSATION.into()), None),
         ("Approvals", "pending") => (Ty::array(Ty::Hash(Box::new(Str), Box::new(Unknown))), Some("db.read")),
@@ -308,6 +309,13 @@ pub const RESPONSE: &str = "Response";
 
 /// The `out` of `stream do |out| … end`: it takes events.
 pub const EVENT_STREAM: &str = "EventStream";
+
+/// Built-in functions that need an effect granted but do nothing that
+/// differs from one run to the next (a mailer opens no connection until it
+/// sends): in a workflow, they need no `step`.
+pub fn opens_nothing(module: &str, name: &str) -> bool {
+    matches!((module, name), ("Mail", "connect"))
+}
 
 /// Built-in functions that make an untrusted value safe (escaping).
 pub fn sanitizes(module: &str, name: &str) -> bool {

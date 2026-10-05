@@ -63,7 +63,7 @@ end
 
 A function that does I/O declares it with `uses`; a caller must cover its callees' effects, and `main` is the root. Missing one is E0300.
 
-`llm` (calls a model) · `net("api.github.com")` (HTTP, SMTP or IMAP to that host; `net` alone = any host — use it when the host comes from configuration, e.g. `Mail.connect(Credentials.fetch(:smtp, :url))`: a host checked at run time must be granted) · `fs.read("./docs")`, `fs.write("out")` (path prefix) · `shell("git")` (that program) · `ssh("host")` · `db.read`, `db.write` (`db` = both) · `mcp("server")` · `env` (environment, credentials) · `human` (approval) · `time`, `random`.
+`llm` (calls a model) · `net("api.github.com")` (HTTP, SMTP or IMAP to that host; `Mail.connect("smtp://smtp.acme.io")` needs `net("smtp.acme.io")`; `net` alone = any host — use it when the host comes from configuration, e.g. `Mail.connect(Credentials.fetch(:smtp, :url))`: a host checked at run time must be granted) · `fs.read("./docs")`, `fs.write("out")` (path prefix) · `shell("git")` (that program) · `ssh("host")` · `db.read`, `db.write` (`db` = both) · `mcp("server")` · `env` (environment, credentials) · `human` (approval) · `time`, `random`.
 
 ```ruby
 def main(args: Array(String)) uses llm, net("api.github.com"), env, fs.read("./docs")

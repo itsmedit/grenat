@@ -55,6 +55,14 @@ pub(crate) fn url_host(url: &str) -> Option<&str> {
     (!host.is_empty()).then_some(host)
 }
 
+/// The host of a server's URL, whatever its scheme
+/// (`smtps://bot:pw@smtp.acme.io:465` → `smtp.acme.io`).
+pub(crate) fn server_host(url: &str) -> Option<&str> {
+    let (_, rest) = url.split_once("://")?;
+    let host = rest.rsplit('@').next()?.split([':', '/', '?', '#']).next()?;
+    (!host.is_empty()).then_some(host)
+}
+
 /// The host of an SSH target (`deploy@api.acme.com:2222` → `api.acme.com`).
 pub(crate) fn ssh_host(target: &str) -> Option<&str> {
     let (_, address) = target.rsplit_once('@')?;
