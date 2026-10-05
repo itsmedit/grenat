@@ -96,3 +96,5 @@ Time.parse iso         [1790582400.0, "2026-10-05T08:00:00Z", "2026-09-28T07:59:
 Time.date weekday      ["2026-09-28", 1]
 Time.at                1709209800.0
 duration arithmetic    [90min, 3h, 604800, true]
+duration vs seconds    [true, 0, true]
+Time cut to the ms     "2026-12-31T23:59:59.999Z"

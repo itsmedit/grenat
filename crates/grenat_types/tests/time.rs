@@ -81,6 +81,7 @@ def twice -> Duration = 2 * 1.day
 def thrice -> Duration = 1.day * 3
 def seconds -> Int = 7.days.to_i
 def longer -> Bool = 3.days > 2.days
+def seconds_too -> Bool = 1.h < 3601 && 3600 == 1.h && (1.h <=> 3600) == 0
 ",
     );
     for (body, op) in [("1.day * 1.5", "*"), ("1.day - 5", "-"), ("1.day * 1.day", "*"), ("1.day / 2", "/")] {

@@ -38,6 +38,9 @@ pub(crate) fn compare<'p>(a: &Value<'p>, b: &Value<'p>) -> Option<Ordering> {
         (Float(x), Float(y)) | (Money(x), Money(y)) | (Duration(x), Duration(y)) => x.partial_cmp(y),
         (Money(x), Float(y)) | (Duration(x), Float(y)) => x.partial_cmp(y),
         (Float(x), Duration(y)) => x.partial_cmp(y),
+        // a duration and seconds: `1.h < 3601`, `3600 <=> 1.h`
+        (Duration(x), Int(y)) => x.partial_cmp(&(*y as f64)),
+        (Int(x), Duration(y)) => (*x as f64).partial_cmp(y),
         (Str(x), Str(y)) | (Symbol(x), Symbol(y)) => Some(x.cmp(y)),
         _ => None,
     }

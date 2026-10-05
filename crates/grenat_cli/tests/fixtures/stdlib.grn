@@ -144,4 +144,6 @@ def main uses fs.read, env, time
   show "Time.date weekday", [Time.date(t), Time.weekday(t)]
   show "Time.at", Time.at(2024, 2, 29, 12, 30)
   show "duration arithmetic", [2.h - 30.min, 3 * 1.h, 7.days.to_i, 1.h < 2.h]
+  show "duration vs seconds", [1.h < 3601, 3600 <=> 1.h, 1.h == 3600]
+  show "Time cut to the ms", Time.iso(Time.parse("2026-12-31T23:59:59.9996Z"))
 end

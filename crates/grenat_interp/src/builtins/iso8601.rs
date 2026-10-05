@@ -31,18 +31,24 @@ pub(crate) struct Civil {
     pub millis: u32,
 }
 
-/// The civil instant of `t` seconds since the epoch (to the millisecond),
-/// or why it has none.
+/// The civil instant of `t` seconds since the epoch, cut to the
+/// millisecond (never rounded: 23:59:59.9996 is still that day, as in
+/// Ruby), or why it has none.
 pub(crate) fn civil_of(t: f64) -> Result<Civil, String> {
     if !t.is_finite() {
         return Err(format!("{t} is not an instant"));
     }
-    let millis = (t * 1000.0).round();
-    let seconds = (millis / 1000.0).floor();
-    if seconds < FIRST as f64 || seconds >= END as f64 {
-        return Err(format!("{t} is out of range: years 0000 to 9999"));
+    let out_of_range = || format!("{t} is out of range: years 0000 to 9999");
+    if t < FIRST as f64 || t >= END as f64 {
+        return Err(out_of_range());
     }
-    let (seconds, millis) = (seconds as i64, (millis as i64).rem_euclid(1000) as u32);
+    // to the microsecond first: what a `Float` keeps of a decimal fraction
+    // (`1.005` is 1.00499…) is not cut a millisecond short
+    let millis = ((t * 1_000_000.0).round() as i64).div_euclid(1000);
+    let (seconds, millis) = (millis.div_euclid(1000), millis.rem_euclid(1000) as u32);
+    if seconds >= END {
+        return Err(out_of_range());
+    }
     let (year, month, day, hour, minute, weekday) = civil(seconds);
     let weekday = if weekday == 0 { 7 } else { weekday };
     Ok(Civil { year, month, day, hour, minute, second: seconds.rem_euclid(60) as u32, weekday, millis })
@@ -213,6 +219,7 @@ mod tests {
         assert_eq!(format(FIRST as f64).unwrap(), "0000-01-01T00:00:00Z");
         assert_eq!(format(END as f64 - 1.0).unwrap(), "9999-12-31T23:59:59Z");
         assert!(format(END as f64).is_err() && format(FIRST as f64 - 1.0).is_err());
+        assert!(format(FIRST as f64 - 1e-3).is_err());
         assert!(format(f64::NAN).is_err() && format(f64::INFINITY).is_err());
     }
 
@@ -230,6 +237,20 @@ mod tests {
         for text in ["2026-09-28T08:00:00Z", "1999-12-31T23:59:59.999Z", "1968-05-01T00:00:00.250Z"] {
             assert_eq!(format(parse(text).unwrap()).unwrap(), text);
         }
+    }
+
+    #[test]
+    fn an_instant_is_cut_never_rounded() {
+        // 0.9996 s before midnight is still the last day of the year, a Thursday
+        let t = parse("2026-12-31T23:59:59.9996Z").unwrap();
+        assert_eq!(format(t).unwrap(), "2026-12-31T23:59:59.999Z");
+        assert_eq!(format_date(t).unwrap(), "2026-12-31");
+        assert_eq!(civil_of(t).unwrap().weekday, 4);
+        assert_eq!(format(parse("2026-03-29T00:59:59.9996Z").unwrap()).unwrap(), "2026-03-29T00:59:59.999Z");
+        assert_eq!(format(-0.0004).unwrap(), "1969-12-31T23:59:59.999Z");
+        assert_eq!(format(END as f64 - 0.0001).unwrap(), "9999-12-31T23:59:59.999Z");
+        // a fraction written in decimal is not lost to binary: 1.005 is 1.00499999…
+        assert_eq!(format(1.005).unwrap(), "1970-01-01T00:00:01.005Z");
     }
 
     #[test]

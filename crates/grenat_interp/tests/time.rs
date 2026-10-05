@@ -107,6 +107,28 @@ p [\"1970-01-01\", \"2026-09-28\", \"2026-10-04\", \"2000-02-29\", \"1969-12-31\
 }
 
 #[test]
+fn an_instant_is_cut_to_the_millisecond_never_rounded_into_the_next_day() {
+    let out = lines(
+        "\
+t = Time.parse(\"2026-12-31T23:59:59.9996Z\")
+p [Time.date(t), Time.iso(t), Time.weekday(t)]
+p Time.date(Time.parse(\"2026-12-31\") + 86399.9999)
+p Time.iso(Time.parse(\"2026-03-29T00:59:59.9996Z\"))
+p Time.iso(-0.0004)
+",
+    );
+    assert_eq!(
+        out,
+        [
+            "[\"2026-12-31\", \"2026-12-31T23:59:59.999Z\", 4]",
+            "\"2026-12-31\"",
+            "\"2026-03-29T00:59:59.999Z\"",
+            "\"1969-12-31T23:59:59.999Z\"",
+        ]
+    );
+}
+
+#[test]
 fn time_at_builds_an_instant_in_utc() {
     let out = lines(
         "\
@@ -155,6 +177,8 @@ p [7.days.to_i, 90.s.to_f, 1.5.round]
 p [2.h - 30.min, 1.day * 2, 3 * 1.h, 1.h + 1.h]
 p [1.h < 2.h, 3.days > 2.days, 2.min == 120.s, 60.0 < 2.min, 2.min <= 120.0]
 p [2.days, 1.h].sort
+p [1.h < 3601, 3600 < 1.h, 1.h <= 3600, 7200 >= 2.h, 1.h <=> 3600, 3600 <=> 1.h, 1.h <=> 3600.0]
+p [1.h == 3600, 3600 == 1.h, 1.h == 3600.0, 3600.0 == 1.h, 1.h != 3601, 1.h == 60.min, [1.h].include?(3600)]
 ",
     );
     assert_eq!(
@@ -168,6 +192,8 @@ p [2.days, 1.h].sort
             "[90min, 2d, 3h, 2h]",
             "[true, true, true, true, true]",
             "[1h, 2d]",
+            "[true, false, true, true, 0, 0, 0]",
+            "[true, true, true, true, true, true, true]",
         ]
     );
 }
