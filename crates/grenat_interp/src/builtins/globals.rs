@@ -227,6 +227,8 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
         "mock_mcp" => interp.mock_mcp(&args),
         "mock_ssh" => interp.mock_ssh(&args),
         "mock_credentials" => interp.mock_credentials(&args),
+        "mock_env" => interp.mock_env(&args),
+        "mock_mail" => interp.mock_mail(&args),
         "mock_shell" => (|| {
             let pattern = arg(&args, 0, name)?.to_display();
             interp.mock_shell(&pattern, &args)

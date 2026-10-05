@@ -99,17 +99,9 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
                 _ => x.exp(),
             }))
         }
-        ("Env", "get") => Ok(std::env::var(&*str_arg(&args, 0, name)?).map_or(Value::Nil, Value::str)),
+        ("Env", _) => interp.call_env(name, &args),
         ("Credentials", "fetch") => interp.credential(&args, true),
         ("Credentials", "dig") => interp.credential(&args, false),
-        ("Env", "fetch") => {
-            let key = str_arg(&args, 0, name)?;
-            match (std::env::var(&*key), args.pos.get(1)) {
-                (Ok(v), _) => Ok(Value::str(v)),
-                (Err(_), Some(default)) => Ok(default.clone()),
-                (Err(_), None) => raise("KeyError", format!("missing environment variable `{key}`")),
-            }
-        }
         ("Json", "dump" | "generate") => Ok(Value::str(value_to_json(&arg(&args, 0, name)?).to_string())),
         ("Json", "parse") => {
             // what untrusted text holds is untrusted

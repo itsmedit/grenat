@@ -19,12 +19,7 @@ impl<'p> Interp<'p> {
 
     /// `freeze_time("2026-09-28T08:00:00Z") do … end` (or epoch seconds): the block's value.
     pub(crate) fn freeze_time(&mut self, args: &Args<'p>) -> R<'p> {
-        if !self.testing.load(AtomicOrdering::SeqCst) {
-            return raise(
-                "RuntimeError",
-                "`freeze_time` only works in a test: `test \"…\" do freeze_time(…) do … end end`",
-            );
-        }
+        self.only_in_tests("freeze_time", "freeze_time(…) do … end")?;
         let instant = match args.pos.first().map(Value::untainted) {
             Some(Value::Str(text)) => iso8601::parse(text).or_else(|e| raise("ArgumentError", e))?,
             Some(Value::Int(n)) => *n as f64,

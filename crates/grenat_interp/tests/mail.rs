@@ -1,4 +1,5 @@
-//! `Mail`: capabilities, taint, and tests that never send.
+//! `Mail`: capabilities, taint, tests that never send, and a server that
+//! fails on demand (`mock_mail`).
 
 mod common;
 
@@ -76,4 +77,89 @@ fn the_server_is_checked_when_the_mailer_is_made() {
     // a server named by a model's answer is not reached
     let src = format!("{SUMMARY}s = summarize(\"x\")\nMail.connect(\"smtp://#{{s.title}}\")\n");
     assert_eq!(run_err(&src, vec![summary_reply()]).ty, "TaintError");
+}
+
+const NOTIFY: &str = "\
+def notify(subject: String) uses net(\"smtp.acme.com\")
+  Mail.connect(\"smtp://smtp.acme.com\").send(from: \"bot@acme.com\", to: \"team@acme.com\", subject:, body: \"…\")
+end
+";
+
+#[test]
+fn mock_mail_makes_sending_fail() {
+    tests_pass(&format!(
+        "{NOTIFY}\
+test \"the server is down, then back\" do
+  notify(\"first\")
+  mock_mail(raise: \"SMTP down\")
+  e = assert_raises MailError do
+    notify(\"lost\")
+  end
+  assert_equal \"SMTP down\", e.message
+  assert_raises(MailError) {{ notify(\"lost again\") }}
+  assert_equal [\"first\"], Mail.deliveries.map {{ |m| m[\"subject\"] }}
+  mock_mail(raise: nil)
+  notify(\"second\")
+  assert_equal [\"first\", \"second\"], Mail.deliveries.map {{ |m| m[\"subject\"] }}
+end
+
+test \"each test starts with a working server\" do
+  notify(\"fine\")
+  assert_equal 1, Mail.deliveries.size
+end
+"
+    ));
+}
+
+#[test]
+fn a_crash_between_workflow_steps_resumes_after_them() {
+    let output = tests_pass(&format!(
+        "{NOTIFY}\
+workflow publish(week: String) uses net(\"smtp.acme.com\")
+  draft = step(:draft) do
+    puts \"drafting\"
+    \"Digest #{{week}}\"
+  end
+  step(:send) {{ notify(draft) }}
+  draft
+end
+
+test \"the email fails, the run is resumed\" do
+  mock_mail(raise: \"SMTP down\")
+  assert_raises(MailError) {{ publish(\"w40\") }}
+  assert_equal 0, Mail.deliveries.size
+  mock_mail(raise: nil)
+  assert_equal \"Digest w40\", publish(\"w40\")
+  assert_equal [\"Digest w40\"], Mail.deliveries.map {{ |m| m[\"subject\"] }}
+end
+"
+    ));
+    // the finished step is replayed from the journal, not run again
+    assert_eq!(output, "drafting\n");
+}
+
+#[test]
+fn mock_mail_is_for_tests_and_takes_a_message() {
+    let e = run_err("mock_mail(raise: \"SMTP down\")\n", Vec::new());
+    assert_eq!(e.ty, "RuntimeError");
+    assert!(e.message.contains("`mock_mail` only works in a test"), "{}", e.message);
+    let (results, _) = test_outcomes(
+        "\
+test \"no reason\" do
+  mock_mail
+end
+
+test \"another option\" do
+  mock_mail(fail: \"x\")
+end
+
+test \"not a message\" do
+  mock_mail(raise: 3)
+end
+",
+    );
+    let errors: Vec<&str> = results.iter().map(|(_, e)| e.as_deref().unwrap()).collect();
+    assert_eq!(errors[0], "ArgumentError: `mock_mail` expects why sending fails: `mock_mail(raise: \"SMTP down\")`");
+    assert_eq!(errors[1], errors[0]);
+    assert_eq!(errors[2], "TypeError: `mock_mail` expects `raise:` a message, got 3");
 }

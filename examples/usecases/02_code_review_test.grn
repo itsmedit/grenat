@@ -1,6 +1,6 @@
 require "./02_code_review"
 
-# run with GITHUB_TOKEN and GITHUB_WEBHOOK_SECRET set (any value: GitHub is stubbed)
+# GitHub is stubbed; its token is the tests' stand-in secret
 test "a pull request is reviewed and commented" do
   mock_http "GET https://api.github.com/repos/acme/app/pulls/12", body: "+ user.name.upcase"
   mock_http "GET https://api.github.com/repos/acme/app/contents/*", body: "class User\nend\n"
@@ -13,6 +13,10 @@ test "a pull request is reviewed and commented" do
     },
   ]
   assert_equal 201, main(["acme/app", "12"])
+  comment = Http.requests.last
+  assert_equal "POST", comment["method"]
+  assert comment["json"]["body"].include?("`name` may be nil")
+  assert_equal "Bearer test-github-token", comment["headers"]["Authorization"]
 end
 
 test "an opened pull request triggers a review" do

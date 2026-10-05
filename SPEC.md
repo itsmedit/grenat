@@ -614,6 +614,55 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 14 status: test doubles and the mail effect
+
+LLMs writing Grenat tests from its reference hit four walls: a test could not see what a request sent (only stub the answer), `Env` read the machine's environment (a test passed or failed depending on who ran it), a crash between workflow steps had to be faked by removing a credential, and a function sending email without `net` checked fine and failed only at run time. Now a test reads the requests the program sent, gives the environment it sees, and makes the mail server fail; and the checker holds email to the `net` effect.
+
+```ruby
+## Opens an issue in the tracker, then tells the team.
+def report(title: String) -> Int uses net("tracker.acme.io"), net("smtp.acme.io"), env
+  token = Env.fetch("TRACKER_TOKEN")
+  res = Http.post(
+    "https://tracker.acme.io/issues",
+    json: {title:},
+    headers: {"Authorization" => "Bearer #{token}"},
+  )
+  mailer = Mail.connect("smtp://smtp.acme.io")
+  mailer.send(from: "bot@acme.io", to: "team@acme.io", subject: "New issue", body: title)
+  res.status
+end
+
+test "the tracker receives the issue, then the team is told" do
+  mock_env({"TRACKER_TOKEN" => "t"})
+  mock_http "POST https://tracker.acme.io/issues", status: 201
+  assert_equal 201, report("Login fails")
+  req = Http.requests.last
+  assert_equal "POST", req["method"]
+  assert_equal({"title" => "Login fails"}, req["json"])
+  assert_equal "Bearer t", req["headers"]["Authorization"]
+  assert_equal 1, Mail.deliveries.size
+end
+
+test "the mail server is down" do
+  mock_env({"TRACKER_TOKEN" => "t"})
+  mock_http "POST https://tracker.acme.io/issues", status: 201
+  mock_mail(raise: "SMTP down")
+  assert_raises(MailError) { report("Login fails") }
+  assert_equal 1, Http.requests.size
+  assert_equal 0, Mail.deliveries.size
+end
+```
+
+- **`Http.requests`.** In a test, every request the program sent — by `Http.get/post/put/patch/delete/head` and `Audio.url`, answered by `mock_http` or not (an unstubbed one is recorded, then fails) — in order, from its tasks too. Each is a hash with string keys, as `Mail.deliveries`: `method`, `url` (its `query:` encoded in it), `headers` (as given, plus the `Content-Type` a `json:` body adds), `body` (the text sent, `nil` without one) and `json` (the body as the service parses it — string keys, records as objects — `nil` when it is not JSON). Secrets stay secrets: a URL, a header or a body that holds one is a `Secret`, equal to its text (`assert_equal "Bearer t", …`) and printed `[secret]`; from a secret `body:`, each text the JSON holds is one. Each test starts with none. Requests to MCP servers are not in it (`mock_mcp` answers them).
+- **The environment in tests.** Under `grenat test`, `Env` never reads the process's environment, so that a test passes the same on every machine and in CI: `Env.get`, `Env.fetch` and the new `Env.key?(name)` see only what the running test gave with `mock_env({"GITHUB_TOKEN" => "t"})` — merged when called again, forgotten after the test. Unmocked, a variable is unset: `Env.get` is `nil`, `Env.fetch(name, default)` the default, `Env.fetch(name)` a `KeyError` that names `mock_env`. The file's top-level code loads before any test and sees an empty environment too: a declaration that needs a value at load reads it from `Credentials` (stand-in secrets in tests) or with a default. `mock_env` takes plain strings (E0200, `TypeError`); a secret is `mock_credentials`' (`SecretError`). Outside tests nothing changes. The use cases moved their tokens to `Credentials` (as the reference recommends) and their tests need no variable set any more.
+- **A failing mail server.** After `mock_mail(raise: "SMTP down")`, every email the test sends raises `MailError` ("SMTP down") — after the usual checks (capability, taint, fields) — and none joins `Mail.deliveries`; `mock_mail(raise: nil)` brings the server back, and each test starts with a working one. A test so crashes a workflow between two steps and runs it again with the same arguments: the finished steps replay from the journal.
+- **Only in tests.** `Http.requests`, `mock_env` and `mock_mail`, as `freeze_time`, exist inside a `test "…" do … end` block only: the checker refuses them anywhere else (E0500, helper functions included), the runtime outside a running test, the loading of a test file included (`RuntimeError`).
+- **The mail effect, statically.** `Mail.connect(url)` is now a `net` effect on the SMTP server's host for the checker, as `mailer.send` already was: a function that makes a mailer or sends without `net` in its `uses` is E0300 at `grenat check` (it was a `CapabilityError` at run time only). With a literal URL (`"smtps://bot:pw@smtp.acme.io:465"`, any scheme), the checker takes its host: `uses net("smtp.acme.io")` or `net` must grant it, and a caller's `uses` must cover it. With a URL from configuration (`Credentials.fetch(:smtp, :url)`, `Env.fetch("SMTP_URL")`), the host is unknown before running: `net` or any `net("host")` passes the checker, and the runtime holds the host to the declarations — when the mailer is made and when it sends (`CapabilityError`) — as it does for a URL built at run time for `Http`. Making a mailer opens nothing: in a workflow it needs no `step`; sending does (E0310). An untrusted URL is refused (E0412, `TaintError`).
+- **The other connectors.** `Http.*` and `Audio.url` with a URL built at run time follow the same rule by design (`net` statically, the host at run time). `Ssh.connect` has no gap: its `ssh("host")` is taken from a literal target, checked at run time otherwise. `mcp` servers are their own effect (`mcp("server")`). **`Db.connect` and `database` have the gap, unfixed**: a `postgres://…@db.acme.io/app` URL reaches the network under `db.read`/`db.write` alone, with no `net` effect, statically or at run time — closing it would make every application with a remote database declare `net`, a decision of its own.
+- **Backends and tooling.** The native code compiler leaves functions using `Env`, `Mail` and `Http` to the interpreter (a JIT test shows the same results either way); `grenat fmt` keeps the new calls as written.
+- **Tests.** Runtime tests for `Http.requests` (order, unstubbed requests, query strings, text and JSON bodies, secrets in URLs, headers and bodies never printed, `Audio.url`, a fresh list per test, refusals outside tests), the environment (a program reads the process's, a test only its mocks, merged, reset, the top-level code loading without it, bad arguments), `mock_mail` (failures, recovery, reset, a workflow crashed between steps and resumed from its journal, bad arguments) and `Mail.connect`'s capability and taint checks; checker tests for each double's type, place (E0500) and arguments, and for the mail effect (literal hosts, configured URLs, callers, workflows, taint); the use cases' tests run with a bogus `SMTP_URL` in the environment; `stdlib.grn` prints `Env.key?` through `grenat run`.
+- **Limits.** A helper function cannot call the doubles (pass values through the test instead); `Http.requests` does not see requests to MCP servers, nor what an LLM provider receives (`mock` replies); `Db.connect`'s network access is not an effect (above).
+
 ### Phase 14 status: strings and arrays
 
 LLMs writing Grenat from its reference reached for Ruby's everyday methods and stopped on missing ones: `s[0, 4]` ("expected a single index"), `xs.flatten`, `delete_suffix`, `then`, `reduce(:+)`, `format("%.2f", x)`. They now exist, with Ruby's semantics, in the interpreter and in the checker's tables alike.

@@ -423,13 +423,9 @@ fn the_use_cases_pass_their_tests() {
         let out = Command::new(env!("CARGO_BIN_EXE_grenat"))
             .args(["test", test])
             .current_dir(&dir)
-            // the services are stubbed: any key will do
-            .env("GITHUB_TOKEN", "test")
-            .env("GITHUB_WEBHOOK_SECRET", "test")
-            .env("BRAVE_API_KEY", "test")
-            .env("LINEAR_TOKEN", "test")
-            .env("NOTION_TOKEN", "test")
-            .env("SMTP_URL", "smtp://smtp.test")
+            // the services are stubbed, the keys are stand-ins, and the
+            // environment does not reach the tests (`mock_env`)
+            .env("SMTP_URL", "not even a URL")
             .env("NO_COLOR", "1")
             .env_remove("ANTHROPIC_API_KEY")
             .stdin(std::process::Stdio::null())

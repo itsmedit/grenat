@@ -1,6 +1,6 @@
 require "./10_mcp_tools"
 
-# run with LINEAR_TOKEN and NOTION_TOKEN set (any value: the servers are mocked)
+# the servers are mocked; their tokens are the tests' stand-in secrets
 test "a spec becomes issues" do
   mock_mcp :notion, tools: {
     "search" => "SSO spec: https://notion.so/sso",

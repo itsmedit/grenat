@@ -104,6 +104,33 @@ pub fn run_err(src: &str, replies: Vec<Response>) -> RuntimeError {
     run_with(src, replies, &[]).err()
 }
 
+/// Runs a file's tests (`grenat test`): each test's name and error
+/// (`"Type: message"`, `None` when it passed), and what was printed.
+pub fn test_outcomes(src: &str) -> (Vec<(String, Option<String>)>, String) {
+    let parsed = grenat_parser::parse(src);
+    assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
+    let buffer = Arc::new(Mutex::new(String::new()));
+    let options = Options {
+        output: Output::Capture(buffer.clone()),
+        journal: Some(temp_dir("journal")),
+        dir: Some(temp_dir("tests")),
+        ..Options::default()
+    };
+    let outcomes = grenat_interp::run_tests(&parsed.program, options).unwrap();
+    let results = outcomes.into_iter().map(|o| (o.name, o.error.map(|e| format!("{}: {}", e.ty, e.message)))).collect();
+    let output = buffer.lock().unwrap().clone();
+    (results, output)
+}
+
+/// Runs a file's tests, which must all pass; what they printed.
+pub fn tests_pass(src: &str) -> String {
+    let (results, output) = test_outcomes(src);
+    for (name, error) in &results {
+        assert!(error.is_none(), "test `{name}` failed: {error:?}\noutput:\n{output}");
+    }
+    output
+}
+
 pub fn example(name: &str) -> String {
     std::fs::read_to_string(format!("{}/../../examples/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
 }

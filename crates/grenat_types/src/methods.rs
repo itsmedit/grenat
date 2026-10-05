@@ -244,6 +244,9 @@ impl<'p> Checker<'p> {
             if t == "Time" {
                 self.time_args(span, n, &argv);
             }
+            if builtins::only_in_tests(t, n) {
+                self.only_in_tests(cx, span, &format!("{t}.{n}"), "it reads what a test did");
+            }
             let block_v = self.walk_block(cx, block, &[]);
             if let Some(path) = effect {
                 let mut arg = argv.first().and_then(|a| a.lit.clone());

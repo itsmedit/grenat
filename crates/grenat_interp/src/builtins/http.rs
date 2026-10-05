@@ -9,6 +9,7 @@
 //! Http.get("https://api.x.io/search", query: {q: "rust & grenat"})  # encoded
 //! Http.get(url, proxy: "socks5h://user:pass@127.0.0.1:1080")      # or socks5, socks4, http
 //! Http.get(url, proxy: false)                                      # not even the environment's
+//! Http.requests.last["json"]   # in a test: what was sent (see `eval::requests`)
 //! ```
 //!
 //! A request is a `net` effect: its host must be allowed by every function
@@ -41,6 +42,8 @@ pub(crate) fn call_http<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p>)
         "patch" => "PATCH",
         "delete" => "DELETE",
         "head" => "HEAD",
+        // what a test sent (see `eval::requests`)
+        "requests" => return interp.sent_requests(),
         _ => return raise("NoMethodError", format!("unknown method `Http.{name}`")),
     };
     let target = format!("Http.{name}");
@@ -53,6 +56,7 @@ pub(crate) fn call_http<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p>)
     };
     interp.check_net(host, &url)?;
     let request = request(method, url.clone(), &args)?;
+    interp.record_request(method, &request.url, &args);
     // an error names the URL: one holding a secret is not named
     let secret_url =
         args.pos[0].contains_secret() || args.named.iter().any(|(n, v)| n == "query" && v.contains_secret());

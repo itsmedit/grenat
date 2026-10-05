@@ -3,7 +3,7 @@
 //! instant is a `Float` of epoch seconds), and `freeze_time(instant) do … end`,
 //! which exists inside a `test` block only.
 
-use grenat_ast::{Block, Diagnostic, Span};
+use grenat_ast::{Block, Span};
 
 use crate::ty::{Ty, V};
 use crate::*;
@@ -46,13 +46,7 @@ impl<'p> Checker<'p> {
         argv: &[ArgV],
         block: Option<&'p Block>,
     ) -> V {
-        if cx.tests == 0 {
-            self.report(
-                Diagnostic::new(span, "`freeze_time` can only be used inside a test (`test \"…\" do … end`)")
-                    .with_code(E_DECL)
-                    .with_help("outside tests, pass the instant as a parameter"),
-            );
-        }
+        self.only_in_tests(cx, span, "freeze_time", "outside tests, pass the instant as a parameter");
         let instant = match argv {
             [arg] if arg.name.is_none() => Some(arg),
             _ => None,

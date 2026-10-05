@@ -228,6 +228,7 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Credentials", "fetch") => (Ty::Secret, Some("env")),
         ("Credentials", "dig") => (Ty::opt(Ty::Secret), Some("env")),
         ("Env", "fetch") => (Str, Some("env")),
+        ("Env", "key?") => (Bool, Some("env")),
         ("Json", "dump" | "generate") => (Str, None),
         ("Json", "parse") => (Unknown, None),
         ("Runtime", "on_approval") => (Nil, None),
@@ -240,6 +241,8 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Time", "iso" | "date") => (Str, None),
         ("Time", "weekday") => (Int, None),
         ("Http", "get" | "post" | "put" | "patch" | "delete" | "head") => (User(HTTP_RESPONSE.into()), Some("net")),
+        // in a test only (see `doubles`)
+        ("Http", "requests") => (Ty::array(Ty::Hash(Box::new(Str), Box::new(Unknown))), None),
         ("Db", "connect") => (User(DATABASE.into()), None),
         ("Shell", "run") => (User(SHELL_RESULT.into()), Some("shell")),
         ("Ssh", "connect") => (User(SSH_SESSION.into()), Some("ssh")),
@@ -309,6 +312,11 @@ pub const RESPONSE: &str = "Response";
 
 /// The `out` of `stream do |out| … end`: it takes events.
 pub const EVENT_STREAM: &str = "EventStream";
+
+/// Built-in functions that exist inside a test only.
+pub fn only_in_tests(module: &str, name: &str) -> bool {
+    matches!((module, name), ("Http", "requests"))
+}
 
 /// Built-in functions that need an effect granted but do nothing that
 /// differs from one run to the next (a mailer opens no connection until it
@@ -482,6 +490,8 @@ pub const GLOBALS: &[&str] = &[
     "mock_mcp",
     "mock_ssh",
     "mock_credentials",
+    "mock_env",
+    "mock_mail",
     "mock_embed",
     "mock_transcribe",
     "database",

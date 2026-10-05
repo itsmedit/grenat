@@ -9,7 +9,8 @@
 //! mailer is made and when it sends: `uses net("smtp.example.com")`, or
 //! `net` when the URL comes from configuration. Nothing untrusted goes out
 //! (a message reaches people, a URL names the server). Tests never send:
-//! messages are kept in `Mail.deliveries`, as hashes.
+//! messages are kept in `Mail.deliveries`, as hashes (and `mock_mail` makes
+//! sending fail, see `eval::mail_double`).
 
 use crate::mail::Email;
 use crate::prelude::*;
@@ -74,6 +75,7 @@ pub(crate) fn mailer_send<'p>(interp: &mut Interp<'p>, fields: &Fields<'p>, args
     }
     interp.check_net(&host, &format!("smtp://{host}"))?;
     let email = Email { from, to, subject, body };
+    interp.mail_double()?;
     if interp.offline {
         interp.deliveries.borrow_mut().push(email);
         return Ok(Value::Nil);

@@ -272,6 +272,8 @@ impl<'p> Checker<'p> {
                 V::new(Ty::Nil)
             }
             "freeze_time" => self.freeze_time_call(cx, span, argv, block),
+            "mock_env" => self.mock_env_call(cx, span, argv),
+            "mock_mail" => self.mock_mail_call(cx, span, argv),
             "puts" | "print" | "warn" | "assert" | "assert_equal" => {
                 self.walk_block(cx, block, &[]);
                 V::new(Ty::Nil)

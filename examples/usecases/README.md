@@ -32,6 +32,6 @@ tests fake the transcript (`mock_transcribe`) and the download (`mock_http`).
 Lines of code, without blank lines and comments. A stub is shorter than
 the real code it stands for: with `Http`, cases 2 and 3 grew from 47 to 70
 and from 45 to 56 lines (authentication, JSON, query strings). The tests
-stub the services (`mock_http`, `mock_shell`, `mock_mcp`) and need
-`GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`, `BRAVE_API_KEY`, `LINEAR_TOKEN`,
-`NOTION_TOKEN` and `SMTP_URL` set, to any value.
+stub the services (`mock_http`, `mock_shell`, `mock_mcp`) and need no
+variable set: tokens come from `Credentials` (stand-in secrets in tests),
+and the environment a test reads is the one `mock_env` gives.

@@ -327,3 +327,24 @@ p [head(\"héllo\"), tail(\"héllo\"), inner([1, 2, 3, 4]), flat([[1], [2, 3]]),
         assert!(!native.contains(name), "{name} compiled: {}", log.output);
     }
 }
+
+#[test]
+fn the_environment_and_mailers_are_left_to_the_interpreter() {
+    let src = "\
+def has(name: String) -> Bool uses env = Env.key?(name)
+def mailer(url: String) -> Int uses net
+  Mail.connect(url)
+  1
+end
+def twice(n: Int) -> Int = n * 2
+p [has(\"GRENAT_TEST_JIT_ABSENT\"), mailer(\"smtp://smtp.acme.io\"), twice(2)]
+";
+    let out = same_both_ways(src);
+    assert_eq!(out, "[false, 1, 4]\n");
+    let log = run_mode(src, grenat_interp::Scripted::new([]), &[], &[], Mode { log: true, ..Mode::default() });
+    let native = log.output.lines().find(|l| l.starts_with("[jit] native:")).unwrap_or_default();
+    assert!(native.contains("twice"), "{}", log.output);
+    for name in ["has", "mailer"] {
+        assert!(!native.contains(name), "{name} compiled: {}", log.output);
+    }
+}

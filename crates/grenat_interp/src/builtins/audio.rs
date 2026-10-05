@@ -81,6 +81,7 @@ fn download<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
         timeout: DOWNLOAD_TIMEOUT,
         proxy: ProxyChoice::Environment,
     };
+    interp.record_request("GET", &url, args);
     let got = match interp.http_stub(&request) {
         Some(reply) => {
             let body = reply.body.into_bytes();

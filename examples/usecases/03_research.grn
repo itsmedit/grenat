@@ -24,7 +24,7 @@ module Web
     res = Http.get(
       "https://api.search.brave.com/res/v1/web/search",
       query: {q: query, count: 8},
-      headers: {"X-Subscription-Token" => Env.fetch("BRAVE_API_KEY")},
+      headers: {"X-Subscription-Token" => Credentials.fetch(:brave, :api_key)},
     )
     res.json["web"]["results"].map { |r|
       Hit(url: r["url"], title: r["title"], snippet: r["description"])

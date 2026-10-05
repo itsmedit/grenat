@@ -194,6 +194,9 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
             interp.mcp_stubs.borrow_mut().clear();
             interp.ssh_stubs.borrow_mut().clear();
             interp.deliveries.borrow_mut().clear();
+            interp.mail_failure.borrow_mut().take();
+            interp.sent_requests.borrow_mut().clear();
+            interp.env_double.borrow_mut().clear();
             interp.credentials_double.borrow_mut().take();
             interp.frozen_clock.borrow_mut().take();
             outcomes.push(TestOutcome { name, error });

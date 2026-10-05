@@ -3,10 +3,10 @@
 model :smart, provider: :anthropic, name: "claude-opus-5"
 
 mcp :linear, url: "https://mcp.linear.app/mcp", headers: {
-  "Authorization" => "Bearer #{Env.fetch("LINEAR_TOKEN")}",
+  "Authorization" => "Bearer #{Credentials.fetch(:linear, :token)}",
 }
 mcp :notion, url: "https://mcp.notion.com/mcp", headers: {
-  "Authorization" => "Bearer #{Env.fetch("NOTION_TOKEN")}",
+  "Authorization" => "Bearer #{Credentials.fetch(:notion, :token)}",
 }
 
 struct Issue

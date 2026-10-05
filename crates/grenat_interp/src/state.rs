@@ -69,6 +69,8 @@ pub(crate) struct Shared<'p> {
     pub mailers: Mutex<Vec<(String, String)>>,
     /// Emails a test sent (never sent for real): `Mail.deliveries`.
     pub deliveries: Mutex<Vec<crate::mail::Email>>,
+    /// Why every email a test sends fails (`mock_mail(raise: "SMTP down")`).
+    pub mail_failure: Mutex<Option<String>>,
     /// Triggers declared by the script (`every`, `on_webhook`).
     pub schedules: Mutex<Vec<crate::builtins::Schedule<'p>>>,
     pub webhooks: Mutex<Vec<crate::builtins::Webhook<'p>>>,
@@ -94,6 +96,10 @@ pub(crate) struct Shared<'p> {
     pub ssh_stubs: Mutex<HashMap<String, Arc<Mutex<crate::ssh::Double>>>>,
     /// Stubbed HTTP requests (`mock_http`): (method, URL), the reply.
     pub http_stubs: Mutex<Vec<crate::eval::HttpStub>>,
+    /// The HTTP requests a test sent, in order: `Http.requests`.
+    pub sent_requests: Mutex<Vec<Value<'p>>>,
+    /// The environment a test sees (`mock_env`): in tests, `Env` reads only it.
+    pub env_double: Mutex<HashMap<String, String>>,
     /// See [`Options::offline`] and [`Options::record`].
     pub offline: bool,
     pub record: bool,
@@ -201,6 +207,8 @@ impl<'p> Interp<'p> {
             embedding_mocks: Mutex::new(Vec::new()),
             transcription_mocks: Mutex::new(Vec::new()),
             http_stubs: Mutex::new(Vec::new()),
+            sent_requests: Mutex::new(Vec::new()),
+            env_double: Mutex::new(HashMap::new()),
             databases: Mutex::new(Vec::new()),
             ssh_sessions: Mutex::new(Vec::new()),
             ssh_stubs: Mutex::new(HashMap::new()),
@@ -210,6 +218,7 @@ impl<'p> Interp<'p> {
             shell_stubs: Mutex::new(Vec::new()),
             mailers: Mutex::new(Vec::new()),
             deliveries: Mutex::new(Vec::new()),
+            mail_failure: Mutex::new(None),
             schedules: Mutex::new(Vec::new()),
             webhooks: Mutex::new(Vec::new()),
             routes: Mutex::new(Vec::new()),

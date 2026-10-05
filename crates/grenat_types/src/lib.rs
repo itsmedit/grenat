@@ -29,6 +29,7 @@ mod collect;
 mod construct;
 mod context;
 mod declarations;
+mod doubles;
 mod effects;
 mod embeddings;
 mod expr;

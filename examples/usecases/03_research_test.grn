@@ -1,6 +1,6 @@
 require "./03_research"
 
-# run with BRAVE_API_KEY set (any value: the web is stubbed)
+# the web is stubbed; the API key is the tests' stand-in secret
 test "a sourced report" do
   mock_http "GET https://api.search.brave.com/res/v1/web/search*", json: {
     web: {results: [{url: "https://a.io/rust", title: "Rust", description: "Why Rust"}]},
