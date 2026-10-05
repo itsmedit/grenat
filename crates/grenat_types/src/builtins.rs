@@ -54,6 +54,7 @@ pub fn method(recv: &Ty, name: &str, nargs: usize, block: Option<&Ty>) -> Option
         },
         Duration => match name {
             "seconds" | "to_f" | "minutes" => Float,
+            "to_i" => Int,
             _ => return None,
         },
         Str => match name {
@@ -161,6 +162,10 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Cli", "ask") => (Ty::opt(Str), Some("human")),
         ("Time", "now") => (Float, Some("time")),
         ("Time", "today") => (Str, Some("time")),
+        // pure: computed in UTC (see `clock`)
+        ("Time", "parse" | "at") => (Float, None),
+        ("Time", "iso" | "date") => (Str, None),
+        ("Time", "weekday") => (Int, None),
         ("Http", "get" | "post" | "put" | "patch" | "delete" | "head") => (User(HTTP_RESPONSE.into()), Some("net")),
         ("Db", "connect") => (User(DATABASE.into()), None),
         ("Shell", "run") => (User(SHELL_RESULT.into()), Some("shell")),
@@ -381,6 +386,7 @@ pub const GLOBALS: &[&str] = &[
     "step",
     "approve!",
     "with_human",
+    "freeze_time",
     "deny_all",
     "approve_all",
     "test",

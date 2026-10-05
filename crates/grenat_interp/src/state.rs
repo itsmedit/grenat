@@ -112,6 +112,10 @@ pub(crate) struct Shared<'p> {
     pub approver: Mutex<Option<Value<'p>>>,
     /// The human's double in a test (`with_human`): wins over `approver`.
     pub human_double: Mutex<Option<Value<'p>>>,
+    /// The instant `freeze_time` stopped the clock at, in a test.
+    pub frozen_clock: Mutex<Option<f64>>,
+    /// Whether a test's block is running (`freeze_time` works only there).
+    pub testing: AtomicBool,
     pub tests: Mutex<Vec<(String, Value<'p>)>>,
     pub evals: Mutex<Vec<crate::evals::EvalDef<'p>>>,
     pub output: Output,
@@ -222,6 +226,8 @@ impl<'p> Interp<'p> {
             children: Mutex::new(HashMap::new()),
             approver: Mutex::new(None),
             human_double: Mutex::new(None),
+            frozen_clock: Mutex::new(None),
+            testing: AtomicBool::new(false),
             tests: Mutex::new(Vec::new()),
             evals: Mutex::new(Vec::new()),
             output: options.output,

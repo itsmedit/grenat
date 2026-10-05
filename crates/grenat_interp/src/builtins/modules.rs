@@ -1,5 +1,5 @@
-//! Built-in modules: `File`, `Dir`, `Math`, `Env`, `Json`, `Runtime`, `Cli`, `Time`
-//! (and `Http`, `Shell`, `Ssh`…, in their own modules).
+//! Built-in modules: `File`, `Dir`, `Math`, `Env`, `Json`, `Runtime`, `Cli`
+//! (and `Http`, `Shell`, `Ssh`, `Time`…, in their own modules).
 
 use crate::prelude::*;
 
@@ -17,6 +17,7 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         ("Pdf" | "Image", _) => call_attachment(interp, ty, name, &args),
         ("Audio", _) => call_audio(interp, name, &args),
         ("Mail", _) => call_mail(interp, name, &args),
+        ("Time", _) => call_time(interp, name, args),
         ("Conversation", "new" | "load") => interp.conversation_static(name, &args),
         ("Approvals", "pending") => interp.pending_approvals(),
         ("Approvals", "approve") => interp.decide(&args, true),
@@ -134,14 +135,6 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
             let message = arg(&args, 0, name)?.to_display();
             interp.write_err(&format!("{message} "));
             Ok(interp.read_line()?.map_or(Value::Nil, Value::str))
-        }
-        ("Time", "today") => {
-            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
-            Ok(Value::str(grenat_serve::calendar::date(now.as_secs() as i64)))
-        }
-        ("Time", "now") => {
-            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
-            Ok(Value::Float(now.as_secs_f64()))
         }
         _ => unknown(),
     }

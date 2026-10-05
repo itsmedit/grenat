@@ -284,3 +284,24 @@ fn ternaries_compile_to_native_code() {
     assert!(log.output.contains("[jit] native: sign"), "{}", log.output);
     assert!(log.output.ends_with("[-1, 0, 1]\n"), "{}", log.output);
 }
+
+#[test]
+fn instants_and_durations_are_left_to_the_interpreter() {
+    let src = "\
+def later(t: Float) -> Float = t + 7.days
+def earlier(t: Float) -> Float = t - 1.h * 2
+def stamp(t: Float) -> String = Time.iso(t)
+def weekday(t: Float) -> Int = Time.weekday(t)
+def plain(t: Float) -> Float = t + 1.0
+t = Time.parse(\"2026-09-28T08:00:00Z\")
+p [stamp(later(t)), stamp(earlier(t)), weekday(t), plain(t)]
+";
+    let out = same_both_ways(src);
+    assert_eq!(out, "[\"2026-10-05T08:00:00Z\", \"2026-09-28T06:00:00Z\", 1, 1790582401.0]\n");
+    let log = run_mode(src, grenat_interp::Scripted::new([]), &[], &[], Mode { log: true, ..Mode::default() });
+    let native = log.output.lines().find(|l| l.starts_with("[jit] native:")).unwrap_or_default();
+    assert!(native.contains("plain"), "{}", log.output);
+    for name in ["later", "earlier", "stamp", "weekday"] {
+        assert!(!native.contains(name), "{name} compiled: {}", log.output);
+    }
+}

@@ -177,11 +177,13 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
             // and journals of its own: no test resumes another's workflows
             let journal = test_journal_dir();
             interp.journal_dir.borrow_mut().clone_from(&journal);
+            interp.testing.store(true, std::sync::atomic::Ordering::SeqCst);
             let error = match interp.call_block(&block, Vec::new()) {
                 Ok(_) => None,
                 Err(ctrl) => Some(interp.runtime_error(ctrl)),
             };
             interp.wait_for_tasks();
+            interp.testing.store(false, std::sync::atomic::Ordering::SeqCst);
             let _ = std::fs::remove_dir_all(&journal);
             // each test declares its own mocks
             interp.mocks.borrow_mut().clear();
@@ -193,6 +195,7 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
             interp.ssh_stubs.borrow_mut().clear();
             interp.deliveries.borrow_mut().clear();
             interp.credentials_double.borrow_mut().take();
+            interp.frozen_clock.borrow_mut().take();
             outcomes.push(TestOutcome { name, error });
         }
         Ok(outcomes)

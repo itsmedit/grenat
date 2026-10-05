@@ -137,6 +137,7 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             result
         })(),
         "deny_all" | "approve_all" => Ok(Value::Symbol(name.into())),
+        "freeze_time" => interp.freeze_time(&args),
         // test doubles (see `eval::doubles`)
         "mock" => (|| {
             let model = match args.pos.first().map(Value::untainted) {

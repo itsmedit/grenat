@@ -9,6 +9,7 @@ mod events;
 mod globals;
 mod html;
 mod http;
+pub(crate) mod iso8601;
 mod mail;
 mod methods;
 mod modules;
@@ -16,6 +17,7 @@ mod numbers;
 mod shell;
 mod ssh;
 mod strings;
+mod time;
 mod triggers;
 mod web;
 
@@ -34,6 +36,7 @@ pub(crate) use numbers::*;
 pub(crate) use shell::*;
 pub(crate) use ssh::*;
 pub(crate) use strings::*;
+pub(crate) use time::*;
 pub(crate) use triggers::*;
 pub(crate) use web::*;
 

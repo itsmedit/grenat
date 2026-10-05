@@ -37,6 +37,7 @@ pub(crate) fn compare<'p>(a: &Value<'p>, b: &Value<'p>) -> Option<Ordering> {
         (Float(x), Int(y)) => x.partial_cmp(&(*y as f64)),
         (Float(x), Float(y)) | (Money(x), Money(y)) | (Duration(x), Duration(y)) => x.partial_cmp(y),
         (Money(x), Float(y)) | (Duration(x), Float(y)) => x.partial_cmp(y),
+        (Float(x), Duration(y)) => x.partial_cmp(y),
         (Str(x), Str(y)) | (Symbol(x), Symbol(y)) => Some(x.cmp(y)),
         _ => None,
     }
@@ -98,7 +99,14 @@ impl<'p> Interp<'p> {
             (BinOp::Add, Money(a), Money(b)) => Ok(Money(a + b)),
             (BinOp::Sub, Money(a), Money(b)) => Ok(Money(a - b)),
             (BinOp::Add, Duration(a), Duration(b)) => Ok(Duration(a + b)),
-            (BinOp::Mul, Duration(a), Int(n)) => Ok(Duration(a * *n as f64)),
+            (BinOp::Sub, Duration(a), Duration(b)) => Ok(Duration(a - b)),
+            (BinOp::Mul, Duration(a), Int(n)) | (BinOp::Mul, Int(n), Duration(a)) => Ok(Duration(a * *n as f64)),
+            // an instant moved by a duration: `Time.now + 7.days`
+            (BinOp::Add | BinOp::Sub, Int(_) | Float(_), Duration(d)) => {
+                let t = builtins::number(&l).expect("a number");
+                Ok(Float(if op == BinOp::Add { t + d } else { t - d }))
+            }
+            (BinOp::Add, Duration(d), Int(_) | Float(_)) => Ok(Float(d + builtins::number(&r).expect("a number"))),
             (BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::Cmp, ..) => match compare(&l, &r) {
                 Some(ord) => Ok(match op {
                     BinOp::Lt => Bool(ord.is_lt()),

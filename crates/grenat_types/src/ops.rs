@@ -71,8 +71,11 @@ impl<'p> Checker<'p> {
                 Float
             }
             BinOp::Add | BinOp::Sub if lt == Money && rt == Money => Money,
-            BinOp::Add if lt == Duration && rt == Duration => Duration,
-            BinOp::Mul if lt == Duration && rt == Int => Duration,
+            BinOp::Add | BinOp::Sub if lt == Duration && rt == Duration => Duration,
+            BinOp::Mul if (lt == Duration && rt == Int) || (lt == Int && rt == Duration) => Duration,
+            // an instant moved by a duration: `Time.now + 7.days`
+            BinOp::Add | BinOp::Sub if lt.is_numeric() && rt == Duration => Float,
+            BinOp::Add if lt == Duration && rt.is_numeric() => Float,
             BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr if lt == Int && rt == Int => Int,
             _ => {
                 self.error(E_TYPE, span, format!("operator `{}` is not defined between `{lt}` and `{rt}`", op_str(op)));

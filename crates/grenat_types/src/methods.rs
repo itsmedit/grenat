@@ -215,6 +215,9 @@ impl<'p> Checker<'p> {
             return v;
         }
         if let Some((ty, effect)) = builtins::static_method(t, n) {
+            if t == "Time" {
+                self.time_args(span, n, &argv);
+            }
             let block_v = self.walk_block(cx, block, &[]);
             if let Some(path) = effect {
                 let mut arg = argv.first().and_then(|a| a.lit.clone());

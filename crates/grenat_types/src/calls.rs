@@ -265,7 +265,14 @@ impl<'p> Checker<'p> {
     ) -> Option<V> {
         let first = argv.first().map(|a| a.v.clone());
         let v = match name {
-            "puts" | "print" | "warn" | "test" | "assert" | "assert_equal" => {
+            "test" => {
+                cx.tests += 1;
+                self.walk_block(cx, block, &[]);
+                cx.tests -= 1;
+                V::new(Ty::Nil)
+            }
+            "freeze_time" => self.freeze_time_call(cx, span, argv, block),
+            "puts" | "print" | "warn" | "assert" | "assert_equal" => {
                 self.walk_block(cx, block, &[]);
                 V::new(Ty::Nil)
             }

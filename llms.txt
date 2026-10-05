@@ -25,8 +25,8 @@ grenat fmt                   # canonical layout
 - One-line methods: `def norm = Math.sqrt(x * x + y * y)`. Class methods: `def self.load(...)`. Constants: `LIMIT = 10`, `API = "…"` inside a module (`GitHub::API`).
 - Everything is concurrent without coloring: `xs.parallel_map(limit: 5) { |x| … }`, `race do … end`.
 - Locals cannot be annotated (`x: Int = 1` does not parse); keywords (`until`, `end`, `in`…) cannot be parameter names; no `\` line continuation (break after an operator or a comma instead).
-- Missing Ruby methods (don't use them): `Array#flatten` (use `flat_map`), `str[i, n]` / `str[a..b]` slicing (use `s.chars.take(n).join`, `split`), `delete_suffix`, `then`, `strftime`, date parsing.
-- Time: `Time.now` is a `Float` (epoch seconds), `Time.today` a `"YYYY-MM-DD"` string; `7.days`, `1.hour`, `2.min` are `Duration`s for options (`budget`, `every`, `enqueue(in:)`), not for arithmetic with `Time.now` (write `7 * 86400.0`). ISO 8601 timestamps from APIs must be parsed by hand (split on `-`, `T`, `:`). Time cannot be faked in tests: pass `now` as a parameter.
+- Missing Ruby methods (don't use them): `Array#flatten` (use `flat_map`), `str[i, n]` / `str[a..b]` slicing (use `s.chars.take(n).join`, `split`), `delete_suffix`, `then`, `strftime`.
+- Time: an instant is a `Float` (epoch seconds): `Time.now` (`uses time`), `Time.parse("2026-09-28T08:00:00+02:00")` (ISO 8601; a date alone is midnight UTC; invalid → `ArgumentError`), `Time.at(2026, 9, 28, 8, 0, 0)`; written in UTC by `Time.iso(t)` → `"2026-09-28T06:00:00Z"`, `Time.date(t)` → `"2026-09-28"`, `Time.weekday(t)` → 1 (Monday)…7. `Time.today` is a `"YYYY-MM-DD"` string. `7.days`, `1.hour`, `2.min` are `Duration`s: `Time.now - 7.days` is a `Float`, `2.h - 30.min`, `3 * 1.h`, `1.h < 2.h`, `d.to_i` (seconds). No time zones besides offsets, no `t.year` (use `Time.date`).
 
 ```ruby
 struct Point
@@ -245,7 +245,7 @@ test "a summary" do
 end
 ```
 
-Doubles: `mock :model, replies: [...]` (a reply is a value of the return type as a hash, a string, or `call(:tool, args…)`), `mock_http "GET https://api.x.com/*", json: {…}` (or `status:`, `body:`), `mock_shell "git status*", stdout: "…"`, `mock_mcp :linear, tools: {"create_issue" => "L-1"}`, `mock_embed :docs`, `mock_credentials({"github" => {"token" => "t"}})`, `with_human(approve_all) do … end` (or `deny_all`), `request :get, "/tickets/1"`, `deliver_webhook "/github", json: {…}`, `Jobs.perform`, `Mail.deliveries`. Assertions: `assert x`, `assert_equal expected, actual`, `assert_raises TaintError { … }`.
+Doubles: `mock :model, replies: [...]` (a reply is a value of the return type as a hash, a string, or `call(:tool, args…)`), `mock_http "GET https://api.x.com/*", json: {…}` (or `status:`, `body:`), `mock_shell "git status*", stdout: "…"`, `mock_mcp :linear, tools: {"create_issue" => "L-1"}`, `mock_embed :docs`, `mock_credentials({"github" => {"token" => "t"}})`, `with_human(approve_all) do … end` (or `deny_all`), `freeze_time("2026-09-28T08:00:00Z") do … end` (`Time.now`/`Time.today` answer that instant inside; only in a `test` block), `request :get, "/tickets/1"`, `deliver_webhook "/github", json: {…}`, `Jobs.perform`, `Mail.deliveries`. Assertions: `assert x`, `assert_equal expected, actual`, `assert_raises TaintError { … }`.
 
 - `mock :model, replies: [...]` fails the test ("mock has no reply left") when the model is called more often than replies were given: that is how a test proves a workflow did not call the model again.
 - `mock_http` options: `json:`, `body:`, `status:`, `headers:` (the response's). It answers; it does not record what was sent. To test a request's JSON and headers, build them in a function of their own and assert on it; an unstubbed request fails the test, which proves nothing was sent.

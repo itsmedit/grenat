@@ -42,6 +42,7 @@ pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &s
         },
         Value::Duration(s) => match name {
             "seconds" | "to_f" => Some(Ok(Value::Float(*s))),
+            "to_i" => Some(Ok(Value::Int(*s as i64))),
             "minutes" => Some(Ok(Value::Float(s / 60.0))),
             _ => None,
         },

@@ -614,6 +614,36 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 14 status: time
+
+Programs read timestamps from APIs, compute deadlines and test them; `Time.now` was a bare `Float`, `7.days` could not be added to it, ISO 8601 was parsed by hand, and a test could not say what time it was. Now an instant is still a `Float` of seconds since the epoch — existing programs are unchanged — and Grenat reads it from text, writes it back, moves it by a duration, and stops the clock in a test.
+
+```ruby
+## Whether an invoice is overdue: due 30 days after it was issued.
+def overdue?(issued_at: String) -> Bool uses time
+  Time.parse(issued_at) + 30.days < Time.now
+end
+
+## The Monday of the week of `t`, as a date.
+def monday(t: Float) -> String = Time.date(t - (Time.weekday(t) - 1) * 1.day)
+
+test "an invoice is overdue after 30 days" do
+  freeze_time("2026-09-28T08:00:00Z") do
+    assert overdue?("2026-08-28T07:59:59+00:00")
+    assert !overdue?("2026-08-29T10:00:00+02:00")
+    assert_equal "2026-09-28", monday(Time.now + 6.days)
+  end
+end
+```
+
+- **Reading.** `Time.parse(text)` is a `Float`: RFC 3339 / ISO 8601 — `2026-09-28T08:00:00Z`, an offset (`+02:00`, `-0500`, `+02`), a fraction of a second (`.250`, `,5`), `t` or a space for `T`, no seconds (`08:00Z`), a date alone (`2026-09-28`, midnight UTC); no offset is UTC. Years 0000 to 9999; a day that does not exist (`2026-02-29`), an hour past 23, an offset past 23:59 or any other text is an `ArgumentError` saying why and showing the expected form; a second of 60 (a leap second) is the next minute's first.
+- **Writing, in UTC.** `Time.iso(t)` is `"2026-09-28T08:00:00Z"` (with milliseconds when there are some: `"…T08:00:00.250Z"`, so that `Time.iso(Time.parse(s)) == s` for such texts), `Time.date(t)` is `"2026-09-28"`, `Time.weekday(t)` is 1 (Monday) to 7 (Sunday); `Time.at(year, month, day, hour = 0, min = 0, sec = 0)` builds an instant (`sec` may be a `Float`). They take an `Int` or a `Float`; an instant outside the years 0000–9999, `NaN` or an infinity is an `ArgumentError`. No date library: Howard Hinnant's `days_from_civil` and its inverse (`grenat_serve::calendar`), checked against each other over 4,000 years.
+- **Durations.** An instant plus or minus a `Duration` (`Time.now + 7.days`, `t - 90.min`, `1.h + t`) is a `Float`; durations add and subtract (`2.h - 30.min`), multiply by an `Int` on either side (`3 * 1.h`), compare (`1.h < 2.h`, `2.min == 120.s`, and with seconds: `60.0 < 2.min`), and give their seconds (`to_f`, `seconds`, `to_i`). What makes no sense stays an error (E0200, `TypeError`): `1.day * 1.5`, `1.day - 5`, `1.day * 1.day`.
+- **Effects and taint.** `Time.now` and `Time.today` read the clock (a `time` effect, as before; in a workflow, inside a `step`); the others are pure, no effect. What they make of an untrusted value is untrusted: `Time.parse(answer)` of a model's answer, `Time.iso` of it, `t + 1.day` (E0412, `TaintError` where it reaches a sink). A `Secret` is no text to parse (E0200, `TypeError`, its value never in the message). The checker knows each function's arguments and result (E0200), so the native code compiler leaves functions using them, and durations, to the interpreter rather than compile them.
+- **`freeze_time`.** In a test, `freeze_time("2026-09-28T08:00:00Z") do … end` (or epoch seconds, `freeze_time(0)`) makes `Time.now` and `Time.today` answer that instant inside the block — also in the functions it calls and the tasks it starts — and is the block's value. Blocks nest; the clock that was comes back after the block, also when it raises, and every test starts with the real clock. Outside a test it does not exist: the checker refuses it anywhere but inside a `test "…" do … end` block (E0500: a helper function passes the instant as a parameter), and the runtime raises a `RuntimeError` outside a running test, the loading of a test file included.
+- **Tests.** The parser and writer have unit tests (offsets, fractions, 1970 and 0000/9999 boundaries, leap years, weekdays, every refusal with its reason); runtime tests play each function, round trips, a negative offset crossing midnight and a year, durations on instants, taint, secrets, and `freeze_time` nested, after a raise, between tests and outside them; checker tests type each function, its arguments, the duration operators and `freeze_time`'s place; a JIT test shows the same results compiled or not; `stdlib.grn` prints them through `grenat run`.
+- **Limits.** No time zones beyond fixed offsets (no `Europe/Paris`, no daylight saving), no `strftime`, no `Time` object with methods (`t.year`: use `Time.date(t)` or `Time.at`); `freeze_time` does not stop `sleep`, timeouts, budgets' time or the dates journals and migrations record.
+
 ### Phase 13 status: audio
 
 A team records its meetings; someone listens again and writes the minutes and the tasks. Now a recording becomes text — and, with a prompt, minutes — in a few lines: `Audio.read` and `Audio.url` attach audio as `Pdf` and `Image` attach documents, `transcribe` turns it into text through a transcription model, and audio goes into a prompt where the provider takes it.

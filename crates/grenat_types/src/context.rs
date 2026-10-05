@@ -50,6 +50,8 @@ pub(crate) struct Ctx<'p> {
     pub(crate) run_span: Option<Span>,
     /// Depth inside `step { … }` blocks.
     pub(crate) steps: usize,
+    /// Depth inside `test "…" do … end` blocks.
+    pub(crate) tests: usize,
     /// Non-deterministic effects used outside any `step` (an error in a workflow).
     pub(crate) unstepped: Vec<Eff>,
 }
@@ -65,6 +67,7 @@ impl<'p> Ctx<'p> {
             returns: Vec::new(),
             run_span: None,
             steps: 0,
+            tests: 0,
             unstepped: Vec::new(),
         }
     }
