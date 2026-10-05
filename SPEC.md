@@ -614,6 +614,43 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 14 status: edges as Ruby has them
+
+A review of the strings, arrays, time and test-double phases ran programs through `grenat check` and `grenat run` side by side with Ruby, and found places where the two Grenat stages disagreed, where Grenat disagreed with Ruby, and two where a secret showed. Each is fixed, with a test that failed before.
+
+```ruby
+## The last millisecond of a day, in ISO 8601.
+def last_moment(date: String) -> String = Time.iso(Time.parse(date) + 1.day - 0.0004)
+
+## Whether a timeout given in seconds stays within a limit.
+def within?(seconds: Int, limit: Duration) -> Bool = seconds <= limit
+
+## Tags nested at any depth, flat.
+def tags(groups: Array(Array(Array(String)))) -> Array(String) = groups.flatten(-1).uniq
+
+test "edges as Ruby has them" do
+  assert_equal "2026-12-31T23:59:59.999Z", last_moment("2026-12-31")
+  assert within?(3600, 1.h)
+  assert_equal ["ai", "rust"], tags([[["ai"]], [["rust", "ai"]]])
+  assert_equal "-3|005|Inf", format("%d|%.3d|%f", -3.99, 5, 1.0 / 0.0)
+  assert_equal 2, "hello world".count("lo", "o")
+  assert [1, 2].reduce(:<)
+end
+```
+
+- **Instants are cut, never rounded.** `Time.iso`, `Time.date` and `Time.weekday` rounded to the millisecond, so `23:59:59.9996Z` on December 31 was written as the next day, year and weekday. An instant is now taken to the microsecond (what a `Float` keeps of a decimal fraction: `1.005` is 1.00499…), then cut to the millisecond, as Ruby does.
+- **Durations and seconds.** A `Duration` compared with a `Float` but not an `Int`: `1.h < 3600` checked, then was a `TypeError`. It now compares with both, on either side, and `==` agrees with `<=>`: `1.h == 3600` and `1.h == 3600.0` are true (they were false while `1.h <=> 3600.0` was 0).
+- **`flatten(depth)`.** A negative depth flattens every level, as in Ruby (`flatten(-1)` flattened nothing). The checker took one level off whatever the depth, so `flatten(0)` checked as flat and failed at run time: a literal depth now says how many levels go (`0` none, a negative one all), a depth computed at run time leaves the items `Unknown`; a depth that is no `Int`, or a second one, is E0200 (`TypeError`, `ArgumentError`).
+- **`reduce` / `inject` without a block** need an operator symbol last and one or two arguments (`reduce(0)` checked, then was an `ArgumentError`); with a block or `&:op`, one initial value at most (E0200). The operator types the result: a comparison (`:<`, `:==`…) a `Bool`, `:<=>` an `Int`, arithmetic the items' kind, another method `Unknown` — `reduce(:<)` was typed as an item.
+- **Slices are read only.** `xs[0, 2] = v`, `xs[1..] = v` and `s[1..] = "z"` checked fine and always failed at run time; so did any `s[i] = …` (a string is never changed in place). The checker refuses them (E0200; on a secret E0414), the runtime says why (`TypeError`, not "expected a single index"). An item (`xs[i] = v`, `xs[-1] = v`) and a hash key assign as before.
+- **`format` and `%` as Ruby writes numbers.** `%d` of a `Float` truncates toward zero (`-3.99` is `-3`; it was floored), exactly past an `i64` (`1e20`; it saturated), up to 2^127 (an `ArgumentError` beyond). A precision is a minimum count of digits for `%d %i %x %o %b` (`%.3d` of 5 is `005`, `%.0d` of 0 nothing), the `0` flag then padding with spaces. Infinities and NaN are `Inf`, `-Inf`, `NaN`, padded with spaces (they were Rust's `inf`). One difference is kept and documented: a negative number keeps its sign in another base (`%x` of -255 is `-ff`, where Ruby writes `..f01`).
+- **Character sets intersect.** `count`, `delete` and `squeeze` read their first set only: every set given now counts, as in Ruby (`"hello world".count("lo", "o")` is 2, `"hello".count("a-y", "^l")` 3, an empty set holds nothing).
+- **No secret in an error.** `format("%d", token)` and `"%d" % [token]` raised an `ArgumentError` whose message held the secret's text — a plain `String` a program could log or send to a model. A secret that reads as a number is written (the result a `Secret`, as before); otherwise the error says "got a secret that is not one (its text is not shown)".
+- **A secret body stays secret in `Http.requests`.** From a secret `body:`, the parsed `json` gave numbers, booleans and keys as plain values (`body: pin` with `"123456"` gave the `Int` 123456; `"{\"#{pin}\": true}"` a plain key). Every text, number, boolean and key of it is now a `Secret` of its JSON text, equal to it (`assert_equal "123456", req["json"]`, `json["123456"]` finds its key); only its shape and its `null`s show. A secret key of a `json:` body is a secret key (it was the text `[secret]`).
+- **Backends and tooling.** Nothing new to compile: the native code compiler already leaves these methods, `format` and durations to the interpreter. No new syntax.
+- **Tests.** Unit tests cut instants before midnight, before the end of the range and on decimal fractions, write every integer and non-finite case of `format` (checked against Ruby 3.4), intersect character sets and keep a secret's text out of `format`'s errors; runtime tests for each fix, the secret-body cases of `Http.requests`, and `xs[-1] = v` (which overflowed in a debug build); checker tests for `flatten`'s literal depths, `reduce`'s arguments and operators, and slice assignment; `stdlib.grn` prints them through `grenat run`.
+- **Limits.** The checker does not read a `format` string: a secret passed to `%d` is refused at run time only. `count` and `delete` without a set, or with a non-string one, are still caught at run time only.
+
 ### Phase 14 status: test doubles and the mail effect
 
 LLMs writing Grenat tests from its reference hit four walls: a test could not see what a request sent (only stub the answer), `Env` read the machine's environment (a test passed or failed depending on who ran it), a crash between workflow steps had to be faked by removing a credential, and a function sending email without `net` checked fine and failed only at run time. Now a test reads the requests the program sent, gives the environment it sees, and makes the mail server fail; and the checker holds email to the `net` effect.
@@ -653,7 +690,7 @@ test "the mail server is down" do
 end
 ```
 
-- **`Http.requests`.** In a test, every request the program sent — by `Http.get/post/put/patch/delete/head` and `Audio.url`, answered by `mock_http` or not (an unstubbed one is recorded, then fails) — in order, from its tasks too. Each is a hash with string keys, as `Mail.deliveries`: `method`, `url` (its `query:` encoded in it), `headers` (as given, plus the `Content-Type` a `json:` body adds), `body` (the text sent, `nil` without one) and `json` (the body as the service parses it — string keys, records as objects — `nil` when it is not JSON). Secrets stay secrets: a URL, a header or a body that holds one is a `Secret`, equal to its text (`assert_equal "Bearer t", …`) and printed `[secret]`; from a secret `body:`, each text the JSON holds is one. Each test starts with none. Requests to MCP servers are not in it (`mock_mcp` answers them).
+- **`Http.requests`.** In a test, every request the program sent — by `Http.get/post/put/patch/delete/head` and `Audio.url`, answered by `mock_http` or not (an unstubbed one is recorded, then fails) — in order, from its tasks too. Each is a hash with string keys, as `Mail.deliveries`: `method`, `url` (its `query:` encoded in it), `headers` (as given, plus the `Content-Type` a `json:` body adds), `body` (the text sent, `nil` without one) and `json` (the body as the service parses it — string keys, records as objects — `nil` when it is not JSON). Secrets stay secrets: a URL, a header or a body that holds one is a `Secret`, equal to its text (`assert_equal "Bearer t", …`) and printed `[secret]`; from a secret `body:`, each text, number, boolean and key the JSON holds is one. Each test starts with none. Requests to MCP servers are not in it (`mock_mcp` answers them).
 - **The environment in tests.** Under `grenat test`, `Env` never reads the process's environment, so that a test passes the same on every machine and in CI: `Env.get`, `Env.fetch` and the new `Env.key?(name)` see only what the running test gave with `mock_env({"GITHUB_TOKEN" => "t"})` — merged when called again, forgotten after the test. Unmocked, a variable is unset: `Env.get` is `nil`, `Env.fetch(name, default)` the default, `Env.fetch(name)` a `KeyError` that names `mock_env`. The file's top-level code loads before any test and sees an empty environment too: a declaration that needs a value at load reads it from `Credentials` (stand-in secrets in tests) or with a default. `mock_env` takes plain strings (E0200, `TypeError`); a secret is `mock_credentials`' (`SecretError`). Outside tests nothing changes. The use cases moved their tokens to `Credentials` (as the reference recommends) and their tests need no variable set any more.
 - **A failing mail server.** After `mock_mail(raise: "SMTP down")`, every email the test sends raises `MailError` ("SMTP down") — after the usual checks (capability, taint, fields) — and none joins `Mail.deliveries`; `mock_mail(raise: nil)` brings the server back, and each test starts with a working one. A test so crashes a workflow between two steps and runs it again with the same arguments: the finished steps replay from the journal.
 - **Only in tests.** `Http.requests`, `mock_env` and `mock_mail`, as `freeze_time`, exist inside a `test "…" do … end` block only: the checker refuses them anywhere else (E0500, helper functions included), the runtime outside a running test, the loading of a test file included (`RuntimeError`).
