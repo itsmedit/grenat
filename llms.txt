@@ -19,13 +19,13 @@ grenat fmt                   # canonical layout
 
 - Types are written on `def`/`tool`/`prompt` parameters and returns, and on struct fields; inferred everywhere else. `def total(items: Array(Item), rate: Float = 0.2) -> Float`.
 - Types: `Int`, `Float`, `Bool`, `String`, `Money`, `Path`, `Email`, `Array(T)`, `Hash(K, V)`, `T?` (optional), `Result(T, E)`, `~T` (untrusted), `Secret`, `Attachment`.
-- Optionals instead of nil everywhere: `user&.email || "unknown"`. Errors are values: `?` propagates a `Result`; `raise "msg"` and `begin … rescue E => e … end` also work.
+- Optionals instead of nil everywhere: `user&.email || "unknown"`. Errors are values: `?` propagates a `Result`; `raise "msg"`, `raise ArgumentError, "msg"` and `begin … rescue KeyError, ArgumentError => e … end` also work (a `def` body may end with `rescue` without `begin`).
 - No `method_missing`, `send`, `eval`, monkey-patching, `require "json"`, gems, `async`/`await`, `attr_accessor` (use a struct field or a `macro`). `require "./file"` only for your own files, at the top level.
 - Construct a struct by calling its name: `Point(x: 1.0, y: 2.0)`; hash shorthand `{query:}`, keyword shorthand `f(to:, body:)`.
 - One-line methods: `def norm = Math.sqrt(x * x + y * y)`. Class methods: `def self.load(...)`. Constants: `LIMIT = 10`, `API = "…"` inside a module (`GitHub::API`).
 - Everything is concurrent without coloring: `xs.parallel_map(limit: 5) { |x| … }`, `race do … end`.
 - Locals cannot be annotated (`x: Int = 1` does not parse); keywords (`until`, `end`, `in`…) cannot be parameter names; no `\` line continuation (break after an operator or a comma instead).
-- Not in Grenat (don't use them): regular expressions (`/…/`, `=~`, `scan`, `match`), `strftime`, `freeze`, `step`, `each_char`, destructuring block parameters (`|(k, v), acc|`: take the pair, `pair[0]`), endless ranges outside an index (`(1..)`).
+- Not in Grenat (don't use them): array set operators `&` / `|` (use `a.select { |x| b.include?(x) }`, `(a + b).uniq`), regular expressions (`/…/`, `=~`, `scan`, `match`), `strftime`, `freeze`, `step`, `each_char`, destructuring block parameters (`|(k, v), acc|`: take the pair, `pair[0]`), endless ranges outside an index (`(1..)`).
 - Time: an instant is a `Float` (epoch seconds): `Time.now` (`uses time`), `Time.parse("2026-09-28T08:00:00+02:00")` (ISO 8601; a date alone is midnight UTC; invalid → `ArgumentError`), `Time.at(2026, 9, 28, 8, 0, 0)`; written in UTC by `Time.iso(t)` → `"2026-09-28T06:00:00Z"`, `Time.date(t)` → `"2026-09-28"`, `Time.weekday(t)` → 1 (Monday)…7 (cut to the millisecond, never rounded). `Time.today` is a `"YYYY-MM-DD"` string. `7.days`, `1.hour`, `2.min` are `Duration`s: `Time.now - 7.days` is a `Float`, `2.h - 30.min`, `3 * 1.h`, `1.h < 2.h`, `1.h == 3600` (a duration compares with its seconds), `d.to_i` (seconds). No time zones besides offsets, no `t.year` (use `Time.date`).
 
 ```ruby
@@ -112,7 +112,7 @@ end
 
 ## Untrusted values `~T` (taint)
 
-Whatever comes from outside is untrusted: model answers, HTTP bodies, files read from the web, webhook payloads, shell output, tool arguments, MCP results. You may read, print, or pass it to another prompt. It may NOT reach a sink — HTTP request, shell argument, file write, email, database write, HTML page, approval text — until cleaned (E0412):
+Whatever comes from outside is untrusted: model answers, HTTP bodies, files read from the web, webhook payloads, shell output, MCP results, an agent's answer. (Inside a `tool`, its arguments are trusted: the tool is the trust boundary, so `approve! "Open #{title}?"` is allowed there.) You may read, print, or pass it to another prompt. It may NOT reach a sink — HTTP request, shell argument, file write, email, database write, HTML page, approval text — until cleaned (E0412):
 
 ```ruby
 s = summarize(text)                                        # ~Summary
@@ -120,6 +120,8 @@ ok = s.check { |x| x.bullets.size.between?(3, 5) }?        # Summary, or the Che
 ok2 = s.check { |x| x.title.size > 0 }.or_else { s.approve(by: :human) }
 fine = s.trust!                                            # explicit, grep-able: only when truly safe
 ```
+
+`x.approve(by: :human)` shows the value to the human and returns it trusted, or raises `ApprovalDenied`; to review a model's text before printing it, use it (`reply.approve(by: :human)`) rather than putting the text in `approve!`. `x.check { … }` without `?` is a `Result`: `.or_else { … }` gives a fallback.
 
 A field read from an untrusted value is untrusted too: `res.json["id"].check { |i| i > 0 }?`.
 
@@ -193,7 +195,7 @@ A workflow run is identified by its name and arguments: calling it again with th
 
 - `Http.get/post/put/patch/delete(url, query:, headers:, json:, body:, timeout:)` → `status`, `ok?`, `headers`, `body`, `json` (body/headers/json untrusted).
 - `Credentials.fetch(:github, :token)` → `Secret` (works in HTTP headers/URLs, `Db.connect`, `Mail.connect`, `Ssh.connect`; never printed, never sent to a model; a missing one raises `KeyError`). Use it for every token, password and connection URL: a spec's `GITHUB_TOKEN` becomes `Credentials.fetch(:github, :token)` (`github: {token: …}` in `grenat credentials edit`). `"Bearer #{token}"` is itself a `Secret`; comparing a secret to a string works (`assert_equal "Bearer t", header`). In tests without credentials, `Credentials.fetch(:a, :b)` is the stand-in secret `"test-a-b"`; `mock_credentials` sets others. `Env.fetch("NAME")`, `Env.fetch("NAME", "default")`, `Env.get("NAME")` (nil when unset), `Env.key?("NAME")` give plain strings (non-secret settings); in tests, `Env` sees only what `mock_env` gives (never the machine's environment).
-- `File.read(path)`, `File.write(path, text)`, `File.lines(path)`, `Dir.list(dir)`; `Json.parse(text)`, `Json.generate(v)`.
+- `File.read(path)`, `File.write(path, text)`, `File.lines(path)`, `Dir.list(dir)` (bare file names, not paths); `Json.parse(text)`, `Json.generate(v)`.
 - `Shell.run(["git", "status"], timeout: 60, network: false)` → `status`, `ok?`, `stdout`, `stderr` (argument vector, never a shell line).
 - `Mail.connect(url).send(from:, to: [...], subject:, body:)`.
 - `Db.connect(url)` → `query(sql, [params], as: Row)`, `first`, `execute`, `transaction do … end`; `?` placeholders.
@@ -219,7 +221,7 @@ on_webhook "/github", secret: Credentials.fetch(:github, :webhook_secret), signa
   "ok"
 end
 
-every cron: "0 8 * * MON" do
+every cron: "0 8 * * MON" do  # cron schedules are in UTC
   enqueue(:publish, "weekly digest")
 end
 ```
@@ -253,6 +255,8 @@ Doubles: `mock :model, replies: [...]` (a reply is a value of the return type as
 - `Mail.deliveries` is an array of hashes with string keys: `m["from"]`, `m["to"]` (an array), `m["subject"]`, `m["body"]`.
 - To simulate a crash between two workflow steps, make the later step fail (`mock_mail(raise: "SMTP down")` before a sending step), assert the error, undo it (`mock_mail(raise: nil)`), then run the workflow again with the same arguments: finished steps replay from the journal.
 - Error classes: `TaintError`, `CapabilityError`, `SecretError`, `CheckError`, `ApprovalDenied`, `BudgetExceeded`, `MaxTurnsExceeded`, `TimeoutError`, `HttpError`, `MailError`, `KeyError`, `ArgumentError`, `TypeError`, `LlmError`, `RuntimeError` (a bare `raise "msg"`). `rescue` names the class.
+- The stand-in secret `"test-a-b"` is not a URL: a test that sends mail or connects to a database gives a real-looking one, `mock_credentials({"smtp" => {"url" => "smtp://u:p@smtp.acme.io:587"}, "github" => {"token" => "t"}})` (it replaces all the stand-ins).
+- Mocked models cost nothing, so a dollar budget cannot be exceeded in a test; test `max_turns` instead (give more tool-call replies than turns).
 - `GRENAT_LOG=1 grenat test …` prints each model, tool and HTTP call.
 
 ## Checklist before answering
