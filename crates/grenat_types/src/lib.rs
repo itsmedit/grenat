@@ -33,6 +33,7 @@ mod doubles;
 mod effects;
 mod embeddings;
 mod expr;
+mod folds;
 mod formatting;
 mod functions;
 mod methods;

@@ -54,6 +54,7 @@ xs = [1, 2, 3, 4, 5]
 p [xs[1, 2], xs[1..-2], xs[1...-1], xs[-2..], xs[5, 1], xs[5..], xs.slice(1, 2), xs.slice(-1)]
 p [xs[6, 1], xs[-6..], xs[0, -1]]
 p [[1, [2, [3, [4]]]].flatten, [1, [2, [3, [4]]]].flatten(1), [[1], [2]].flatten(0), [].flatten]
+p [[[1, [2, [3]]]].flatten(-1), [[1, [2]]].flatten(-5), [[1, [2, [3]]]].flatten(2)]
 ",
     );
     assert_eq!(
@@ -62,6 +63,8 @@ p [[1, [2, [3, [4]]]].flatten, [1, [2, [3, [4]]]].flatten(1), [[1], [2]].flatten
             "[[2, 3], [2, 3, 4], [2, 3, 4], [4, 5], [], [], [2, 3], 5]",
             "[nil, nil, nil]",
             "[[1, 2, 3, 4], [1, 2, [3, [4]]], [[1], [2]], []]",
+            // a negative depth flattens every level, as in Ruby
+            "[[1, 2, 3], [1, 2], [1, 2, [3]]]",
         ]
     );
 }
@@ -73,7 +76,26 @@ fn slicing_errors_say_why() {
         "TypeError: a slice `[start, length]` takes two integers, got Int and String"
     );
     assert_eq!(error_of("p [1][0, 1, 2]"), "ArgumentError: an index takes one or two values, got 3");
+    assert_eq!(error_of("p [[1]].flatten(1, 2)"), "ArgumentError: `flatten` takes one depth at most, got 2");
     assert_eq!(error_of("p \"abc\"[\"a\"]"), "TypeError: String cannot be indexed by String");
+}
+
+#[test]
+fn slices_are_read_only() {
+    for (src, says) in [
+        ("xs = [1, 2, 3]\nxs[0, 2] = 9", "TypeError: a slice cannot be assigned"),
+        ("xs = [1, 2, 3]\nxs[1..] = [5]", "TypeError: a slice cannot be assigned"),
+        ("xs = [1, 2, 3]\nxs[0, 2] += [9]", "TypeError: a slice cannot be assigned"),
+        ("s = \"abc\"\ns[1..] = \"z\"", "TypeError: a string cannot be changed in place"),
+        ("s = \"abc\"\ns[0] = \"z\"", "TypeError: a string cannot be changed in place"),
+    ] {
+        assert!(error_of(src).starts_with(says), "{src}: {}", error_of(src));
+    }
+    // an item still can
+    assert_eq!(
+        run("xs = [1, 2, 3]\nxs[0] = 9\nxs[-1] = 7\nh = {}\nh[1..2] = 3\np xs, h\n"),
+        "[9, 2, 7]\n{1..2 => 3}\n"
+    );
 }
 
 #[test]

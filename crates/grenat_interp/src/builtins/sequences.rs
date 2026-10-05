@@ -17,8 +17,12 @@ pub(crate) fn sequence_method<'p>(
     let all = || items.borrow().clone();
     Some(match name {
         "flatten" => (|| {
+            if args.pos.len() > 1 {
+                return raise("ArgumentError", format!("`flatten` takes one depth at most, got {}", args.pos.len()));
+            }
+            // a negative depth is every level, as no depth: `flatten(-1)`
             let depth = match args.pos.first() {
-                Some(_) => Some(int_arg(args, 0, name)?),
+                Some(_) => Some(int_arg(args, 0, name)?).filter(|d| *d >= 0),
                 None => None,
             };
             let mut out = Vec::new();

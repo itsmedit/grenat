@@ -2,7 +2,9 @@
 //! slice — `s[start, length]`, `s[a..b]`, `xs[start, length]`, `xs[a..b]`
 //! — is `String?` or `Array(T)?`, `nil` when it starts past the end (as in
 //! Ruby; an item read stays `T`, as `xs[i]` always was). A secret is never
-//! indexed: it serves whole.
+//! indexed: it serves whole. Slices are read only: `xs[i] = v` and
+//! `h[k] = v` assign, `xs[0, 2] = v`, `xs[1..] = v` and `s[0] = "z"` do
+//! not (a string is never changed in place).
 
 use grenat_ast::Span;
 
@@ -10,6 +12,30 @@ use crate::ty::{Ty, V};
 use crate::*;
 
 impl<'p> Checker<'p> {
+    /// `target[index…] = value`: an array's item or a hash's key, never a
+    /// slice, a string or a secret.
+    pub(crate) fn index_assign(&mut self, target: &V, index: &[V], span: Span) {
+        let receiver = target.ty.base();
+        if secrets::is_secret(receiver) {
+            self.slice(target, index, span);
+            return;
+        }
+        let slice = index.len() == 2 || matches!(index, [k] if matches!(k.ty.base(), Ty::Range));
+        match receiver {
+            Ty::Str => self.report(
+                Diagnostic::new(span, "a string cannot be changed in place")
+                    .with_code(E_TYPE)
+                    .with_help("build a new one: `s = \"#{s[0]}z\"`"),
+            ),
+            Ty::Array(_) if slice => self.report(
+                Diagnostic::new(span, "a slice cannot be assigned")
+                    .with_code(E_TYPE)
+                    .with_help("build a new array: `xs = [9] + xs[2..]`"),
+            ),
+            _ => {}
+        }
+    }
+
     /// The type of `target[index…]` for a string, an array or a hash; `None`
     /// for the other receivers.
     pub(crate) fn slice(&mut self, target: &V, index: &[V], span: Span) -> Option<Ty> {

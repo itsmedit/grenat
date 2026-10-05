@@ -67,7 +67,12 @@ impl<'p> Checker<'p> {
             self.taint_container(cx, r, taint);
         }
         let result = match receiver {
-            Some(r) => self.method(cx, span, r, name, argv, block),
+            Some(r) => {
+                let recv_ty = r.ty.clone();
+                let positional: Vec<Ty> = argv.iter().filter(|a| a.name.is_none()).map(|a| a.v.ty.clone()).collect();
+                let v = self.method(cx, span, r, name, argv, block);
+                self.fold_typed(&recv_ty, name, args, &positional, block.is_some(), v)
+            }
             None => self.function(cx, span, name, argv, block),
         };
         if safe { V { ty: Ty::opt(result.ty), taint: result.taint } } else { result }

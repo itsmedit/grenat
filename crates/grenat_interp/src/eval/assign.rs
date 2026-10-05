@@ -116,14 +116,26 @@ impl<'p> Interp<'p> {
         index: Vec<Value<'p>>,
         value: Value<'p>,
     ) -> Result<(), Ctrl<'p>> {
+        // slices are read: `xs[0, 2] = v`, `xs[1..] = v`, `s[0] = "z"` would change them in place
+        let slice = index.len() == 2 || matches!(index.as_slice(), [k] if matches!(k.untainted(), Value::Range(..)));
+        match target.untainted() {
+            Value::Str(_) => {
+                return raise("TypeError", "a string cannot be changed in place: build a new one (`s = \"#{s[0]}z\"`)");
+            }
+            Value::Array(_) if slice => {
+                return raise("TypeError", "a slice cannot be assigned: build a new array (`xs = [9] + xs[2..]`)");
+            }
+            _ => {}
+        }
         let [key] = index.as_slice() else {
             return raise("ArgumentError", "expected a single index");
         };
         match (&target, key.untainted()) {
             (Value::Array(items), Value::Int(i)) => {
                 let mut items = items.borrow_mut();
-                let len = items.len();
-                let Some(i) = resolve_index(*i, len.max(*i as usize + 1)) else {
+                // past the end grows the array; a negative index counts from the end
+                let room = if *i >= 0 { items.len().max(*i as usize + 1) } else { items.len() };
+                let Some(i) = resolve_index(*i, room) else {
                     return raise("IndexError", format!("index {i} out of bounds"));
                 };
                 if i >= items.len() {

@@ -384,10 +384,9 @@ impl<'p> Checker<'p> {
                 }
             }
             ExprKind::Index { recv, args } => {
-                self.expr(cx, recv);
-                for a in args {
-                    self.expr(cx, a);
-                }
+                let receiver = self.expr(cx, recv);
+                let index: Vec<V> = args.iter().map(|a| self.expr(cx, a)).collect();
+                self.index_assign(&receiver, &index, target.span);
                 self.taint_container(cx, recv, value.taint);
             }
             ExprKind::Call { recv: Some(recv), name, .. } => {

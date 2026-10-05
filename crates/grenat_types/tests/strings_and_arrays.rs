@@ -84,6 +84,77 @@ fn their_results_have_their_types() {
 }
 
 #[test]
+fn a_literal_depth_says_how_much_flatten_takes_off() {
+    clean(
+        "\
+def none(xs: Array(Array(Int))) -> Array(Array(Int)) = xs.flatten(0)
+def one(xs: Array(Array(Array(Int)))) -> Array(Array(Int)) = xs.flatten(1)
+def two(xs: Array(Array(Array(Int)))) -> Array(Int) = xs.flatten(2)
+def all(xs: Array(Array(Array(Int)))) -> Array(Int) = xs.flatten(-1)
+def deeper(xs: Array(Array(Int))) -> Array(Int) = xs.flatten(5)
+def some(xs: Array(Array(Int)), n: Int) -> Int = xs.flatten(n).first + 1
+",
+    );
+    for (src, at, says) in [
+        // `flatten(0)` takes nothing off: its items are still arrays
+        ("x = [[1], [2]].flatten(0)\np x.first + 1\n", "x.first + 1", "between `Array(Int)` and `Int`"),
+        ("def f(xs: Array(Array(Array(Int)))) -> Array(Int) = xs.flatten(1)\n", "xs.flatten(1)", "`Array(Array(Int))`"),
+        ("p [[1]].flatten(\"1\")\n", "flatten", "`flatten` expects an `Int` depth, got `String`"),
+        ("p [[1]].flatten(1, 2)\n", "flatten", "`flatten` takes one depth at most, got 2"),
+    ] {
+        let d = single(src, "E0200", at);
+        assert!(d.message.contains(says), "{src}: {}", d.message);
+    }
+}
+
+#[test]
+fn reduce_without_a_block_takes_an_operator() {
+    clean(
+        "\
+def total(xs: Array(Int)) -> Int = xs.reduce(:+) + xs.inject(10, :+) + xs.reduce(&:*)
+def joined(xs: Array(String)) -> String = xs.reduce(\"\", :+)
+def sorted(xs: Array(Int)) -> Bool = xs.reduce(:<)
+def compared(xs: Array(Int)) -> Int = xs.reduce(:<=>)
+def less(xs: Array(Int)) -> Bool = xs.reduce(&:<)
+def ranged -> Int = (1..4).reduce(:*)
+def summed(xs: Array(Int)) -> Int = xs.reduce(0) { |a, x| a + x }
+def picked(xs: Array(Int), op: Symbol) = xs.reduce(op)
+",
+    );
+    for (src, at, says) in [
+        ("p [1, 2].reduce(0)\n", "reduce", "`reduce` expects a block or an operator"),
+        ("p [1, 2].inject\n", "inject", "`inject` expects a block or an operator"),
+        ("p [1, 2].reduce(0, 1, :+)\n", "reduce", "`reduce` expects a block or an operator"),
+        ("p [1, 2].reduce(0, :+) { |a, x| a + x }\n", "reduce", "one initial value at most, got 2"),
+        ("p [1, 2].reduce(0, 1, &:+)\n", "reduce", "one initial value at most, got 2"),
+        // a comparison makes a `Bool`, not an item
+        ("x = [1, 2].reduce(:<)\np x + 1\n", "x + 1", "between `Bool` and `Int`"),
+        ("x = [1, 2].reduce(&:==)\np x + 1\n", "x + 1", "between `Bool` and `Int`"),
+    ] {
+        let d = single(src, "E0200", at);
+        assert!(d.message.contains(says), "{src}: {}", d.message);
+    }
+}
+
+#[test]
+fn slices_are_read_only() {
+    for (src, at, says) in [
+        ("xs = [1, 2, 3]\nxs[0, 2] = 9\n", "xs[0, 2]", "a slice cannot be assigned"),
+        ("xs = [1, 2, 3]\nxs[1..] = 5\n", "xs[1..]", "a slice cannot be assigned"),
+        ("xs = [1, 2, 3]\nxs[0, 2] += [9]\n", "xs[0, 2]", "a slice cannot be assigned"),
+        ("s = \"abc\"\ns[1..] = \"z\"\n", "s[1..]", "a string cannot be changed in place"),
+        ("s = \"abc\"\ns[0] = \"z\"\n", "s[0]", "a string cannot be changed in place"),
+    ] {
+        let d = single(src, "E0200", at);
+        assert!(d.message.contains(says), "{src}: {}", d.message);
+    }
+    let d = single("def f uses env\n  t = Credentials.fetch(:a, :b)\n  t[0] = \"x\"\nend\n", "E0414", "t[0]");
+    assert!(d.message.contains("a secret cannot be indexed nor sliced"), "{}", d.message);
+    // an item, a key: as before
+    clean("xs = [1, 2, 3]\nxs[0] = 9\nxs[-1] += 1\nh = {\"a\" => 1}\nh[\"b\"] = 2\nr = {}\nr[1..2] = 3\n");
+}
+
+#[test]
 fn indexes_are_checked() {
     for (src, at, says) in [
         ("def f(s: String) = s[0, \"1\"]\n", "s[0, \"1\"]", "takes two `Int`s, got `String`"),

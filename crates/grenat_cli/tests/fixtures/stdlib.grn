@@ -79,7 +79,7 @@ def main uses fs.read, env, time
   show "+ -", [[1, 2] + [3], [1, 2, 3] - [2]]
   show "indices", [xs[0], xs[-1], xs[1..2], xs[9]]
   show "slices", [xs[1, 2], xs[2..], xs[1...-1], xs[9, 1], xs.slice(0, 2)]
-  show "flatten", [[1, [2, [3]]].flatten, [1, [2, [3]]].flatten(1)]
+  show "flatten", [[1, [2, [3]]].flatten, [1, [2, [3]]].flatten(1), [[1, [2]]].flatten(-1), [[1]].flatten(0)]
   show "each_slice each_cons", [xs.each_slice(2).to_a, xs.each_cons(4).to_a]
   show "minmax max(n) rotate", [xs.minmax, xs.max(2), xs.rotate, xs.rotate(-1)]
   show "take_while drop_while", [xs.take_while { |x| x < 4 }, xs.drop_while { |x| x < 4 }]
@@ -88,7 +88,7 @@ def main uses fs.read, env, time
   show "sort block", xs.sort { |a, b| b <=> a }
   show "filter_map", [1, nil, 2].filter_map { |x| x && x * 10 }
   show "each_with_object", xs.each_with_object([]) { |x, acc| acc << x * 2 }
-  show "reduce operator", [xs.reduce(:+), xs.inject(2, :*), xs.reduce(&:+)]
+  show "reduce operator", [xs.reduce(:+), xs.inject(2, :*), xs.reduce(&:+), [1, 2].reduce(:<)]
   show "product zip", [[1, 2].product([3]), [1, 2].zip([3, 4], [5, 6])]
   show "to_h dig", [[[:a, 1]].to_h, [1, 2].to_h { |x| [x, x * x] }, [[1, [2]]].dig(0, 1, 0)]
   show "parallel_map", [1, 2, 3].parallel_map(limit: 2) { |x| x * x }

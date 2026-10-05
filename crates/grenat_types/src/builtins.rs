@@ -152,7 +152,9 @@ fn array_method(t: &Ty, name: &str, args: &[Ty], block: Option<&Ty>) -> Option<T
         | "drop_while" | "rotate" => same(),
         "each_slice" | "each_cons" if block.is_some() => same(),
         "each_slice" | "each_cons" => Ty::array(same()),
-        "flatten" => flattened(&elem, !has_args),
+        // `flatten(depth)`: a literal depth refines it (`folds`)
+        "flatten" if has_args => Ty::array(Unknown),
+        "flatten" => crate::folds::flattened(&elem, None),
         "filter_map" => Ty::array(block_ty().base().clone()),
         "minmax" => same(),
         "product" if args.iter().all(|a| *a == same()) => Ty::array(same()),
@@ -170,7 +172,7 @@ fn array_method(t: &Ty, name: &str, args: &[Ty], block: Option<&Ty>) -> Option<T
         "sum" => elem.clone(),
         "join" => Str,
         "zip" => Ty::array(Ty::array(Unknown)),
-        // `reduce(:+)`, `inject(0, :+)`: the operator gives the receiver's kind of value
+        // `reduce(:+)`, `inject(0, :+)`: the operator decides (`folds`)
         "reduce" | "inject" if block.is_none() => match args {
             [init, Sym] => crate::ty::join(init, &elem),
             _ => elem.clone(),
@@ -180,17 +182,6 @@ fn array_method(t: &Ty, name: &str, args: &[Ty], block: Option<&Ty>) -> Option<T
         "tally" => Hash(Box::new(elem.clone()), Box::new(Int)),
         _ => return None,
     })
-}
-
-/// What `flatten` makes of an array of `elem`: one level less, or all
-/// levels when `all` (`flatten(depth)` does not say how many: unknown below).
-fn flattened(elem: &Ty, all: bool) -> Ty {
-    match elem.base() {
-        Ty::Array(inner) if all => flattened(inner, true),
-        Ty::Array(inner) if matches!(inner.base(), Ty::Array(_)) => Ty::array(Ty::Unknown),
-        Ty::Array(inner) => Ty::array((**inner).clone()),
-        other => Ty::array(other.clone()),
-    }
 }
 
 /// The methods whose result is made of their arguments too: what they
