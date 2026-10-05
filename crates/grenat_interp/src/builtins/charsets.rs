@@ -1,7 +1,8 @@
 //! Ruby's character sets, for `String#count`, `delete`, `squeeze` and
 //! `tr`: `"aeiou"` lists characters, `"a-z"` is a range, a leading `^`
-//! negates (`"^a-z"`), `\` escapes `-`, `^` and itself. No regular
-//! expressions: Grenat has none.
+//! negates (`"^a-z"`), `\` escapes `-`, `^` and itself. Several sets
+//! intersect (`count("a-y", "^l")`: in both). No regular expressions:
+//! Grenat has none.
 
 /// A set of characters, maybe negated.
 pub(crate) struct CharSet {
@@ -19,6 +20,11 @@ impl CharSet {
     pub(crate) fn contains(&self, c: char) -> bool {
         self.chars.contains(&c) != self.negated
     }
+}
+
+/// Whether every set holds `c`: several sets intersect, as in Ruby.
+pub(crate) fn in_all(sets: &[CharSet], c: char) -> bool {
+    sets.iter().all(|set| set.contains(c))
 }
 
 /// The characters of a set's text, ranges expanded (`"a-c"` → `a b c`); a
@@ -70,12 +76,13 @@ pub(crate) fn translate(s: &str, from: &str, to: &str) -> String {
         .collect()
 }
 
-/// `squeeze`: runs of the same character (of `set`, when given) become one.
-pub(crate) fn squeeze(s: &str, set: Option<&CharSet>) -> String {
+/// `squeeze`: runs of the same character (of every set, when given)
+/// become one.
+pub(crate) fn squeeze(s: &str, sets: &[CharSet]) -> String {
     let mut out = String::with_capacity(s.len());
     let mut previous = None;
     for c in s.chars() {
-        if previous == Some(c) && set.is_none_or(|set| set.contains(c)) {
+        if previous == Some(c) && in_all(sets, c) {
             continue;
         }
         out.push(c);
@@ -114,8 +121,19 @@ mod tests {
 
     #[test]
     fn squeezing() {
-        assert_eq!(squeeze("aaabbbccc", None), "abc");
-        assert_eq!(squeeze("a  b   c", Some(&CharSet::parse(" "))), "a b c");
-        assert_eq!(squeeze("mississippi", Some(&CharSet::parse("s"))), "misisippi");
+        assert_eq!(squeeze("aaabbbccc", &[]), "abc");
+        assert_eq!(squeeze("a  b   c", &[CharSet::parse(" ")]), "a b c");
+        assert_eq!(squeeze("mississippi", &[CharSet::parse("s")]), "misisippi");
+        assert_eq!(squeeze("aaabbboo", &[CharSet::parse("ab"), CharSet::parse("b")]), "aaaboo");
+    }
+
+    #[test]
+    fn several_sets_are_intersected() {
+        let sets = [CharSet::parse("lo"), CharSet::parse("o")];
+        assert!(in_all(&sets, 'o') && !in_all(&sets, 'l'));
+        let sets = [CharSet::parse("a-y"), CharSet::parse("^l")];
+        assert!(in_all(&sets, 'h') && !in_all(&sets, 'l') && !in_all(&sets, 'z'));
+        // an empty set holds nothing
+        assert!(!in_all(&[CharSet::parse("lo"), CharSet::parse("")], 'l'));
     }
 }

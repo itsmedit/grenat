@@ -42,9 +42,11 @@ def main uses fs.read, env, time
   show "delete_prefix suffix", ["v1.2".delete_prefix("v"), "a.rb".delete_suffix(".rb")]
   show "center pad", ["ab".center(6, "*"), "ab".ljust(5, "-"), "7".rjust(3, "0")]
   show "count delete squeeze", ["hello".count("lo"), "a-b-c".delete("-"), "a  b".squeeze]
+  show "char sets intersected", ["hello world".count("lo", "o"), "hello".delete("a-y", "^l")]
   show "tr swapcase", ["hello".tr("el", "ip"), "Hello".swapcase]
   show "start_with? several", "abc".start_with?("x", "ab")
   show "format %", [format("%.2f", 3.14159), format("%05d|%-3s|%x", 42, "ab", 255), "%.1f%%" % 12.34]
+  show "format as Ruby", format("%d|%.3d|%f", -3.99, 5, 1.0 / 0.0)
   show "then", 5.then { |x| x * 2 }
 
   # Array

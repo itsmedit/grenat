@@ -99,6 +99,19 @@ fn slices_are_read_only() {
 }
 
 #[test]
+fn character_sets_are_intersected() {
+    // as Ruby: a character counts when every set holds it
+    let out = lines(
+        "\
+p [\"hello world\".count(\"lo\", \"o\"), \"hello\".count(\"a-y\", \"^l\"), \"hello\".count(\"lo\", \"\")]
+p [\"hello world\".delete(\"lo\", \"o\"), \"aaabbboo\".squeeze(\"ab\", \"b\")]
+",
+    );
+    assert_eq!(out, ["[2, 3, 0]", "[\"hell wrld\", \"aaaboo\"]"]);
+    assert_eq!(error_of("p \"a\".count(\"a\", 1)"), "TypeError: `count` expects a string, got Int");
+}
+
+#[test]
 fn string_methods() {
     let out = lines(
         "\

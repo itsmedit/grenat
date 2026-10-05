@@ -96,15 +96,23 @@ struct Directive {
 impl Directive {
     fn write(&self, kind: char, operand: &Operand) -> Result<String, String> {
         Ok(match kind {
-            'd' | 'i' | 'u' => self.number(integer(operand, kind)?.to_string()),
-            'x' => self.number(radix(integer(operand, kind)?, |n| format!("{n:x}"))),
-            'X' => self.number(radix(integer(operand, kind)?, |n| format!("{n:X}"))),
-            'o' => self.number(radix(integer(operand, kind)?, |n| format!("{n:o}"))),
-            'b' => self.number(radix(integer(operand, kind)?, |n| format!("{n:b}"))),
-            'f' => self.number(format!("{:.*}", self.precision.unwrap_or(6), float(operand, kind)?)),
-            'e' | 'E' => {
-                let text = exponent(float(operand, kind)?, self.precision.unwrap_or(6));
-                self.number(if kind == 'E' { text.to_uppercase() } else { text })
+            'd' | 'i' | 'u' => self.integer(integer(operand, kind)?, |n| n.to_string()),
+            'x' => self.integer(integer(operand, kind)?, |n| format!("{n:x}")),
+            'X' => self.integer(integer(operand, kind)?, |n| format!("{n:X}")),
+            'o' => self.integer(integer(operand, kind)?, |n| format!("{n:o}")),
+            'b' => self.integer(integer(operand, kind)?, |n| format!("{n:b}")),
+            'f' | 'e' | 'E' => {
+                let f = float(operand, kind)?;
+                if !f.is_finite() {
+                    return Ok(self.infinite(f));
+                }
+                let precision = self.precision.unwrap_or(6);
+                let text = match kind {
+                    'f' => format!("{:.precision$}", f.abs()),
+                    'e' => exponent(f.abs(), precision),
+                    _ => exponent(f.abs(), precision).to_uppercase(),
+                };
+                self.number(f.is_sign_negative(), text, true)
             }
             's' | 'p' => {
                 let text = match operand {
@@ -122,15 +130,36 @@ impl Directive {
         })
     }
 
-    /// A number: its sign, then padding (zeros after the sign).
-    fn number(&self, text: String) -> String {
-        let (sign, digits) = match text.strip_prefix('-') {
-            Some(rest) => ("-", rest.to_string()),
-            None if self.plus => ("+", text),
-            None if self.space => (" ", text),
-            None => ("", text),
+    /// An integer in a base (`digits` of its magnitude): a precision is a
+    /// minimum count of digits (`%.3d` of 5 is `005`, `%.0d` of 0 nothing),
+    /// and then the `0` flag pads with spaces, as in C and Ruby. A negative
+    /// number keeps its sign in any base (`-ff`; Ruby writes `..f01`).
+    fn integer(&self, n: i128, digits: impl Fn(u128) -> String) -> String {
+        let text = match self.precision {
+            Some(0) if n == 0 => String::new(),
+            Some(p) => format!("{:0>p$}", digits(n.unsigned_abs())),
+            None => digits(n.unsigned_abs()),
         };
-        if self.zero && !self.left {
+        self.number(n < 0, text, self.precision.is_none())
+    }
+
+    /// `Inf`, `-Inf` or `NaN`, as Ruby writes them: signed by `+` or a
+    /// space, padded with spaces only.
+    fn infinite(&self, f: f64) -> String {
+        let text = if f.is_nan() { "NaN" } else { "Inf" };
+        self.number(f.is_sign_negative() && !f.is_nan(), text.to_string(), false)
+    }
+
+    /// A number's sign, then its `digits`, padded (with zeros after the
+    /// sign when `zeros` may and the `0` flag asks).
+    fn number(&self, negative: bool, digits: String, zeros: bool) -> String {
+        let sign = match () {
+            _ if negative => "-",
+            _ if self.plus => "+",
+            _ if self.space => " ",
+            _ => "",
+        };
+        if zeros && self.zero && !self.left {
             let width = self.width.unwrap_or(0).saturating_sub(sign.len());
             return format!("{sign}{digits:0>width$}");
         }
@@ -145,14 +174,20 @@ impl Directive {
     }
 }
 
-fn integer(operand: &Operand, kind: char) -> Result<i64, String> {
+/// An integer operand: a float truncated toward zero, as Ruby does (`%d` of
+/// -3.99 is -3), exact past an `i64` (`%d` of 1e20).
+fn integer(operand: &Operand, kind: char) -> Result<i128, String> {
     match operand {
-        Operand::Int(n) => Ok(*n),
-        Operand::Float(f) if f.is_finite() => Ok(f.floor() as i64),
+        Operand::Int(n) => Ok(i128::from(*n)),
+        Operand::Float(f) if !f.is_finite() => Err(format!("`%{kind}` expects an integer, got {}", ruby_float(*f))),
+        // 2^127: past it, no i128 holds the number
+        Operand::Float(f) if f.trunc().abs() >= 1.7014118346046923e38 => {
+            Err(format!("`%{kind}`: {f:e} is out of range"))
+        }
+        Operand::Float(f) => Ok(f.trunc() as i128),
         Operand::Text { shown, .. } => {
             shown.trim().parse().map_err(|_| format!("`%{kind}` expects an integer, got {shown:?}"))
         }
-        Operand::Float(f) => Err(format!("`%{kind}` expects an integer, got {f}")),
     }
 }
 
@@ -166,9 +201,13 @@ fn float(operand: &Operand, kind: char) -> Result<f64, String> {
     }
 }
 
-/// A negative number in another base keeps its sign: `-ff`.
-fn radix(n: i64, digits: impl Fn(u64) -> String) -> String {
-    if n < 0 { format!("-{}", digits(n.unsigned_abs())) } else { digits(n as u64) }
+/// A float as Ruby names the ones that are not finite: `Inf`, `-Inf`, `NaN`.
+fn ruby_float(f: f64) -> String {
+    match f {
+        f if f.is_nan() => "NaN".into(),
+        f if f.is_infinite() => (if f < 0.0 { "-Inf" } else { "Inf" }).into(),
+        f => Value::Float(f).to_display(),
+    }
 }
 
 /// `1.234500e+03`: as C and Ruby write it, two exponent digits at least.
@@ -214,6 +253,44 @@ mod tests {
     }
 
     #[test]
+    fn integers_as_ruby_writes_them() {
+        let f = |spec: &str, x: Operand| format(spec, &[x]).unwrap();
+        // a float is truncated toward zero, never floored
+        assert_eq!(f("%d", Operand::Float(-3.99)), "-3");
+        assert_eq!(f("%d", Operand::Float(-0.5)), "0");
+        // past an i64, still exact
+        assert_eq!(f("%d", Operand::Float(1e20)), "100000000000000000000");
+        assert_eq!(f("%x", Operand::Float(1e20)), "56bc75e2d63100000");
+        // a precision is a minimum count of digits; the `0` flag then pads with spaces
+        assert_eq!(f("%.3d", Operand::Int(5)), "005");
+        assert_eq!(f("%.3d", Operand::Int(-5)), "-005");
+        assert_eq!(f("%+.3d", Operand::Int(5)), "+005");
+        assert_eq!(f("%05.3d", Operand::Int(5)), "  005");
+        assert_eq!(f("%-6.3d|", Operand::Int(5)), "005   |");
+        assert_eq!(f("%.3x", Operand::Int(5)), "005");
+        assert_eq!(f("%.3b", Operand::Int(1)), "001");
+        assert_eq!(f("%.0d", Operand::Int(0)), "");
+        assert_eq!(f("%5.0d|", Operand::Int(0)), "     |");
+        assert_eq!(f("%x", Operand::Float(255.9)), "ff");
+        // a negative number keeps its sign in another base (Ruby writes `..f01`)
+        assert_eq!(f("%x", Operand::Int(-255)), "-ff");
+    }
+
+    #[test]
+    fn infinities_and_nan_as_ruby_writes_them() {
+        let f = |spec: &str, x: f64| format(spec, &[Operand::Float(x)]).unwrap();
+        assert_eq!(f("%f", f64::INFINITY), "Inf");
+        assert_eq!(f("%f", f64::NEG_INFINITY), "-Inf");
+        assert_eq!(f("%f", f64::NAN), "NaN");
+        assert_eq!(f("%010f", f64::INFINITY), "       Inf");
+        assert_eq!(f("%+f", f64::INFINITY), "+Inf");
+        assert_eq!(f("% f", f64::INFINITY), " Inf");
+        assert_eq!(f("%-6f|", f64::NAN), "NaN   |");
+        assert_eq!(f("%e", f64::INFINITY), "Inf");
+        assert_eq!(f("%.2E", f64::NEG_INFINITY), "-Inf");
+    }
+
+    #[test]
     fn text_and_percent() {
         assert_eq!(format("%s-%s", &[text("a"), Operand::Int(1)]).unwrap(), "a-1");
         assert_eq!(format("%-5s|%5s|", &[text("ab"), text("cd")]).unwrap(), "ab   |   cd|");
@@ -228,6 +305,9 @@ mod tests {
         assert!(format("%d %d", &[Operand::Int(1)]).unwrap_err().contains("too few"));
         assert!(format("%q", &[Operand::Int(1)]).unwrap_err().contains("`%q`"));
         assert!(format("%d", &[text("abc")]).unwrap_err().contains("expects an integer"));
+        assert_eq!(format("%d", &[Operand::Float(f64::INFINITY)]).unwrap_err(), "`%d` expects an integer, got Inf");
+        assert_eq!(format("%x", &[Operand::Float(f64::NAN)]).unwrap_err(), "`%x` expects an integer, got NaN");
+        assert_eq!(format("%d", &[Operand::Float(1e40)]).unwrap_err(), "`%d`: 1e40 is out of range");
         assert!(format("50%", &[]).unwrap_err().contains("incomplete"));
     }
 }

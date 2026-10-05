@@ -69,21 +69,15 @@ fn text_method<'p>(s: &Arc<str>, name: &str, args: &Args<'p>) -> Option<R<'p>> {
                 })
                 .collect(),
         ),
-        "count" => Some(str_arg(args, 0, name).map(|set| {
-            let set = CharSet::parse(&set);
-            Value::Int(s.chars().filter(|c| set.contains(*c)).count() as i64)
-        })),
-        "delete" => Some(str_arg(args, 0, name).map(|set| {
-            let set = CharSet::parse(&set);
-            Value::str(s.chars().filter(|c| !set.contains(*c)).collect::<String>())
-        })),
-        "squeeze" => Some((|| {
-            let set = match args.pos.first() {
-                Some(_) => Some(CharSet::parse(&str_arg(args, 0, name)?)),
-                None => None,
-            };
-            Ok(Value::str(charsets::squeeze(s, set.as_ref())))
-        })()),
+        "count" => Some(
+            char_sets(args, name, 1)
+                .map(|sets| Value::Int(s.chars().filter(|c| charsets::in_all(&sets, *c)).count() as i64)),
+        ),
+        "delete" => Some(
+            char_sets(args, name, 1)
+                .map(|sets| Value::str(s.chars().filter(|c| !charsets::in_all(&sets, *c)).collect::<String>())),
+        ),
+        "squeeze" => Some(char_sets(args, name, 0).map(|sets| Value::str(charsets::squeeze(s, &sets)))),
         "tr" => Some((|| {
             let (from, to) = (str_arg(args, 0, name)?, str_arg(args, 1, name)?);
             Ok(Value::str(charsets::translate(s, &from, &to)))
@@ -126,6 +120,11 @@ fn text_method<'p>(s: &Arc<str>, name: &str, args: &Args<'p>) -> Option<R<'p>> {
         "to_sym" => Some(Ok(Value::Symbol(s.clone()))),
         _ => None,
     }
+}
+
+/// The character sets given (`at_least` of them), to intersect.
+fn char_sets<'p>(args: &Args<'p>, name: &str, at_least: usize) -> Result<Vec<CharSet>, Ctrl<'p>> {
+    (0..args.pos.len().max(at_least)).map(|i| str_arg(args, i, name).map(|set| CharSet::parse(&set))).collect()
 }
 
 /// `n` characters of `fill` repeated, as Ruby pads.

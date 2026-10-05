@@ -23,9 +23,11 @@ slices                 ["Grenat", "Rubis", "Rubi", nil, "Gre"]
 delete_prefix suffix   ["1.2", "a"]
 center pad             ["**ab**", "ab---", "007"]
 count delete squeeze   [3, "abc", "a b"]
+char sets intersected  [2, "ll"]
 tr swapcase            ["hippo", "hELLO"]
 start_with? several    true
 format %               ["3.14", "00042|ab |ff", "12.3%"]
+format as Ruby         "-3|005|Inf"
 then                   10
 size count empty?      [5, 3, true]
 first last             [3, 5, [3, 1], [1, 5]]
