@@ -313,7 +313,9 @@ fn a_stream_cut_short_fails_and_a_consumer_may_stop_it() {
 
 /// Short limits: 300 ms a call answered whole, 200 ms of silence.
 fn short() -> Timeouts {
-    Timeouts { whole: Duration::from_millis(300), connect: Duration::from_secs(5), silence: Duration::from_millis(200) }
+    // a whole call has 300 ms; a stream may stay silent 1 s, so that a slow machine (a CI runner)
+    // pausing between two pieces 50 ms apart does not break it
+    Timeouts { whole: Duration::from_millis(300), connect: Duration::from_secs(5), silence: Duration::from_secs(1) }
 }
 
 #[test]
@@ -331,10 +333,11 @@ fn a_stream_lasts_as_long_as_its_pieces_keep_coming() {
     assert_eq!(response.unwrap().text(), "0 1 2 3 4 5 6 7 8 9 10 11 ");
     assert_eq!(pieces.text.len(), 12);
     // a silence longer than the limit breaks it
-    let (url, _) = serve(vec![trickle(&text, text.len() / 2, Duration::from_millis(600))]);
+    let (url, _) = serve(vec![trickle(&text, text.len() / 2, Duration::from_millis(2500))]);
     let (response, _) = collect(&anthropic(&url).with_timeouts(short()), &ask(&model));
     let error = response.unwrap_err();
     assert!(error.starts_with("the stream broke") && error.contains("timeout"), "{error}");
+    assert!(!error.contains("global"), "a silence, not the limit of a whole call: {error}");
     // the same for OpenAI's APIs
     let chunks = chunks(&(0..12).map(|i| chunk(json!({"content": format!("{i} ")}), None)).collect::<Vec<_>>(), true);
     let (url, _) = serve(vec![trickle(&chunks, chunks.len() / 20, Duration::from_millis(50))]);

@@ -8,10 +8,10 @@
 
 use std::time::Duration;
 
-use ureq::Agent;
 use ureq::unversioned::resolver::DefaultResolver;
 use ureq::unversioned::transport::time::Duration as Wait;
 use ureq::unversioned::transport::{Buffers, ConnectionDetails, Connector, DefaultConnector, NextTimeout, Transport};
+use ureq::{Agent, Timeout};
 
 /// The limits of a provider's calls.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -89,7 +89,9 @@ impl Transport for Quiet {
 
     fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
         let shorter = timeout.after.is_not_happening() || *timeout.after > self.after;
-        let timeout = if shorter { NextTimeout { after: Wait::Exact(self.after), ..timeout } } else { timeout };
+        // named as what it is, a silence while the body is read, not ureq's global limit
+        let timeout =
+            if shorter { NextTimeout { after: Wait::Exact(self.after), reason: Timeout::RecvBody } } else { timeout };
         self.inner.await_input(timeout)
     }
 
