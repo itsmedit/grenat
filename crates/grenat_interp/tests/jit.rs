@@ -305,3 +305,25 @@ p [stamp(later(t)), stamp(earlier(t)), weekday(t), plain(t)]
         assert!(!native.contains(name), "{name} compiled: {}", log.output);
     }
 }
+
+#[test]
+fn slices_and_ruby_methods_are_left_to_the_interpreter() {
+    let src = "\
+def head(s: String) -> String = s[0, 3] || \"\"
+def tail(s: String) -> String = s[1..] || \"\"
+def inner(xs: Array(Int)) -> Int = (xs[1..-2] || []).size
+def flat(xs: Array(Array(Int))) -> Int = xs.flatten.size
+def total(xs: Array(Int)) -> Int = xs.reduce(:+)
+def money(x: Float) -> String = format(\"%.2f\", x)
+def plain(s: String) -> String = s.upcase
+p [head(\"héllo\"), tail(\"héllo\"), inner([1, 2, 3, 4]), flat([[1], [2, 3]]), total([1, 2, 3]), money(2.5), plain(\"a\")]
+";
+    let out = same_both_ways(src);
+    assert_eq!(out, "[\"hél\", \"éllo\", 2, 3, 6, \"2.50\", \"A\"]\n");
+    let log = run_mode(src, grenat_interp::Scripted::new([]), &[], &[], Mode { log: true, ..Mode::default() });
+    let native = log.output.lines().find(|l| l.starts_with("[jit] native:")).unwrap_or_default();
+    assert!(native.contains("plain"), "{}", log.output);
+    for name in ["head", "tail", "inner", "flat", "total", "money"] {
+        assert!(!native.contains(name), "{name} compiled: {}", log.output);
+    }
+}

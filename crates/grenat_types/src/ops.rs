@@ -61,6 +61,8 @@ impl<'p> Checker<'p> {
                 Str
             }
             BinOp::Mul if lt == Str && rt == Int => Str,
+            // `"%.2f" % x`, `"%s-%s" % [a, b]`: `format`
+            BinOp::Rem if lt == Str => crate::formatting::formatted(crate::secrets::type_holds_secret(&r.ty)),
             BinOp::Add | BinOp::Sub if matches!(lt, Array(_)) && matches!(rt, Array(_)) => join(&lt, &rt),
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem | BinOp::Pow if lt == Int && rt == Int => {
                 Int

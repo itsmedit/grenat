@@ -19,19 +19,30 @@ pub fn block_params(recv: &Ty, name: &str, arg0: Option<&Ty>) -> Vec<Ty> {
         (Ty::Int, "times" | "upto") => vec![Ty::Int],
         (Ty::Array(t), "each_with_index") => vec![(**t).clone(), Ty::Int],
         (Ty::Array(t), "reduce" | "inject") => vec![arg0.cloned().unwrap_or_else(|| (**t).clone()), (**t).clone()],
+        (Ty::Array(_), "each_slice" | "each_cons") => vec![recv.base().clone()],
+        (Ty::Array(t), "each_with_object") => vec![(**t).clone(), arg0.cloned().unwrap_or(Ty::Unknown)],
+        (Ty::Array(t), "sort") => vec![(**t).clone(), (**t).clone()],
         (Ty::Array(t), _) => vec![(**t).clone()],
         (Ty::Range, "reduce" | "inject") => vec![arg0.cloned().unwrap_or(Ty::Int), Ty::Int],
+        (Ty::Range, "each_slice" | "each_cons") => vec![Ty::array(Ty::Int)],
+        (Ty::Range, "each_with_object") => vec![Ty::Int, arg0.cloned().unwrap_or(Ty::Unknown)],
+        (Ty::Range, "sort") => vec![Ty::Int, Ty::Int],
         (Ty::Range, _) => vec![Ty::Int],
+        (Ty::Hash(_, v), "transform_values") => vec![(**v).clone()],
+        (Ty::Hash(k, _), "transform_keys" | "fetch") => vec![(**k).clone()],
+        (Ty::Hash(k, v), "merge") => vec![(**k).clone(), (**v).clone(), (**v).clone()],
+        // the `[key, value]` pair, then the object
+        (Ty::Hash(..), "each_with_object") => vec![Ty::array(Ty::Unknown), arg0.cloned().unwrap_or(Ty::Unknown)],
         (Ty::Hash(k, v), _) => vec![(**k).clone(), (**v).clone()],
         (Ty::Result(_, e), "or_else") => vec![(**e).clone()],
         _ => Vec::new(),
     }
 }
 
-/// Return type of `recv.name(…)`; `None` if the method does not exist.
-pub fn method(recv: &Ty, name: &str, nargs: usize, block: Option<&Ty>) -> Option<Ty> {
+/// Return type of `recv.name(args…)`; `None` if the method does not exist.
+pub fn method(recv: &Ty, name: &str, args: &[Ty], block: Option<&Ty>) -> Option<Ty> {
     use Ty::*;
-    let has_args = nargs > 0;
+    let has_args = !args.is_empty();
     Some(match recv.base() {
         Int => match name {
             "times" | "upto" | "to_i" | "round" | "floor" | "ceil" | "abs" | "succ" | "pred" => Int,
@@ -59,8 +70,12 @@ pub fn method(recv: &Ty, name: &str, nargs: usize, block: Option<&Ty>) -> Option
         },
         Str => match name {
             "size" | "length" | "to_i" => Int,
-            "upcase" | "downcase" | "capitalize" | "strip" | "lstrip" | "rstrip" | "reverse" | "sub" | "gsub"
-            | "truncate" | "ljust" | "rjust" => Str,
+            "upcase" | "downcase" | "capitalize" | "swapcase" | "strip" | "lstrip" | "rstrip" | "reverse" | "sub"
+            | "gsub" | "truncate" | "ljust" | "rjust" | "center" | "delete_prefix" | "delete_suffix" | "squeeze"
+            | "tr" | "delete" => Str,
+            "count" => Int,
+            // `nil` out of range, as `s[start, length]`
+            "slice" => Ty::opt(Str),
             "chars" | "lines" | "split" => Ty::array(Str),
             "empty?" | "include?" | "start_with?" | "end_with?" => Bool,
             "index" => Ty::opt(Int),
@@ -73,23 +88,29 @@ pub fn method(recv: &Ty, name: &str, nargs: usize, block: Option<&Ty>) -> Option
             "size" | "length" => Int,
             _ => return None,
         },
-        Array(t) => array_method(t, name, has_args, block)?,
+        Array(t) => array_method(t, name, args, block)?,
         Range => match name {
             "include?" | "cover?" => Bool,
             "first" | "last" if !has_args => Int,
             "size" | "count" if block.is_none() => Int,
-            _ => array_method(&Int, name, has_args, block)?,
+            _ => array_method(&Int, name, args, block)?,
         },
         Hash(k, v) => match name {
             "size" | "length" | "count" => Int,
-            "empty?" | "key?" | "has_key?" | "include?" | "any?" | "all?" => Bool,
+            "empty?" | "key?" | "has_key?" | "include?" | "any?" | "all?" | "none?" => Bool,
             "keys" => Ty::array((**k).clone()),
             "values" => Ty::array((**v).clone()),
             "fetch" | "delete" => (**v).clone(),
-            "merge" | "select" | "filter" | "reject" | "each" => recv.base().clone(),
+            "merge" | "select" | "filter" | "reject" | "each" | "each_pair" | "to_h" => recv.base().clone(),
+            "transform_values" => Hash(k.clone(), Box::new(block.cloned().unwrap_or(Unknown))),
+            "transform_keys" => Hash(Box::new(block.cloned().unwrap_or(Unknown)), v.clone()),
             "map" => Ty::array(block.cloned().unwrap_or(Unknown)),
+            "flat_map" | "filter_map" => array_method(&Unknown, name, args, block)?,
+            "each_with_object" => args.first().cloned().unwrap_or(Unknown),
+            "group_by" => Hash(Box::new(block.cloned().unwrap_or(Unknown)), Box::new(Ty::array(Ty::array(Unknown)))),
+            "partition" => Ty::array(Ty::array(Ty::array(Unknown))),
             "to_a" | "sort_by" => Ty::array(Unknown),
-            "find" | "sum" | "min_by" | "max_by" => Unknown,
+            "find" | "sum" | "min_by" | "max_by" | "dig" => Unknown,
             _ => return None,
         },
         Result(t, e) => match name {
@@ -109,21 +130,36 @@ pub fn method(recv: &Ty, name: &str, nargs: usize, block: Option<&Ty>) -> Option
     })
 }
 
-fn array_method(t: &Ty, name: &str, has_args: bool, block: Option<&Ty>) -> Option<Ty> {
+fn array_method(t: &Ty, name: &str, args: &[Ty], block: Option<&Ty>) -> Option<Ty> {
     use Ty::*;
+    let has_args = !args.is_empty();
     let elem = t.clone();
     let same = || Ty::array(elem.clone());
     let block_ty = || block.cloned().unwrap_or(Unknown);
     Some(match name {
         "size" | "length" | "count" => Int,
-        "empty?" | "any?" | "all?" | "none?" | "include?" => Bool,
-        "first" | "last" if has_args => same(),
+        "empty?" | "any?" | "all?" | "none?" | "one?" | "include?" => Bool,
+        "first" | "last" | "min" | "max" if has_args => same(),
+        // `xs.slice(i)` is an item; `xs.slice(start, length)`, `xs.slice(a..b)` an array, or `nil`
+        "slice" if matches!(args, [Int]) => elem.clone(),
+        "slice" => Ty::opt(same()),
         "first" | "last" | "find" | "detect" | "min" | "max" | "min_by" | "max_by" | "pop" | "shift" | "delete" => {
             elem.clone()
         }
         "index" | "find_index" => Ty::opt(Int),
         "each" | "each_with_index" | "select" | "filter" | "reject" | "sort" | "sort_by" | "reverse" | "push"
-        | "append" | "unshift" | "uniq" | "compact" | "take" | "drop" | "to_a" | "dup" => same(),
+        | "append" | "unshift" | "uniq" | "compact" | "take" | "drop" | "to_a" | "dup" | "take_while"
+        | "drop_while" | "rotate" => same(),
+        "each_slice" | "each_cons" if block.is_some() => same(),
+        "each_slice" | "each_cons" => Ty::array(same()),
+        "flatten" => flattened(&elem, !has_args),
+        "filter_map" => Ty::array(block_ty().base().clone()),
+        "minmax" => same(),
+        "product" if args.iter().all(|a| *a == same()) => Ty::array(same()),
+        "product" => Ty::array(Ty::array(Unknown)),
+        "each_with_object" => args.first().cloned().unwrap_or(Unknown),
+        "to_h" => Hash(Box::new(Unknown), Box::new(Unknown)),
+        "dig" => Unknown,
         "map" | "collect" | "parallel_map" | "batch_map" => Ty::array(block_ty()),
         "flat_map" => match block_ty() {
             Array(inner) => Array(inner),
@@ -134,11 +170,48 @@ fn array_method(t: &Ty, name: &str, has_args: bool, block: Option<&Ty>) -> Optio
         "sum" => elem.clone(),
         "join" => Str,
         "zip" => Ty::array(Ty::array(Unknown)),
+        // `reduce(:+)`, `inject(0, :+)`: the operator gives the receiver's kind of value
+        "reduce" | "inject" if block.is_none() => match args {
+            [init, Sym] => crate::ty::join(init, &elem),
+            _ => elem.clone(),
+        },
         "reduce" | "inject" => block_ty(),
         "group_by" => Hash(Box::new(block_ty()), Box::new(same())),
         "tally" => Hash(Box::new(elem.clone()), Box::new(Int)),
         _ => return None,
     })
+}
+
+/// What `flatten` makes of an array of `elem`: one level less, or all
+/// levels when `all` (`flatten(depth)` does not say how many: unknown below).
+fn flattened(elem: &Ty, all: bool) -> Ty {
+    match elem.base() {
+        Ty::Array(inner) if all => flattened(inner, true),
+        Ty::Array(inner) if matches!(inner.base(), Ty::Array(_)) => Ty::array(Ty::Unknown),
+        Ty::Array(inner) => Ty::array((**inner).clone()),
+        other => Ty::array(other.clone()),
+    }
+}
+
+/// The methods whose result is made of their arguments too: what they
+/// make of an untrusted argument is untrusted.
+pub fn embeds_args(name: &str) -> bool {
+    matches!(
+        name,
+        "sub"
+            | "gsub"
+            | "ljust"
+            | "rjust"
+            | "center"
+            | "tr"
+            | "zip"
+            | "product"
+            | "merge"
+            | "each_with_object"
+            | "reduce"
+            | "inject"
+            | "fetch"
+    )
 }
 
 /// `Module.name(…)`: return type and effect.
@@ -377,6 +450,7 @@ pub const GLOBALS: &[&str] = &[
     "puts",
     "print",
     "p",
+    "format",
     "warn",
     "raise",
     "spawn",

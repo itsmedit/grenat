@@ -59,6 +59,14 @@ impl<'p> Checker<'p> {
             let taint = if n == "tainted?" { None } else { taint };
             return V { ty, taint };
         }
+        // `x.then { |v| … }`: the block's value, from the receiver
+        if matches!(n, "then" | "yield_self") && self.method_def(&recv.ty, n).is_none() {
+            let Some(v) = self.walk_block(cx, block, std::slice::from_ref(&recv)) else {
+                self.error(E_TYPE, name.span, format!("`{n}` expects a block: `x.{n} {{ |v| … }}`"));
+                return V { ty: Ty::Unknown, taint };
+            };
+            return V { ty: v.ty, taint: taint.or(v.taint) };
+        }
         match recv.ty.base().clone() {
             Ty::Unknown => {
                 self.walk_block(cx, block, &[V { ty: Ty::Unknown, taint }]);
@@ -71,12 +79,30 @@ impl<'p> Checker<'p> {
                 let params: Vec<V> =
                     builtins::block_params(&base, n, arg0.as_ref()).into_iter().map(|ty| V { ty, taint }).collect();
                 let block_v = self.walk_block(cx, block, &params);
-                match builtins::method(&base, n, argv.len(), block_v.as_ref().map(|v| &v.ty)) {
+                let arg_types: Vec<Ty> = argv.iter().map(|a| a.v.ty.clone()).collect();
+                match builtins::method(&base, n, &arg_types, block_v.as_ref().map(|v| &v.ty)) {
                     Some(ty) => {
-                        let taint = taint.or(block_v
-                            .and_then(|b| b.taint)
-                            .filter(|_| matches!(n, "map" | "flat_map" | "sum" | "reduce" | "inject" | "or_else")));
-                        V { ty, taint }
+                        let from_block = block_v.and_then(|b| b.taint).filter(|_| {
+                            matches!(
+                                n,
+                                "map"
+                                    | "flat_map"
+                                    | "filter_map"
+                                    | "sum"
+                                    | "reduce"
+                                    | "inject"
+                                    | "or_else"
+                                    | "each_with_object"
+                                    | "transform_values"
+                                    | "transform_keys"
+                                    | "to_h"
+                                    | "fetch"
+                                    | "merge"
+                                    | "group_by"
+                            )
+                        });
+                        let from_args = argv.iter().find_map(|a| a.v.taint).filter(|_| builtins::embeds_args(n));
+                        V { ty, taint: taint.or(from_block).or(from_args) }
                     }
                     None => {
                         self.error(E_TYPE, name.span, format!("unknown method `{n}` for `{base}`"));

@@ -38,6 +38,14 @@ def main uses fs.read, env, time
   show "ljust rjust", ["ab".ljust(4) + "|", "ab".rjust(4)]
   show "conversions", ["42".to_i, "2.5".to_f, "nom".to_sym]
   show "repetition", "ab" * 3
+  show "slices", [t[0, 6], t[7..], t[-5...-1], t[99, 1], t.slice(0, 3)]
+  show "delete_prefix suffix", ["v1.2".delete_prefix("v"), "a.rb".delete_suffix(".rb")]
+  show "center pad", ["ab".center(6, "*"), "ab".ljust(5, "-"), "7".rjust(3, "0")]
+  show "count delete squeeze", ["hello".count("lo"), "a-b-c".delete("-"), "a  b".squeeze]
+  show "tr swapcase", ["hello".tr("el", "ip"), "Hello".swapcase]
+  show "start_with? several", "abc".start_with?("x", "ab")
+  show "format %", [format("%.2f", 3.14159), format("%05d|%-3s|%x", 42, "ab", 255), "%.1f%%" % 12.34]
+  show "then", 5.then { |x| x * 2 }
 
   # Array
   xs = [3, 1, 4, 1, 5]
@@ -70,6 +78,19 @@ def main uses fs.read, env, time
   show "each_with_index", pairs
   show "+ -", [[1, 2] + [3], [1, 2, 3] - [2]]
   show "indices", [xs[0], xs[-1], xs[1..2], xs[9]]
+  show "slices", [xs[1, 2], xs[2..], xs[1...-1], xs[9, 1], xs.slice(0, 2)]
+  show "flatten", [[1, [2, [3]]].flatten, [1, [2, [3]]].flatten(1)]
+  show "each_slice each_cons", [xs.each_slice(2).to_a, xs.each_cons(4).to_a]
+  show "minmax max(n) rotate", [xs.minmax, xs.max(2), xs.rotate, xs.rotate(-1)]
+  show "take_while drop_while", [xs.take_while { |x| x < 4 }, xs.drop_while { |x| x < 4 }]
+  show "one? count(x)", [xs.one? { |x| x > 4 }, xs.count(1)]
+  show "find_index uniq block", [xs.find_index { |x| x > 3 }, xs.uniq { |x| x % 2 }]
+  show "sort block", xs.sort { |a, b| b <=> a }
+  show "filter_map", [1, nil, 2].filter_map { |x| x && x * 10 }
+  show "each_with_object", xs.each_with_object([]) { |x, acc| acc << x * 2 }
+  show "reduce operator", [xs.reduce(:+), xs.inject(2, :*), xs.reduce(&:+)]
+  show "product zip", [[1, 2].product([3]), [1, 2].zip([3, 4], [5, 6])]
+  show "to_h dig", [[[:a, 1]].to_h, [1, 2].to_h { |x| [x, x * x] }, [[1, [2]]].dig(0, 1, 0)]
   show "parallel_map", [1, 2, 3].parallel_map(limit: 2) { |x| x * x }
 
   # Hash
@@ -83,6 +104,11 @@ def main uses fs.read, env, time
   show "merge", {a: 1}.merge({b: 2})
   show "delete", [h.delete(:c), h]
   show "any? all?", [h.any? { |k, v| v > 1 }, h.all? { |k, v| v > 0 }]
+  show "transform", [h.transform_values { |v| v * 10 }, h.transform_keys(&:to_s)]
+  show "filter_map count", [h.filter_map { |k, v| k if v > 1 }, h.count { |k, v| v > 1 }]
+  show "merge block", h.merge({a: 5}) { |k, old, new| old + new }
+  show "fetch block dig", [h.fetch(:z) { |k| k.to_s }, {a: {b: 1}}.dig(:a, :b)]
+  show "each_with_object", h.each_with_object([]) { |pair, acc| acc << pair[1] }
 
   # Range
   r = 1..4

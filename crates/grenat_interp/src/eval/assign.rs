@@ -65,6 +65,27 @@ impl<'p> Interp<'p> {
         if let Value::Tainted(inner) = &target {
             return Ok(self.index((**inner).clone(), index)?.taint());
         }
+        if let Value::Secret(_) = &target {
+            return raise(
+                "SecretError",
+                "a secret cannot be indexed nor sliced: it serves whole (a header, a URL, a connection)",
+            );
+        }
+        // `s[start, length]`, `s[a..b]`, `xs[start, length]`, `xs[a..b]`
+        match &target {
+            Value::Str(s) => {
+                if let Some(bounds) = builtins::slicing::bounds(&index, s.chars().count())? {
+                    return Ok(builtins::slicing::of_str(s, bounds));
+                }
+            }
+            Value::Array(items) => {
+                let items = items.borrow();
+                if let Some(bounds) = builtins::slicing::bounds(&index, items.len())? {
+                    return Ok(builtins::slicing::of_array(&items, bounds));
+                }
+            }
+            _ => {}
+        }
         let [key] = index.as_slice() else {
             return raise("ArgumentError", "expected a single index");
         };
@@ -72,14 +93,6 @@ impl<'p> Interp<'p> {
             (Value::Array(items), Value::Int(i)) => {
                 let items = items.borrow();
                 Ok(resolve_index(*i, items.len()).and_then(|i| items.get(i)).cloned().unwrap_or(Value::Nil))
-            }
-            (Value::Array(items), Value::Range(lo, hi, inclusive)) => {
-                let items = items.borrow();
-                let len = items.len() as i64;
-                let start = if *lo < 0 { lo + len } else { *lo }.clamp(0, len) as usize;
-                let end = if *hi < 0 { hi + len } else { *hi } + i64::from(*inclusive);
-                let end = end.clamp(start as i64, len) as usize;
-                Ok(Value::array(items[start..end].to_vec()))
             }
             (Value::Str(s), Value::Int(i)) => {
                 let chars: Vec<char> = s.chars().collect();

@@ -109,14 +109,17 @@ impl<'d> Parser<'d> {
             if left_bp < min_bp {
                 break;
             }
-            self.bump();
+            let op_span = self.bump().span;
             self.skip_newlines();
-            let rhs = self.binary(right_bp)?;
+            let is_endless = matches!(op, Infix::Range(_)) && self.in_index && self.at(&T::RBracket);
+            let rhs = if is_endless { endless(op_span) } else { self.binary(right_bp)? };
             let span = lhs.span.to(rhs.span);
             let (lhs_box, rhs_box) = (Box::new(lhs), Box::new(rhs));
             let kind = match op {
                 Infix::Bin(op) => ExprKind::Binary { op, lhs: lhs_box, rhs: rhs_box },
-                Infix::Range(inclusive) => ExprKind::Range { lo: lhs_box, hi: rhs_box, inclusive },
+                Infix::Range(inclusive) => {
+                    ExprKind::Range { lo: lhs_box, hi: rhs_box, inclusive: inclusive || is_endless }
+                }
             };
             lhs = Expr::new(kind, span);
         }
@@ -161,7 +164,10 @@ impl<'d> Parser<'d> {
                 }
                 T::LBracket if !self.peek().space_before => {
                     self.bump();
-                    let args = self.expr_list(T::RBracket, "`]`")?;
+                    let saved = std::mem::replace(&mut self.in_index, true);
+                    let args = self.expr_list(T::RBracket, "`]`");
+                    self.in_index = saved;
+                    let args = args?;
                     let span = e.span.to(self.prev_span());
                     e = Expr::new(ExprKind::Index { recv: Box::new(e), args }, span);
                 }
@@ -380,4 +386,11 @@ impl<'d> Parser<'d> {
         };
         Ok(Expr::new(kind, span))
     }
+}
+
+/// `xs[2..]`, `s[1...]`: an endless range in an index goes to the end, as
+/// `2..-1` does (both are read as `..`). Its missing end has an empty span
+/// (after the dots), so `grenat fmt` writes nothing for it: `xs[2..]`.
+fn endless(op: Span) -> Expr {
+    Expr::new(ExprKind::Int(-1), Span::new(op.end as usize, op.end as usize))
 }

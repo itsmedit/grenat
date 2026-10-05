@@ -110,10 +110,11 @@ impl<'p> Interp<'p> {
                     other => other,
                 }
             }
-            // `&:upcase`
+            // `&:upcase`; `&:+` (`reduce(:+)`): the first argument receives the others
             Value::Symbol(name) => {
-                let receiver = args.into_iter().next().unwrap_or(Value::Nil);
-                self.call_method(receiver, name, Args::default())
+                let mut args = args.into_iter();
+                let receiver = args.next().unwrap_or(Value::Nil);
+                self.call_method(receiver, name, Args { pos: args.collect(), ..Args::default() })
             }
             other => raise("TypeError", format!("expected a block, got {}", other.type_name())),
         }

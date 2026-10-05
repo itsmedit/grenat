@@ -155,6 +155,17 @@ fn unterminated_string_recovers_at_end_of_line() {
 }
 
 #[test]
+fn operator_symbols() {
+    assert_eq!(kinds("reduce(:+)"), vec![ident("reduce"), LParen, Symbol("+".into()), RParen, Eof]);
+    assert_eq!(kinds("inject(1, :*)"), vec![ident("inject"), LParen, Int(1), Comma, Symbol("*".into()), RParen, Eof]);
+    assert_eq!(kinds("sort(&:<=>)"), vec![ident("sort"), LParen, Amp, Symbol("<=>".into()), RParen, Eof]);
+    assert_eq!(kinds("[:-, :<<]"), vec![LBracket, Symbol("-".into()), Comma, Symbol("<<".into()), RBracket, Eof]);
+    assert_eq!(kinds("reduce :+\n"), vec![ident("reduce"), Symbol("+".into()), Newline, Eof]);
+    // not the end of a term: a colon, then an operator
+    assert_eq!(kinds("(:-1)"), vec![LParen, Colon, Minus, Int(1), RParen, Eof]);
+}
+
+#[test]
 fn symbol_after_block_pass() {
     assert_eq!(kinds("map(&:upcase)"), vec![ident("map"), LParen, Amp, Symbol("upcase".into()), RParen, Eof]);
 }

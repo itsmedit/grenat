@@ -303,9 +303,24 @@ impl<'s> Lexer<'s> {
             self.take_predicate_suffix();
             let name = self.src[name_start..self.pos].to_string();
             self.push(TokenKind::Symbol(name), start, self.pos);
+        } else if let Some(op) = self.operator_symbol().filter(|_| self.space_before || after_opener) {
+            self.pos += op.len();
+            self.push(TokenKind::Symbol(op.to_string()), start, self.pos);
         } else {
             self.push(TokenKind::Colon, start, self.pos);
         }
+    }
+
+    /// `:+` in `reduce(:+)` or `&:+`: an operator, then the end of the term
+    /// (`)`, `,`, `]`, `}`, a line's end) — `a ? b :-1` stays a colon.
+    fn operator_symbol(&self) -> Option<&'static str> {
+        const OPERATORS: &[&str] =
+            &["<=>", "**", "==", "!=", "<=", ">=", "<<", ">>", "+", "-", "*", "/", "%", "<", ">", "&", "|", "^"];
+        let rest = self.rest();
+        OPERATORS.iter().copied().find(|op| {
+            rest.starts_with(op)
+                && matches!(rest[op.len()..].chars().next(), None | Some(')' | ',' | ']' | '}' | '\n' | '\r'))
+        })
     }
 
     pub(crate) fn number(&mut self) {

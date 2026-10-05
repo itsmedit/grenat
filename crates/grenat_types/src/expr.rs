@@ -408,11 +408,11 @@ impl<'p> Checker<'p> {
 
     pub(crate) fn index(&mut self, target: V, index: &[V], span: Span) -> V {
         let key = index.first().map_or(Ty::Unknown, |v| v.ty.clone());
+        if let Some(ty) = self.slice(&target, index, span) {
+            return V { ty, taint: target.taint };
+        }
         let ty = match (target.ty.base(), &key) {
-            (Ty::Array(t), Ty::Range) => Ty::Array(t.clone()),
-            (Ty::Array(t), _) => (**t).clone(),
             (Ty::Hash(_, v), _) => (**v).clone(),
-            (Ty::Str, _) => Ty::Str,
             (Ty::Type(sup), Ty::Type(agent)) => {
                 let declared = self.types.get(sup.as_str()).is_some_and(|t| {
                     t.def.kind == TypeKind::Supervisor

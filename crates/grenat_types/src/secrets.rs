@@ -83,7 +83,7 @@ pub(crate) fn is_secret(ty: &Ty) -> bool {
 }
 
 /// A secret, or a collection holding secrets.
-fn type_holds_secret(ty: &Ty) -> bool {
+pub(crate) fn type_holds_secret(ty: &Ty) -> bool {
     match ty.base() {
         Ty::Secret => true,
         Ty::Array(item) => type_holds_secret(item),

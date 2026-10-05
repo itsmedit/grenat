@@ -94,6 +94,19 @@ t = \"tab\\there #{s}\"
 }
 
 #[test]
+fn slices_and_operator_symbols_are_kept() {
+    let src = "\
+a = s[0, 4]
+b = s[1..]
+c = xs[1..-2]
+d = xs.reduce(:+) + xs.inject(1, :*) + xs.sum(&:abs)
+e = \"%.2f\" % x
+";
+    assert_eq!(fmt(src), src);
+    assert_eq!(fmt("t = s[1...]\n"), "t = s[1..]\n");
+}
+
+#[test]
 fn comments_stay_where_they_were() {
     let src = "\
 # leading

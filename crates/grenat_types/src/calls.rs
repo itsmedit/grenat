@@ -277,6 +277,7 @@ impl<'p> Checker<'p> {
                 V::new(Ty::Nil)
             }
             "p" => first.unwrap_or_else(|| V::new(Ty::Nil)),
+            "format" => self.format_call(span, argv),
             "raise" | "exit" => V::unknown(),
             "spawn" | "spawn_pool" => match first.map(|v| v.ty) {
                 Some(Ty::Type(agent))

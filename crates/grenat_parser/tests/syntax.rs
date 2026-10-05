@@ -241,3 +241,29 @@ fn a_native_function_is_declared_at_the_top_level_without_a_body() {
         "a `native def` is a function, declared at the top level (not in a type)"
     );
 }
+
+#[test]
+fn slices_take_two_values_or_a_range_endless_in_an_index() {
+    let ExprKind::Index { args, .. } = stmt("s[0, 4]\n") else { panic!() };
+    assert_eq!(args.len(), 2);
+    for src in ["xs[2..]\n", "xs[2...]\n"] {
+        let ExprKind::Index { args, .. } = stmt(src) else { panic!("{src}") };
+        let ExprKind::Range { lo, hi, inclusive } = &args[0].kind else { panic!("{src}: {:?}", args[0].kind) };
+        // to the end, as `2..-1`
+        assert!(matches!((&lo.kind, &hi.kind, inclusive), (ExprKind::Int(2), ExprKind::Int(-1), true)), "{src}");
+        assert_eq!(hi.span.start, hi.span.end, "{src}: the missing end is written nowhere");
+    }
+    // outside an index, a range has an end
+    assert!(!parse("r = (2..)\n").diagnostics.is_empty());
+    assert!(!parse("xs = [2..]\n").diagnostics.is_empty());
+}
+
+#[test]
+fn operator_symbols_name_methods() {
+    let kind = stmt("xs.reduce(:+)\n");
+    let (_, args, _) = call_parts(&kind);
+    assert!(matches!(&args[0], Arg::Pos(Expr { kind: ExprKind::Symbol(s), .. }) if s == "+"));
+    let kind = stmt("xs.inject(&:*)\n");
+    let (_, args, _) = call_parts(&kind);
+    assert!(matches!(&args[0], Arg::BlockPass(Expr { kind: ExprKind::Symbol(s), .. }) if s == "*"));
+}

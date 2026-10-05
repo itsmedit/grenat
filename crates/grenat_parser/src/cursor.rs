@@ -16,12 +16,14 @@ pub(crate) struct Parser<'d> {
     pub(crate) docs: &'d DocTable,
     /// True inside the arguments of a parenthesis-free call: `do` there belongs to the enclosing call.
     pub(crate) no_do: bool,
+    /// True inside an index's brackets: `xs[2..]` is an endless range there.
+    pub(crate) in_index: bool,
 }
 
 impl<'d> Parser<'d> {
     pub(crate) fn new(toks: Vec<Token>, docs: &'d DocTable) -> Self {
         debug_assert!(matches!(toks.last(), Some(Token { kind: T::Eof, .. })));
-        Parser { toks, pos: 0, diags: Vec::new(), docs, no_do: false }
+        Parser { toks, pos: 0, diags: Vec::new(), docs, no_do: false, in_index: false }
     }
 
     pub(crate) fn peek(&self) -> &Token {

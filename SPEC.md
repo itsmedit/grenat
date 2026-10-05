@@ -614,6 +614,47 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 14 status: strings and arrays
+
+LLMs writing Grenat from its reference reached for Ruby's everyday methods and stopped on missing ones: `s[0, 4]` ("expected a single index"), `xs.flatten`, `delete_suffix`, `then`, `reduce(:+)`, `format("%.2f", x)`. They now exist, with Ruby's semantics, in the interpreter and in the checker's tables alike.
+
+```ruby
+## The first words of a title, for a listing.
+def teaser(title: String, words: Int = 3) -> String
+  title.split.first(words).join(" ").delete_suffix(".")
+end
+
+## Order lines grouped by four, with a total each.
+def batches(prices: Array(Float)) -> Array(String)
+  prices.each_slice(4).map { |batch| format("%-12s %8.2f", "#{batch.size} items", batch.sum) }
+end
+
+## A product's tags, from nested lists and a code like "sku-0042".
+def tags(lists: Array(Array(String)), code: String) -> Array(String)
+  number = code.delete_prefix("sku-")[0, 4] || "?"
+  (lists.flatten.uniq + ["#" + number]).sort { |a, b| a.size <=> b.size }
+end
+
+test "slices, formats and flattening" do
+  assert_equal "Grenat is a", teaser("Grenat is a language.")
+  assert_equal ["4 items         10.00", "1 items          5.50"], batches([1.0, 2.0, 3.0, 4.0, 5.5])
+  assert_equal ["ai", "rust", "#0042"], tags([["rust"], ["ai", "rust"]], "sku-0042")
+  assert_equal "wörld", "héllo wörld"[6..]
+  assert_equal 10, [1, 2, 3, 4].reduce(:+)
+  assert_equal({a: 10}, {a: 1}.transform_values { |v| v * 10 })
+end
+```
+
+- **Slices.** `s[start, length]`, `s[a..b]`, `s[a...b]`, `s[a..]` (an endless range, in an index only: to the end, as `a..-1`) and `s.slice(…)` cut a string by characters, never bytes; `xs[start, length]`, `xs[a..b]`, `xs.slice(…)` cut an array. A negative index counts from the end; a start past the end is `nil`, a start at the end is empty, a length or an end past the end stops there; a negative length is `nil`. The checker types a slice `String?` / `Array(T)?` (an item read, `s[i]` or `xs[i]`, stays `String` / `T` as before); indexes are `Int`s or a `Range` (E0200, `TypeError`), one or two of them (a hash takes one key).
+- **Strings.** `delete_prefix`, `delete_suffix`, `start_with?`/`end_with?` with several candidates, `center`, `ljust`/`rjust` with a padding (`"7".rjust(3, "0")`), `swapcase`, and Ruby's character sets for `count("aeiou")`, `delete("-")`, `squeeze` (`squeeze(" ")`), `tr("a-z", "A-Z")` (`a-z` ranges, `^` negation; no regular expressions: Grenat has none).
+- **Arrays.** `flatten` (all levels, or `flatten(depth)`), `each_slice(n)` and `each_cons(n)` (an array of groups, or each group to a block), `filter_map`, `each_with_object(memo)`, `take_while`, `drop_while`, `one?`, `minmax`, `min(n)`/`max(n)`, `rotate`, `product`, `to_h` (of pairs, or with a block), `dig`, `count(x)`, `find_index { … }`, `uniq { … }`, `sort { |a, b| … }` (a comparator, as `<=>`), `zip` of several arrays, `reduce(:+)` / `inject(1, :*)` / `reduce(&:+)` (an operator symbol — `:+`, `:*`, `:<=>`… — names the operator method).
+- **Hashes.** `transform_values`, `transform_keys`, `filter_map`, `each_with_object` (the block takes the `[key, value]` pair and the memo: `|pair, acc|`), `merge(other) { |key, old, new| … }`, `fetch(key) { |key| … }`, `dig`, `count { … }`, `none?`, `flat_map`, `group_by`, `partition`, `each_pair`, `to_h`.
+- **`then` and `format`.** `x.then { |v| … }` (and `yield_self`) is the block's value. `format(spec, values…)`, `spec % value` and `spec % [values]` write `%d %i %f %e %s %p %x %X %o %b %%` with flags (`-`, `0`, `+`, space), a width and a precision, as Ruby does; too few values or an unknown directive is an `ArgumentError`.
+- **Taint and secrets.** What is made of an untrusted value is untrusted: a slice of an untrusted string, the items `flatten` takes out of an untrusted array, a padding or a replacement that is untrusted (`ljust`, `center`, `sub`, `gsub`, `tr`), `format` and `%` of an untrusted value, `then`, `zip`, `product`, `merge`, `each_with_object`, `transform_values` (E0412 where it reaches a sink, `TaintError` at run time). A secret is never indexed nor sliced (E0414, `SecretError`, its value never in the message); written by `format` or `%`, it makes a `Secret` — fine in an HTTP header, refused where a `String` is expected, as `"Bearer #{token}"` already was.
+- **Backends and tooling.** The native code compiler compiles none of these: a function using them is left to the interpreter (a JIT test shows the same results either way). `grenat fmt` keeps `s[1..]` and `:+` as written (`s[1...]` becomes `s[1..]`, its equal).
+- **Tests.** Unit tests for slice bounds, character sets and every `format` directive; runtime tests for each method, Ruby's edge cases (out of range, negative, multibyte), errors, taint and secrets; checker tests for the types, the index checks, taint and E0414; lexer, parser and formatter tests for `:+` and `s[1..]`; `stdlib.grn` prints them through `grenat run`.
+- **Limits.** No regular expressions (`=~`, `scan`, `match`, `gsub(/…/)`), no `strftime`, `freeze`, `step`, `each_char`, nor destructuring block parameters (`|(k, v), acc|`); an endless range exists only in an index (`(1..)` does not parse).
+
 ### Phase 14 status: time
 
 Programs read timestamps from APIs, compute deadlines and test them; `Time.now` was a bare `Float`, `7.days` could not be added to it, ISO 8601 was parsed by hand, and a test could not say what time it was. Now an instant is still a `Float` of seconds since the epoch — existing programs are unchanged — and Grenat reads it from text, writes it back, moves it by a duration, and stops the clock in a test.

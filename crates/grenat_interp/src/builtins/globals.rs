@@ -64,6 +64,10 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             Ok(Value::Nil)
         }
         "raise" => raise_value(args),
+        "format" => match args.pos.split_first() {
+            Some((spec, values)) => super::format::format_values(interp, spec, values),
+            None => raise("ArgumentError", "`format` expects a format string: `format(\"%.2f\", x)`"),
+        },
         "system" | "user" | "assistant" if !interp.prompts.is_empty() => {
             if let Err(refused) = crate::eval::secrets::not_for_models(&args.pos) {
                 return Some(Err(refused));

@@ -25,7 +25,7 @@ grenat fmt                   # canonical layout
 - One-line methods: `def norm = Math.sqrt(x * x + y * y)`. Class methods: `def self.load(...)`. Constants: `LIMIT = 10`, `API = "…"` inside a module (`GitHub::API`).
 - Everything is concurrent without coloring: `xs.parallel_map(limit: 5) { |x| … }`, `race do … end`.
 - Locals cannot be annotated (`x: Int = 1` does not parse); keywords (`until`, `end`, `in`…) cannot be parameter names; no `\` line continuation (break after an operator or a comma instead).
-- Missing Ruby methods (don't use them): `Array#flatten` (use `flat_map`), `str[i, n]` / `str[a..b]` slicing (use `s.chars.take(n).join`, `split`), `delete_suffix`, `then`, `strftime`.
+- Not in Grenat (don't use them): regular expressions (`/…/`, `=~`, `scan`, `match`), `strftime`, `freeze`, `step`, `each_char`, destructuring block parameters (`|(k, v), acc|`: take the pair, `pair[0]`), endless ranges outside an index (`(1..)`).
 - Time: an instant is a `Float` (epoch seconds): `Time.now` (`uses time`), `Time.parse("2026-09-28T08:00:00+02:00")` (ISO 8601; a date alone is midnight UTC; invalid → `ArgumentError`), `Time.at(2026, 9, 28, 8, 0, 0)`; written in UTC by `Time.iso(t)` → `"2026-09-28T06:00:00Z"`, `Time.date(t)` → `"2026-09-28"`, `Time.weekday(t)` → 1 (Monday)…7. `Time.today` is a `"YYYY-MM-DD"` string. `7.days`, `1.hour`, `2.min` are `Duration`s: `Time.now - 7.days` is a `Float`, `2.h - 30.min`, `3 * 1.h`, `1.h < 2.h`, `d.to_i` (seconds). No time zones besides offsets, no `t.year` (use `Time.date`).
 
 ```ruby
@@ -202,7 +202,8 @@ A workflow run is identified by its name and arguments: calling it again with th
 - `Conversation.load("chat.json", model: :fast, system: "…")` → `say(text)` (untrusted answer), `save(path)`.
 - `xs.batch_map { |x| prompt_call(x) }`: batch API, half price, answers within 24 h.
 - `transcribe(:whisper, Audio.read("call.mp3"))`, `Html.text(html)`, `Html.escape(s)`, `Ssh.connect("user@host", key: secret).run(["uptime"])`.
-- Arrays/hashes/strings: Ruby's usual methods (`map`, `select`, `each_with_index`, `sort_by`, `take`, `join`, `split`, `include?`, `upcase`, `strip`, `to_i`, `to_f`, `to_s`, `size`, `first`, `any?`, `all?`, `partition`, `group_by`, `sum`…).
+- Arrays/hashes/strings: Ruby's usual methods (`map`, `select`, `each_with_index`, `sort_by`, `take`, `join`, `split`, `include?`, `upcase`, `strip`, `to_i`, `to_f`, `to_s`, `size`, `first`, `any?`, `all?`, `partition`, `group_by`, `sum`, `flatten`, `each_slice`, `each_cons`, `each_with_object`, `filter_map`, `tally`, `zip`, `min_by`, `minmax`, `uniq`, `sort { |a, b| b <=> a }`, `reduce(:+)`, `inject(0) { … }`, `dig`, `transform_values`, `transform_keys`, `merge(h) { |k, a, b| … }`, `fetch(k, default)`, `delete_prefix`, `delete_suffix`, `start_with?`, `center`, `ljust`, `tr`, `squeeze`, `count`, `gsub`/`sub` with strings, `then`…).
+- Slices count characters, as in Ruby: `s[0, 4]`, `s[1..]`, `s[1..-2]`, `xs[2, 3]`, `xs[1...-1]` are `String?` / `Array(T)?` (`nil` when the start is past the end). `format("%.2f", x)`, `"%05d" % n`, `"%s-%s" % [a, b]` format numbers; `x.round(2)` rounds.
 
 ## Serving: routes, webhooks, schedules
 

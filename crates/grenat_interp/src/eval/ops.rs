@@ -78,6 +78,12 @@ impl<'p> Interp<'p> {
                 raise("TypeError", format!("cannot add {} to a string: use interpolation \"#{{…}}\"", r.type_name()))
             }
             (BinOp::Mul, Str(s), Int(n)) if *n >= 0 => Ok(Value::str(s.repeat(*n as usize))),
+            // `"%.2f" % x`, `"%s-%s" % [a, b]`: `format`
+            (BinOp::Rem, Str(_), Array(items)) => {
+                let items = items.borrow().clone();
+                builtins::format::format_values(self, &l, &items)
+            }
+            (BinOp::Rem, Str(_), _) => builtins::format::format_values(self, &l, std::slice::from_ref(&r)),
             // copy first: `xs + xs` would lock the same array twice
             (BinOp::Add, Array(a), Array(b)) => {
                 let (a, b) = (a.borrow().clone(), b.borrow().clone());

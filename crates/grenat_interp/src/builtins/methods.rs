@@ -31,7 +31,15 @@ pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &s
             return Ok(Value::Bool(interp.is_a(&recv, &ty)));
         }
         "class" => return Ok(Value::Type(recv.type_name().into())),
+        "then" | "yield_self" => {
+            let body = block(&args, name)?;
+            return interp.call_block(&body, vec![recv]);
+        }
         _ => {}
+    }
+    // `1.+(2)`, as `reduce(:+)` and `&:+` call it
+    if let (Some(op), [rhs]) = (operator(name), args.pos.as_slice()) {
+        return interp.binop(op, recv, rhs.clone());
     }
     let result = match &recv {
         Value::Int(n) => int_method(interp, *n, name, &args),
@@ -139,4 +147,30 @@ pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &s
         _ => None,
     };
     result.unwrap_or_else(|| raise("NoMethodError", format!("unknown method `{name}` for {}", recv.type_name())))
+}
+
+/// The binary operator a method name stands for.
+fn operator(name: &str) -> Option<BinOp> {
+    use BinOp::*;
+    Some(match name {
+        "+" => Add,
+        "-" => Sub,
+        "*" => Mul,
+        "/" => Div,
+        "%" => Rem,
+        "**" => Pow,
+        "==" => Eq,
+        "!=" => NotEq,
+        "<" => Lt,
+        "<=" => Le,
+        ">" => Gt,
+        ">=" => Ge,
+        "<=>" => Cmp,
+        "&" => BitAnd,
+        "|" => BitOr,
+        "^" => BitXor,
+        "<<" => Shl,
+        ">>" => Shr,
+        _ => return None,
+    })
 }

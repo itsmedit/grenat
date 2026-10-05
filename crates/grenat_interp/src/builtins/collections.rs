@@ -1,4 +1,5 @@
-//! Methods of `Array` and `Hash` (and `Range`, seen as an array).
+//! Methods of `Array` (and `Range`, seen as an array); the others are in
+//! `sequences`, those of `Hash` in `hashes`.
 
 use crate::prelude::*;
 
@@ -24,7 +25,10 @@ pub(crate) fn array_method<'p>(
     Some(match name {
         "size" | "length" if args.block.is_none() => Ok(Value::Int(items.borrow().len() as i64)),
         "count" => match &args.block {
-            None => Ok(Value::Int(items.borrow().len() as i64)),
+            None => match args.pos.first() {
+                Some(x) => Ok(Value::Int(items.borrow().iter().filter(|i| equal(i, x)).count() as i64)),
+                None => Ok(Value::Int(items.borrow().len() as i64)),
+            },
             Some(_) => {
                 let mut n = 0;
                 each(interp, &mut |_, r| {
@@ -139,6 +143,18 @@ pub(crate) fn array_method<'p>(
             }))
         }
         "include?" => arg(args, 0, name).map(|x| Value::Bool(items.borrow().iter().any(|i| equal(i, &x)))),
+        "index" | "find_index" if args.block.is_some() => {
+            let (mut at, mut found) = (0, None);
+            each(interp, &mut |_, r| {
+                if r.truthy() {
+                    found = Some(at);
+                    return Ok(false);
+                }
+                at += 1;
+                Ok(true)
+            })
+            .map(|()| found.map_or(Value::Nil, Value::Int))
+        }
         "index" | "find_index" => arg(args, 0, name)
             .map(|x| items.borrow().iter().position(|i| equal(i, &x)).map_or(Value::Nil, |i| Value::Int(i as i64))),
         "sum" => (|| {
@@ -154,6 +170,24 @@ pub(crate) fn array_method<'p>(
                 total = interp.binop(grenat_ast::BinOp::Add, total, v)?;
             }
             Ok(total)
+        })(),
+        // `xs.max(2)`: the two largest, largest first
+        "min" | "max" if !args.pos.is_empty() => (|| {
+            let n = int_arg(args, 0, name)?.max(0) as usize;
+            let mut all = snapshot();
+            let mut incomparable = false;
+            all.sort_by(|a, b| {
+                let o = compare(a, b).unwrap_or_else(|| {
+                    incomparable = true;
+                    Ordering::Equal
+                });
+                if name == "max" { o.reverse() } else { o }
+            });
+            if incomparable {
+                return raise("TypeError", format!("`{name}`: values are not comparable"));
+            }
+            all.truncate(n);
+            Ok(Value::array(all))
         })(),
         "min" | "max" => {
             let all = snapshot();
@@ -178,6 +212,10 @@ pub(crate) fn array_method<'p>(
             }
             Ok(best.unwrap_or(Value::Nil))
         }
+        "sort" if args.block.is_some() => (|| {
+            let body = block(args, name)?;
+            sort_with(interp, snapshot(), &body).map(Value::array)
+        })(),
         "sort" | "sort_by" | "min_by" | "max_by" => (|| {
             let all = snapshot();
             let keys = match &args.block {
@@ -231,15 +269,20 @@ pub(crate) fn array_method<'p>(
         "delete" => arg(args, 0, name).inspect(|x| {
             items.borrow_mut().retain(|i| !equal(i, x));
         }),
-        "uniq" => {
-            let mut out: Vec<Value<'p>> = Vec::new();
+        "uniq" => (|| {
+            let (mut out, mut keys): (Vec<Value<'p>>, Vec<Value<'p>>) = (Vec::new(), Vec::new());
             for v in snapshot() {
-                if !out.iter().any(|o| equal(o, &v)) {
+                let key = match &args.block {
+                    Some(body) => interp.call_block(body, vec![v.clone()])?,
+                    None => v.clone(),
+                };
+                if !keys.iter().any(|k| equal(k, &key)) {
+                    keys.push(key);
                     out.push(v);
                 }
             }
             Ok(Value::array(out))
-        }
+        })(),
         "compact" => Ok(Value::array(snapshot().into_iter().filter(|v| !matches!(v, Value::Nil)).collect())),
         "take" => {
             int_arg(args, 0, name).map(|n| Value::array(snapshot().into_iter().take(n.max(0) as usize).collect()))
@@ -248,23 +291,33 @@ pub(crate) fn array_method<'p>(
             int_arg(args, 0, name).map(|n| Value::array(snapshot().into_iter().skip(n.max(0) as usize).collect()))
         }
         "zip" => (|| {
-            let Value::Array(other) = arg(args, 0, name)? else {
-                return raise("TypeError", "`zip` expects an array");
-            };
-            let other = other.borrow().clone();
+            let others = (0..args.pos.len().max(1)).map(|i| array_arg(args, i, name)).collect::<Result<Vec<_>, _>>()?;
             Ok(Value::array(
                 snapshot()
                     .into_iter()
                     .enumerate()
-                    .map(|(i, v)| Value::array(vec![v, other.get(i).cloned().unwrap_or(Value::Nil)]))
+                    .map(|(i, v)| {
+                        let mut row = vec![v];
+                        row.extend(others.iter().map(|other| other.get(i).cloned().unwrap_or(Value::Nil)));
+                        Value::array(row)
+                    })
                     .collect(),
             ))
         })(),
+        // `reduce(0) { |a, x| … }`, `reduce(:+)`, `inject(1, :*)`, `reduce(&:+)`
         "reduce" | "inject" => (|| {
-            let body = block(args, name)?;
+            let (init, body) = match (args.pos.as_slice(), &args.block) {
+                ([], Some(body)) => (None, body.clone()),
+                ([init], Some(body)) => (Some(init.clone()), body.clone()),
+                ([op], None) if matches!(op.untainted(), Value::Symbol(_)) => (None, op.untainted().clone()),
+                ([init, op], None) if matches!(op.untainted(), Value::Symbol(_)) => {
+                    (Some(init.clone()), op.untainted().clone())
+                }
+                _ => return raise("ArgumentError", format!("`{name}` expects a block or an operator (`{name}(:+)`)")),
+            };
             let mut all = snapshot().into_iter();
-            let mut acc = match args.pos.first() {
-                Some(init) => init.clone(),
+            let mut acc = match init {
+                Some(init) => init,
                 None => all.next().unwrap_or(Value::Nil),
             };
             for v in all {
@@ -290,76 +343,35 @@ pub(crate) fn array_method<'p>(
             Ok(Value::Hash(Arc::new(Mutex::new(groups))))
         })(),
         "to_a" | "dup" => Ok(Value::array(snapshot())),
-        _ => return None,
+        _ => return sequence_method(interp, items, name, args),
     })
 }
 
-pub(crate) fn hash_method<'p>(
+/// `sort { |a, b| … }`: the block compares, as `<=>` does (an `Int`).
+fn sort_with<'p>(
     interp: &mut Interp<'p>,
-    entries: &Arc<Mutex<Vec<(Value<'p>, Value<'p>)>>>,
-    name: &str,
-    args: &Args<'p>,
-) -> Option<R<'p>> {
-    let snapshot = || entries.borrow().clone();
-    let get = |key: &Value<'p>| entries.borrow().iter().find(|(k, _)| equal(k, key)).map(|(_, v)| v.clone());
-    let pairs = || Value::array(snapshot().into_iter().map(|(k, v)| Value::array(vec![k, v])).collect());
-    Some(match name {
-        "size" | "length" | "count" => Ok(Value::Int(entries.borrow().len() as i64)),
-        "empty?" => Ok(Value::Bool(entries.borrow().is_empty())),
-        "keys" => Ok(Value::array(snapshot().into_iter().map(|(k, _)| k).collect())),
-        "values" => Ok(Value::array(snapshot().into_iter().map(|(_, v)| v).collect())),
-        "key?" | "has_key?" | "include?" => arg(args, 0, name).map(|k| Value::Bool(get(&k).is_some())),
-        "fetch" => (|| {
-            let key = arg(args, 0, name)?;
-            match (get(&key), args.pos.get(1)) {
-                (Some(v), _) => Ok(v),
-                (None, Some(default)) => Ok(default.clone()),
-                (None, None) => raise("KeyError", format!("missing key: {}", key.inspect())),
-            }
-        })(),
-        "delete" => arg(args, 0, name).map(|k| {
-            let found = get(&k);
-            entries.borrow_mut().retain(|(key, _)| !equal(key, &k));
-            found.unwrap_or(Value::Nil)
-        }),
-        "merge" => (|| {
-            let Value::Hash(other) = arg(args, 0, name)? else {
-                return raise("TypeError", "`merge` expects a Hash");
-            };
-            let mut merged = snapshot();
-            for (k, v) in other.borrow().iter() {
-                match merged.iter_mut().find(|(key, _)| equal(key, k)) {
-                    Some((_, slot)) => *slot = v.clone(),
-                    None => merged.push((k.clone(), v.clone())),
-                }
-            }
-            Ok(Value::Hash(Arc::new(Mutex::new(merged))))
-        })(),
-        "to_a" => Ok(pairs()),
-        "each" | "map" | "select" | "filter" | "reject" | "any?" | "all?" | "find" | "sum" | "sort_by" | "min_by"
-        | "max_by" => {
-            let Value::Array(list) = pairs() else { unreachable!() };
-            let result = array_method(interp, &list, name, args)?;
-            // `select`/`reject` on a Hash return a Hash
-            Ok(match (name, result) {
-                ("select" | "filter" | "reject", Ok(Value::Array(kept))) => {
-                    let kept = kept
-                        .borrow()
-                        .iter()
-                        .filter_map(|pair| match pair {
-                            Value::Array(kv) => {
-                                let kv = kv.borrow();
-                                Some((kv[0].clone(), kv[1].clone()))
-                            }
-                            _ => None,
-                        })
-                        .collect();
-                    Value::Hash(Arc::new(Mutex::new(kept)))
-                }
-                ("each", Ok(_)) => Value::Hash(entries.clone()),
-                (_, result) => return Some(result),
-            })
+    mut all: Vec<Value<'p>>,
+    body: &Value<'p>,
+) -> Result<Vec<Value<'p>>, Ctrl<'p>> {
+    let mut failure: Option<Ctrl<'p>> = None;
+    all.sort_by(|a, b| {
+        if failure.is_some() {
+            return Ordering::Equal;
         }
-        _ => return None,
-    })
+        let compared = interp.call_block(body, vec![a.clone(), b.clone()]).and_then(|v| match v.untainted() {
+            Value::Int(n) => Ok(n.cmp(&0)),
+            other => raise(
+                "TypeError",
+                format!("`sort`: the block compares as `<=>` does (an integer), got {}", other.type_name()),
+            ),
+        });
+        compared.unwrap_or_else(|e| {
+            failure = Some(e);
+            Ordering::Equal
+        })
+    });
+    match failure {
+        Some(e) => Err(e),
+        None => Ok(all),
+    }
 }
