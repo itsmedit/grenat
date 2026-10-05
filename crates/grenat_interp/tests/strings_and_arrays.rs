@@ -308,3 +308,20 @@ fn a_secret_is_never_sliced_and_formats_into_a_secret() {
     ));
     assert_eq!(out, "[secret]\ntrue\n[secret]\n[secret]\n");
 }
+
+#[test]
+fn a_number_directive_never_shows_a_secret_it_cannot_read() {
+    let src = format!("{CREDENTIALS}t = Credentials.fetch(:api, :token)\n");
+    for expr in ["format(\"%d\", t)", "\"%d\" % [t]", "\"%x\" % t", "format(\"%.2f\", t)", "\"%e\" % [t]"] {
+        let message = error_of(&format!("{src}p {expr}\n"));
+        assert!(message.starts_with("ArgumentError: `%"), "{expr}: {message}");
+        assert!(message.contains("got a secret"), "{expr}: {message}");
+        assert!(!message.contains("sk-1234"), "{expr}: {message}");
+    }
+    // rescued, the message is no way out either
+    let out = run(&format!("{src}begin\n  puts format(\"%d\", t)\nrescue ArgumentError => e\n  puts e.message\nend\n"));
+    assert!(!out.contains("sk-1234") && out.contains("got a secret"), "{out}");
+    // a secret that is a number is written, a secret still
+    let pin = "mock_credentials({\"api\" => {\"pin\" => \"42\"}})\npin = Credentials.fetch(:api, :pin)\n";
+    assert_eq!(run(&format!("{pin}p format(\"%04d\", pin), \"%04d\" % pin == \"0042\"\n")), "[secret]\ntrue\n");
+}

@@ -1,7 +1,8 @@
 //! `format("%.2f", x)` and `"%05d" % n` (`"%s-%s" % [a, b]`): Ruby's
 //! directives `%d` `%i` `%f` `%e` `%s` `%p` `%x` `%X` `%o` `%b` `%%`, with
 //! the flags `-` `0` `+` and space, a width and a precision. What is made
-//! of an untrusted value is untrusted; of a secret, a secret.
+//! of an untrusted value is untrusted; of a secret, a secret — and an error
+//! never shows a secret's text.
 
 use crate::prelude::*;
 
@@ -14,6 +15,9 @@ pub(crate) enum Operand {
         shown: String,
         inspected: String,
     },
+    /// A secret's text: written (the result is then a secret), read as a
+    /// number, never shown in an error.
+    Secret(String),
 }
 
 /// `format(spec, values…)` on interpreter values.
@@ -27,7 +31,7 @@ pub(crate) fn format_values<'p>(interp: &mut Interp<'p>, spec: &Value<'p>, value
         operands.push(match v.untainted() {
             Value::Int(n) => Operand::Int(*n),
             Value::Float(f) | Value::Money(f) | Value::Duration(f) => Operand::Float(*f),
-            Value::Secret(s) => Operand::Text { shown: s.to_string(), inspected: s.to_string() },
+            Value::Secret(s) => Operand::Secret(s.to_string()),
             other => Operand::Text { shown: interp.display(other)?, inspected: other.inspect() },
         });
     }
@@ -119,6 +123,7 @@ impl Directive {
                     Operand::Int(n) => n.to_string(),
                     Operand::Float(f) => Value::Float(*f).to_display(),
                     Operand::Text { shown, inspected } => (if kind == 's' { shown } else { inspected }).clone(),
+                    Operand::Secret(text) => text.clone(),
                 };
                 let text = match self.precision {
                     Some(p) => text.chars().take(p).collect(),
@@ -188,6 +193,7 @@ fn integer(operand: &Operand, kind: char) -> Result<i128, String> {
         Operand::Text { shown, .. } => {
             shown.trim().parse().map_err(|_| format!("`%{kind}` expects an integer, got {shown:?}"))
         }
+        Operand::Secret(text) => text.trim().parse().map_err(|_| unreadable_secret(kind, "an integer")),
     }
 }
 
@@ -198,7 +204,13 @@ fn float(operand: &Operand, kind: char) -> Result<f64, String> {
         Operand::Text { shown, .. } => {
             shown.trim().parse().map_err(|_| format!("`%{kind}` expects a number, got {shown:?}"))
         }
+        Operand::Secret(text) => text.trim().parse().map_err(|_| unreadable_secret(kind, "a number")),
     }
+}
+
+/// Why a secret is no number, its text never in it.
+fn unreadable_secret(kind: char, expected: &str) -> String {
+    format!("`%{kind}` expects {expected}, got a secret that is not one (its text is not shown)")
 }
 
 /// A float as Ruby names the ones that are not finite: `Inf`, `-Inf`, `NaN`.
@@ -309,5 +321,10 @@ mod tests {
         assert_eq!(format("%x", &[Operand::Float(f64::NAN)]).unwrap_err(), "`%x` expects an integer, got NaN");
         assert_eq!(format("%d", &[Operand::Float(1e40)]).unwrap_err(), "`%d`: 1e40 is out of range");
         assert!(format("50%", &[]).unwrap_err().contains("incomplete"));
+        for spec in ["%d", "%x", "%f", "%e"] {
+            let error = format(spec, &[Operand::Secret("sk-123".into())]).unwrap_err();
+            assert!(error.contains("got a secret") && !error.contains("sk-123"), "{spec}: {error}");
+        }
+        assert_eq!(format("%03d|%s", &[Operand::Secret("7".into()), Operand::Secret("t".into())]).unwrap(), "007|t");
     }
 }

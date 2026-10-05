@@ -12,7 +12,8 @@
 //! included), `headers` (as given, with the `Content-Type` a `json:` body
 //! adds), `body` (the text sent, `nil` without one) and `json` (the body
 //! parsed, `nil` when it is not JSON). Secrets stay secrets: a header, a URL
-//! or a body that holds one is a `Secret`, equal to its text, never printed.
+//! or a body that holds one is a `Secret`, equal to its text, never printed;
+//! from a secret `body:`, every text, number, boolean and key parsed is one.
 //! Only a test records them, and each test starts with none.
 
 use crate::builtins::json_to_untyped;
@@ -92,9 +93,7 @@ fn received<'p>(value: &Value<'p>) -> Value<'p> {
     match value.untainted() {
         Value::Secret(s) => Value::Secret(s.clone()),
         Value::Array(items) => Value::array(items.borrow().iter().map(received).collect()),
-        Value::Hash(entries) => {
-            object(entries.borrow().iter().map(|(k, v)| (Value::str(k.to_display()), received(v))).collect())
-        }
+        Value::Hash(entries) => object(entries.borrow().iter().map(|(k, v)| (key(k), received(v))).collect()),
         Value::Record(r) => object(r.fields.iter().map(|(k, v)| (Value::str(&**k), received(v))).collect()),
         Value::Variant(v) => {
             let mut pairs: Vec<_> = v.fields.iter().map(|(k, v)| (Value::str(&**k), received(v))).collect();
@@ -105,24 +104,35 @@ fn received<'p>(value: &Value<'p>) -> Value<'p> {
     }
 }
 
+/// An object's key as the service reads it: its text, or the secret it is.
+fn key<'p>(k: &Value<'p>) -> Value<'p> {
+    match k.untainted() {
+        Value::Secret(s) => Value::Secret(s.clone()),
+        other => Value::str(other.to_display()),
+    }
+}
+
 /// A `body:` parsed as JSON (`nil` when it is not); from a secret body,
-/// every text is a secret.
+/// everything it holds is a secret.
 fn parsed<'p>(body: &Value<'p>) -> Value<'p> {
     let Ok(json) = serde_json::from_str::<serde_json::Value>(&body.reveal()) else {
         return Value::Nil;
     };
-    let value = json_to_untyped(&json);
-    if matches!(body, Value::Secret(_)) { secret_texts(&value) } else { value }
+    if matches!(body, Value::Secret(_)) { secret_json(&json) } else { json_to_untyped(&json) }
 }
 
-/// `value` with each of its texts made a secret.
-fn secret_texts<'p>(value: &Value<'p>) -> Value<'p> {
-    match value {
-        Value::Str(s) => Value::Secret(s.clone()),
-        Value::Array(items) => Value::array(items.borrow().iter().map(secret_texts).collect()),
-        Value::Hash(entries) => Value::Hash(Arc::new(Mutex::new(
-            entries.borrow().iter().map(|(k, v)| (k.clone(), secret_texts(v))).collect(),
+/// `json` with each of its texts, numbers, booleans and keys a secret of
+/// its JSON text (`123456` is `"123456"`, as the body wrote it): a secret
+/// body reveals nothing it holds. Only its shape shows, and its `null`s.
+fn secret_json<'p>(json: &serde_json::Value) -> Value<'p> {
+    use serde_json::Value as Json;
+    match json {
+        Json::Null => Value::Nil,
+        Json::String(s) => Value::Secret(s.as_str().into()),
+        Json::Number(_) | Json::Bool(_) => Value::Secret(json.to_string().into()),
+        Json::Array(items) => Value::array(items.iter().map(secret_json).collect()),
+        Json::Object(entries) => Value::Hash(Arc::new(Mutex::new(
+            entries.iter().map(|(k, v)| (Value::Secret(k.as_str().into()), secret_json(v))).collect(),
         ))),
-        other => other.clone(),
     }
 }

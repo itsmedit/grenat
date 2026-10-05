@@ -136,7 +136,46 @@ test \"a body holding a secret\" do
 end
 ",
     );
-    assert_eq!(output, "{\"key\" => [secret]}\n");
+    // its keys too: a secret may be one (`{"#{pin}": true}`)
+    assert_eq!(output, "{[secret] => [secret]}\n");
+}
+
+#[test]
+fn a_secret_body_reveals_no_number_flag_nor_key() {
+    let output = tests_pass(
+        "\
+def send_pin uses net(\"api.x.io\"), env
+  Http.post(\"https://api.x.io/b\", body: Credentials.fetch(:x, :pin))
+end
+
+def send_keyed uses net(\"api.x.io\"), env
+  pin = Credentials.fetch(:x, :pin)
+  Http.post(\"https://api.x.io/b\", body: \"{\\\"#{pin}\\\": true, \\\"n\\\": [1.5, null]}\")
+end
+
+def send_json uses net(\"api.x.io\"), env
+  Http.post(\"https://api.x.io/b\", json: {Credentials.fetch(:x, :pin) => 1})
+end
+
+test \"a secret body\" do
+  mock_credentials({\"x\" => {\"pin\" => \"123456\"}})
+  mock_http \"POST https://api.x.io/*\", json: {}
+  send_pin
+  send_keyed
+  send_json
+  pin, keyed, json = Http.requests.map { |r| r[\"json\"] }
+  assert_equal 1, json[\"123456\"]
+  assert_equal \"123456\", pin
+  assert_equal [\"123456\", \"n\"], keyed.keys
+  assert_equal \"true\", keyed[\"123456\"]
+  assert_equal \"1.5\", keyed[\"n\"][0]
+  p pin, keyed, keyed[\"n\"][1], json
+  assert_raises(TypeError) { pin + 1 }
+end
+",
+    );
+    assert_eq!(output, "[secret]\n{[secret] => [secret], [secret] => [[secret], nil]}\nnil\n{[secret] => 1}\n");
+    assert!(!output.contains("123456"), "{output}");
 }
 
 #[test]
