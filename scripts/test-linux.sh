@@ -24,6 +24,8 @@ docker run --rm $platform \
         (apt-get update -qq && apt-get install -y -qq clang >/dev/null 2>&1) || echo "no clang: release builds not tested"
         mkdir -p /work && cd /src && tar --exclude=./target --exclude=./.claude --exclude=./.idea -cf - . | (cd /work && tar -xf -)
         cd /work
+        # the .git file of a git worktree points to a host path: git would fail
+        [ -f .git ] && rm .git
         # linking every test program at once exhausts a small Docker VM
         export CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
         cargo test -q --no-fail-fast 2>&1 | grep "test result" | awk "{p+=\$4; f+=\$6} END {print \"tests:\", p+0, \"passed,\", f+0, \"failed\"; exit (f > 0 || p == 0)}"
