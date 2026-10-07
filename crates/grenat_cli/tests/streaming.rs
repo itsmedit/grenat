@@ -210,29 +210,36 @@ end
     let (lines, logged) = mpsc::channel();
     std::thread::spawn(move || log.lines().map_while(Result::ok).try_for_each(|l| lines.send(l)));
 
+    let mut log = Vec::new();
+    let wait_until = |log: &mut Vec<String>, done: &dyn Fn(&[String]) -> bool| {
+        while !done(log) {
+            match logged.recv_timeout(Duration::from_secs(30)) {
+                Ok(line) => log.push(line),
+                Err(_) => break,
+            }
+        }
+    };
+    let started = |log: &[String]| log.iter().filter(|l| l.contains("GET /big → 200")).count();
+    let closed = |log: &[String]| log.iter().filter(|l| l.contains("GET /big: the client closed the stream")).count();
+
+    // one connection at a time: tiny_http's connection pool can leave a
+    // burst of connections queued behind threads that never free up
+    // (each one holds a stalled client), which is not what this test is about
     let workers = std::thread::available_parallelism().map_or(4, |n| n.get());
-    let stalled: Vec<TcpStream> = (0..workers + 2)
-        .map(|_| {
-            let mut client = TcpStream::connect(&address).unwrap();
-            write!(client, "GET /big HTTP/1.1\r\nHost: x\r\n\r\n").unwrap();
-            client
-        })
-        .collect();
-    std::thread::sleep(Duration::from_secs(1));
+    let mut stalled = Vec::new();
+    for n in 1..=workers + 2 {
+        let mut client = TcpStream::connect(&address).unwrap();
+        write!(client, "GET /big HTTP/1.1\r\nHost: x\r\n\r\n").unwrap();
+        stalled.push(client);
+        wait_until(&mut log, &|log| started(log) >= n);
+    }
     let mut plain = TcpStream::connect(&address).unwrap();
     plain.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
     write!(plain, "GET /plain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").unwrap();
     let mut answer = String::new();
     let read = plain.read_to_string(&mut answer);
     // each stalled stream ends, the clients still connected
-    let mut log = Vec::new();
-    let closed = |log: &[String]| log.iter().filter(|l| l.contains("GET /big: the client closed the stream")).count();
-    while closed(&log) < workers + 2 {
-        match logged.recv_timeout(Duration::from_secs(30)) {
-            Ok(line) => log.push(line),
-            Err(_) => break,
-        }
-    }
+    wait_until(&mut log, &|log| closed(log) >= workers + 2);
     child.kill().unwrap();
     child.wait().unwrap();
     drop(stalled);
