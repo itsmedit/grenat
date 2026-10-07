@@ -1,0 +1,19 @@
+From: =?ISO-8859-1?Q?Ren=E9e_Dupr=E9?= <renee@exemple.fr>
+To: support@acme.com
+Subject: =?UTF-8?Q?Re=CC=81glement_d=C3=A9j=C3=A0_pay=C3=A9?=
+Date: Fri, 02 Oct 2026 18:05:09 -0400
+Message-ID: <alt-1@exemple.fr>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="b1"
+
+--b1
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Caf=C3=A9 cr=C3=A8me, d=C3=A9j=C3=A0 pay=C3=A9 =E2=80=94 merci
+--b1
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<p>Caf=C3=A9 cr=C3=A8me, d=C3=A9j=C3=A0 pay=C3=A9 =E2=80=94 <b>merci</b></p>
+--b1--

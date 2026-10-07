@@ -1,0 +1,27 @@
+[package]
+name = "grenat_imap"
+description = "A mailbox read over IMAP (TLS only), its messages parsed (MIME): what wakes `on_email`"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# The protocol; its TLS is ours (rustls), so none of its TLS features.
+imap = { version = "3.0.0-alpha.15", default-features = false }
+# Pure Rust: `ring` rather than the default aws-lc-rs (no C toolchain, no system library).
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
+# MIME, with every charset (CJK included, through encoding_rs).
+mail-parser = { version = "0.11", features = ["full_encoding"] }
+# The fake server's certificate.
+rcgen = { version = "0.14", optional = true }
+
+[dev-dependencies]
+grenat_imap = { path = ".", features = ["fake"] }
+
+[features]
+# An IMAP server in process (implicit TLS, STARTTLS or plain on localhost),
+# for the tests of this crate and of its users.
+fake = ["dep:rcgen"]

@@ -1,0 +1,21 @@
+From: =?UTF-8?B?546L5Lyf?= <wang@example.cn>
+To: support@acme.com
+Cc: =?EUC-KR?B?sei5zrz2?= <kim@example.kr>
+Subject: =?GB2312?B?t6LGsc7KzOI=?=
+Date: Tue, 06 Oct 2026 09:00:00 +0800
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="cjk"
+
+--cjk
+Content-Type: text/plain; charset=ISO-2022-JP
+Content-Transfer-Encoding: 7bit
+
+請求書をお送りします。
+--cjk
+Content-Type: text/plain; charset=Shift_JIS; name="=?Big5?B?s/i7+bPmLnR4dA==?="
+Content-Disposition: attachment; filename="=?Big5?B?s/i7+bPmLnR4dA==?="
+Content-Transfer-Encoding: base64
+
+jKmQz4Lggug=
+
+--cjk--

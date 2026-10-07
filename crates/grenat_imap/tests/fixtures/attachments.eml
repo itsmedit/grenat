@@ -1,0 +1,45 @@
+From: ada@acme.com
+To: support@acme.com
+Subject: Contract and photo
+Date: Sun, 04 Oct 2026 10:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+
+--outer
+Content-Type: multipart/related; boundary="rel"
+
+--rel
+Content-Type: text/html; charset=utf-8
+
+<p>See <img src="cid:logo"></p>
+--rel
+Content-Type: image/png
+Content-ID: <logo>
+Content-Disposition: inline; filename="logo.png"
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ
+--rel--
+
+--outer
+Content-Type: application/PDF; name="ignored.pdf"
+Content-Disposition: attachment; filename*=UTF-8''%E5%90%88%E5%90%8C%202026.pdf
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK
+
+--outer
+Content-Type: application/x-sh
+Content-Disposition: attachment; filename="../../.profile.d/run.sh"
+Content-Transfer-Encoding: base64
+
+IyEvYmluL3NoCnJtIC1yZiB+Cg==
+
+--outer
+Content-Type: application/octet-stream
+Content-Disposition: attachment; filename=".."
+Content-Transfer-Encoding: base64
+
+eHl6
+
+--outer--

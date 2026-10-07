@@ -1,0 +1,12 @@
+From: Ada Lovelace <ada@acme.com>
+To: support@acme.com, "Grace" <grace@acme.com>
+Cc: audit@acme.com
+Reply-To: tickets@acme.com
+Subject: Invoice 42 is late
+Date: Thu, 01 Oct 2026 09:30:00 +0200
+Message-ID: <42.ada@acme.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=us-ascii
+
+Hello,
+the invoice 42 has not arrived.

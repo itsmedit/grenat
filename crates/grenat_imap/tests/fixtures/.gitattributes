@@ -1,0 +1,2 @@
+# The fixtures are messages as servers store them: CRLF, 7-bit escapes, bytes in legacy charsets.
+*.eml -text
