@@ -41,7 +41,7 @@ impl Mailbox {
             Security::Implicit => greeted(imap::Client::new(tls::secure(tcp, &url.host, &options.trust)?))?,
             Security::Plain => greeted(imap::Client::new(Stream::Plain(tcp)))?,
             Security::StartTls => {
-                starttls::negotiate(&mut tcp, &url.host)?;
+                starttls::negotiate(&mut tcp, &url.host, options.timeout)?;
                 // no greeting after STARTTLS
                 imap::Client::new(tls::secure(tcp, &url.host, &options.trust)?)
             }
