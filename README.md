@@ -143,6 +143,18 @@ get "/chat" do |req|
 end
 ```
 
+### Email in
+
+`grenat serve` reads a mailbox — Gmail, Microsoft 365, any IMAP server — and hands each new
+email to its handler, then marks it seen or moves it; every field of it is untrusted.
+
+```ruby
+on_email Credentials.fetch(:support, :imap_url), every: 1.minute, move_to: "Done" do |email|
+  answer = reply(email.text).check { |a| a.size < 2000 }?
+  puts "#{email.attachments.size} attachments, answer ready: #{answer.size} characters"
+end
+```
+
 ### Records, embeddings and search by meaning
 
 ```ruby
@@ -265,7 +277,7 @@ grenat run [--log] [--unchecked] [--no-jit] [<file.grn>] [args…]
                                        check, then run `main`
 grenat test [<file.grn>…]              the `test` blocks, offline (mocks and cassettes)
 grenat eval <file.grn> [name]          the `eval` blocks, against the real models, scored
-grenat serve [--listen host:port]      routes, webhooks, schedules, exposed tools and agents, job workers
+grenat serve [--listen host:port]      routes, webhooks, schedules, mailboxes, exposed tools and agents, job workers
 grenat console [--listen host:port] [--token <token>]
                                        the operations console: approvals, jobs, journals, costs, evals
 grenat migrate                         apply the migrations the database has not seen
@@ -324,7 +336,12 @@ dates, email), Python's familiarity still pays.
 
 ## Status
 
-The latest release, v0.1.2, has phases 0 to 11; phases 12 to 14 are on `main`.
+The latest release, v0.1.2, has phases 0 to 11; phases 12 to 15 are on `main`.
+
+**Phase 15 — email in**: `on_email` reads a mailbox (Gmail, Microsoft 365, any IMAP server, over
+TLS; app passwords or OAuth tokens) under `grenat serve`, each new email — its PDFs and images
+ready for a prompt — handled once then marked seen or moved, a failing one retried then flagged,
+every field untrusted; `deliver_email` hands a handler messages in tests.
 
 **Phase 14 — the gaps LLMs found**: a benchmark of models writing Grenat from `llms.txt` showed
 what they reach for. Time (`Time.parse` for ISO 8601, `Time.iso`, `Time.date`, `Time.weekday`,
@@ -596,6 +613,7 @@ end })
 | `grenat_db` | databases: SQLite (embedded) and PostgreSQL behind one interface; vectors (pgvector, or bytes searched by brute force) |
 | `grenat_mcp` | the Model Context Protocol: a client (stdio and HTTP), and the server side of `expose` |
 | `grenat_ssh` | SSH and SFTP: host keys verified, commands quoted, SOCKS5 proxies, a blocking API; a real server in process for tests |
+| `grenat_imap` | IMAP over TLS (implicit or STARTTLS): password or OAuth (`XOAUTH2`) logins, unseen messages by UID, flags and moves, MIME parsed into what `on_email` gives; a server in process for tests |
 | `grenat_serve` | triggers: cron schedules, calendar arithmetic, webhook signatures, the HTTP server of `grenat serve`, streamed responses |
 | `grenat_generate` | `grenat new --app` and `grenat generate`: an application's parts, with their tests |
 | `grenat_ops` | the operations store: jobs, approvals, model calls, events, eval runs, workflow journals |
@@ -615,7 +633,7 @@ end })
 | `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities, workflows, test doubles, evals |
 | `grenat_cli` | the `grenat` binary |
 
-External dependencies: `ureq` (HTTP + rustls), `serde_json`, `toml`, `yaml-rust2`, `rusqlite` (SQLite, compiled in), `postgres`, `russh` (SSH), and Cranelift for native code.
+External dependencies: `ureq` (HTTP + rustls), `serde_json`, `toml`, `yaml-rust2`, `rusqlite` (SQLite, compiled in), `postgres`, `russh` (SSH), `imap` and `mail-parser` (email in, over `rustls` with `ring`), `lettre` (email out), and Cranelift for native code.
 
 ## License
 

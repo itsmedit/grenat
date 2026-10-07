@@ -1,0 +1,52 @@
+# Support inbox: the support mailbox (Gmail, Microsoft 365, any IMAP
+# server) read by `grenat serve`. Each new email — its PDFs and images
+# included — is triaged by a model; an urgent one is told to its team by
+# email; then the message is moved to the "Triaged" folder.
+#
+#   grenat credentials edit    # support: {imap_url: "imaps://support%40acme.io:APP-PASSWORD@imap.gmail.com/INBOX", smtp_url: …}
+#   grenat serve 13_support_inbox.grn
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+enum Team
+  Billing
+  Engineering
+  Sales
+end
+
+struct Triage
+  team: Team
+  urgent: Bool
+  summary: String  ## one sentence, for the team
+end
+
+## Who handles an email, and how soon.
+prompt triage(subject: String, body: String, documents: Array(Attachment)) -> ~Triage using :fast
+  system "You triage the emails of a software company's support mailbox. Attachments are invoices, screenshots and logs."
+  user "Subject: #{subject}", body
+  documents.each { |d| user d }
+end
+
+## What a model reads among the attachments: PDFs and images.
+def readable(attachments: Array(Attachment)) -> Array(Attachment)
+  attachments.select { |a| a.kind == "document" || a.kind == "image" }
+end
+
+## Tells a team about an urgent email.
+def alert(t: Triage) uses net("smtp.acme.io"), env
+  team = t.team.name.downcase
+  mailer = Mail.connect(Credentials.fetch(:support, :smtp_url))
+  mailer.send(
+    from: "support@acme.io",
+    to: "#{team}@acme.io",
+    subject: "Urgent email for #{team}",
+    body: t.summary,
+  )
+end
+
+on_email Credentials.fetch(:support, :imap_url), every: 1.minute, move_to: "Triaged" do |email|
+  t = triage(email.subject, email.text, readable(email.attachments)).check { |t|
+    t.summary.size <= 300
+  }?
+  alert(t) if t.urgent
+  puts "#{t.team.name}: #{t.summary}"
+end

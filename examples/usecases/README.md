@@ -21,6 +21,7 @@ block is gone** and each program runs against real services.
 | 10 | [`10_mcp_tools.grn`](10_mcp_tools.grn) (Linear, Notion through MCP) | 27 | 0 | **yes** | — |
 | 11 | [`11_knowledge_base.grn`](11_knowledge_base.grn) (documentation embedded, searched by meaning) | 51 | 0 | **yes** | — |
 | 12 | [`12_meeting_minutes.grn`](12_meeting_minutes.grn) (a recording transcribed, then minutes and tasks) | 41 | 0 | **yes** | — |
+| 13 | [`13_support_inbox.grn`](13_support_inbox.grn) (a support mailbox read over IMAP, emails triaged with their attachments) | 36 | 0 | **yes** | — |
 
 Case 11 came with phase 13 (embeddings and vector search): where the
 support desk's `search_docs` counts the words a page shares with a query,
@@ -28,6 +29,10 @@ it finds passages by meaning; its tests fake the vectors (`mock_embed`).
 Case 12 came with audio: a meeting's recording, a file or a link, is
 transcribed (`transcribe`), then a prompt writes its minutes and tasks; its
 tests fake the transcript (`mock_transcribe`) and the download (`mock_http`).
+Case 13 came with email in (`on_email`): `grenat serve` reads the support
+mailbox (Gmail, Microsoft 365, any IMAP server), a prompt triages each new
+email with its PDFs and images, an urgent one is told to its team, and the
+message is moved to a folder; its tests hand it emails (`deliver_email`).
 
 Lines of code, without blank lines and comments. A stub is shorter than
 the real code it stands for: with `Http`, cases 2 and 3 grew from 47 to 70

@@ -1,0 +1,34 @@
+require "./13_support_inbox"
+
+test "an urgent invoice question is told to billing, then moved" do
+  mock_credentials({"support" => {"smtp_url" => "smtp://bot:pw@smtp.acme.io:587"}})
+  File.write("invoice.pdf", "%PDF-1.4")
+  mock :fast, replies: [{team: "Billing", urgent: true, summary: "A customer was charged twice."}]
+  r = deliver_email(
+    from: "ada@example.com",
+    subject: "Charged twice",
+    text: "See the invoice attached.",
+    attachments: [Pdf.read("invoice.pdf")],
+  )
+  assert_equal({"status" => "moved", "folder" => "Triaged"}, r)
+  sent = Mail.deliveries
+  assert_equal ["billing@acme.io"], sent.first["to"]
+  assert_equal "Urgent email for billing", sent.first["subject"]
+end
+
+test "a question that can wait reaches no one" do
+  mock :fast, replies: [{team: "Sales", urgent: false, summary: "A pricing question."}]
+  assert_equal "moved", deliver_email(
+    from: "bob@example.com",
+    subject: "Pricing",
+    text: "How much?",
+  )["status"]
+  assert_equal 0, Mail.deliveries.size
+end
+
+test "a triage that fails its check leaves the message for the next read" do
+  mock :fast, replies: [{team: "Sales", urgent: true, summary: "x" * 400}]
+  r = deliver_email(from: "eve@example.com", subject: "Hello", text: "…")
+  assert_equal "failed", r["status"]
+  assert_equal 0, Mail.deliveries.size
+end

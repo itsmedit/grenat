@@ -418,7 +418,7 @@ fn the_use_cases_pass_their_tests() {
         }
     }
     tests.sort();
-    assert_eq!(tests.len(), 11);
+    assert_eq!(tests.len(), 12);
     for test in &tests {
         let out = Command::new(env!("CARGO_BIN_EXE_grenat"))
             .args(["test", test])

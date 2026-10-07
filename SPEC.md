@@ -614,6 +614,65 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 15 status: email in (`on_email`)
+
+A support desk reads a real mailbox — Gmail, Microsoft 365, any IMAP server — and acts on each new email. `on_email` declares the mailbox and what to do with a message; `grenat serve` reads it; a test hands the handler messages without a server.
+
+```ruby
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+TEAMS = ["billing", "engineering", "sales"]
+
+struct Triage
+  team: String  ## billing, engineering or sales
+  urgent: Bool
+end
+
+## Who handles an email, read with its PDFs and images.
+prompt triage(subject: String, body: String, documents: Array(Attachment)) -> ~Triage using :fast
+  user "Subject: #{subject}", body
+  documents.each { |d| user d }
+end
+
+## Tells a team about an urgent email.
+def alert(team: String) uses net("smtp.acme.io"), env
+  mailer = Mail.connect(Credentials.fetch(:support, :smtp_url))
+  mailer.send(
+    from: "support@acme.io",
+    to: "#{team}@acme.io",
+    subject: "Urgent email",
+    body: "See the Triaged folder.",
+  )
+end
+
+on_email Credentials.fetch(:support, :imap_url), every: 1.minute, move_to: "Triaged" do |email|
+  documents = email.attachments.select { |a| a.kind != "file" }
+  t = triage(email.subject, email.text, documents).check { |t| TEAMS.include?(t.team) }?
+  alert(t.team) if t.urgent
+end
+
+test "an urgent email is told to its team, then moved" do
+  mock_credentials({"support" => {"smtp_url" => "smtp://bot:pw@smtp.acme.io:587"}})
+  mock :fast, replies: [{team: "billing", urgent: true}]
+  r = deliver_email(from: "ada@example.com", subject: "Charged twice", text: "See the invoice.")
+  assert_equal({"status" => "moved", "folder" => "Triaged"}, r)
+  assert_equal ["billing@acme.io"], Mail.deliveries.first["to"]
+end
+```
+
+- **The mailbox.** `on_email url do |email| … end` takes an IMAP URL, a `String` or a `Secret` (`Credentials.fetch`, as the reference recommends): `imaps://user:password@host/Folder` is TLS from the first byte (port 993); `imap://` connects in clear text and requires STARTTLS before any credential is sent (port 143), the capabilities heard before TLS forgotten. The user and password are percent-decoded (`support%40acme.io`), the folder is the path (`INBOX` when there is none; `INBOX/Support`, any name, sent in modified UTF-7). The URL is parsed when the declaration runs — an invalid one is an `ArgumentError` that never shows it; in tests, a stand-in credential (`test-support-imap_url`) is accepted, since no test reads a mailbox. Clear text is never used, except by the `grenat_imap` crate for a server on the machine itself.
+- **Options.** `every:` the time between two reads (a duration or seconds; one minute by default); `move_to: "Done"` moves each handled message to that folder (which must exist) — without it, a handled message stays where it is, marked `\Seen`; `token: :outlook_token` names a function giving an OAuth 2.0 access token (a `String` or a `Secret`, never an untrusted value), called before each read, for SASL `XOAUTH2` instead of the URL's password. Leaving a handled message unseen is not offered: it would be handled again after a restart; a mailbox a human reads too gets a folder of its own (a Gmail label, an Outlook rule).
+- **Gmail, Microsoft 365.** Gmail (`imaps://you%40gmail.com:APP-PASSWORD@imap.gmail.com/INBOX`) takes an app password — available once 2-Step Verification is on — or an OAuth token. Microsoft 365 and Outlook.com take only OAuth (`XOAUTH2`; basic authentication is retired): the token of a delegated `https://outlook.office.com/IMAP.AccessAsUser.All` scope, or of an application (`IMAP.AccessAsApp`, client credentials with the `https://outlook.office365.com/.default` scope) granted the mailbox; the URL then names the user without a password. Grenat neither obtains nor refreshes tokens: the `token:` function does (an `Http.post` to the provider's token endpoint, with credentials), and may keep one until it expires. `XOAUTH2` is used only where the server announces `AUTH=XOAUTH2`; a server announcing `LOGINDISABLED` is never sent a password.
+- **Served.** `grenat serve` reads each mailbox on a task of its own, at the start then every `every:`: the messages neither seen nor deleted (`UID SEARCH UNSEEN UNDELETED`), oldest first, fetched by UID with `BODY.PEEK[]` — reading one never marks it seen — in batches of 20 messages and 25 MiB at most; a larger message (its `RFC822.SIZE`) is never downloaded. Each message goes to the handler; once it returns, the message is marked `\Seen` or moved (`UID MOVE` where the server has it — RFC 6851, part of IMAP4rev2 — else `COPY`, `\Deleted` and `UID EXPUNGE` with `UIDPLUS`, or `EXPUNGE`). UIDs are used under the folder's `UIDVALIDITY`: a recreated folder's messages are new. A connection that broke or went silent (a server's idle timeout during a long handler) is opened again once, the operation repeated; every read and write has a 60-second timeout. Delivery is at least once: should the connection break between a handler's end and the mark, the message is handled again — a handler that must not run twice keys its work on `email.message_id`. `grenat run` only declares mailboxes.
+- **Failures.** A handler that raises leaves its message unseen: it is tried again at the next reads, three times in all (counted in memory per UID: a restart counts afresh), then marked `\Flagged` and `\Seen` for a human to look at; a message too large, or that is no message, is flagged at once. Each failure is a line on standard error and an event (`email`, `imap.gmail.com/INBOX (UID 42)`) in the console's failures; a mailbox that cannot be read (wrong password, server down) is reported at each read and recorded once until its error changes, and read again at the next turn. Nothing stops the server. The log line `[imap] imap.gmail.com/INBOX: 2 new` and every error name a mailbox by its host and folder: never its user, password or token, which reach only the connection (and are scrubbed from what a server echoes).
+- **`IncomingEmail`.** The handler receives a built-in record (E0100 if a program declares one; `Email` already names an address, a `String`): `from` (the address, `String?`), `from_name`, `to` and `cc` (`Array(String)`), `reply_to`, `subject`, `date` (`Float?`, epoch seconds as `Time` uses, the sender's offset applied), `message_id` (without angle brackets), `text` (the text parts, or the HTML's text when there are none; `\n` line ends), `html` (`String?`) and `attachments`. MIME is decoded whatever the charset (quoted-printable, base64, RFC 2047 words and RFC 2231 names; Latin-1, Windows-1252, GB2312, Big5, Shift_JIS, ISO-2022-JP, EUC-KR…). **Every field is untrusted** — the sender wrote all of it, the address included — checked statically (E0412) and at run time (`TaintError`): a reply to `email.from` goes through `.check { … }?` first.
+- **Attachments.** Each is an `Attachment`, as `Pdf.read` gives: `kind` (`document` for a PDF; `image` for PNG, JPEG, GIF, WebP; `audio` for what `transcribe` takes; `file` for the rest — an archive, a spreadsheet, a message forwarded whole as `message/rfc822`), `media_type` as declared, `name` (a file name without directory, control or bidirectional characters, cut to 255 bytes; `nil` when none survives). A model takes documents, images and audio: `user d`, `transcribe(:whisper, d)`; a `file` in a prompt is an `ArgumentError` naming its type. The attachments of `Pdf.read`, `Image.read` and `Audio.read` now have their file's name too (`nil` for `.url`), and `kind`, `media_type` and `name` are typed for the checker.
+- **Effects.** Reading a mailbox is `net` on its host: with a literal URL the checker takes its host (`uses net("imap.gmail.com")` or `net` must grant it, E0300); with a configured one (`Credentials`, `Env`), `net` or any `net("host")` passes, and the runtime holds the host to the declarations when `on_email` runs (`CapabilityError`), as `Mail.connect` does. An untrusted URL is refused (E0412, `TaintError`). Declaring opens nothing: in a workflow it needs no `step`. A handler calls what any trigger does — prompts, `Mail`, `enqueue`, workflows (their steps journaled as anywhere else).
+- **Tests.** `deliver_email(from:, to:, cc:, reply_to:, from_name:, subject:, text:, html:, date:, message_id:, attachments: [Pdf.read("invoice.pdf")])` builds the message a mailbox would give — every field untrusted, `date` the test's `Time.now` (`freeze_time` applies) unless given as epoch seconds or ISO 8601 — runs the handler, opens no connection, and returns what happened: `{"status" => "seen"}`, `{"status" => "moved", "folder" => "Done"}`, or `{"status" => "failed", "error" => "ArgumentError: …"}` when the handler raised (served, the message would be tried again). With several `on_email`, `folder:` picks the one whose URL has that folder. It exists inside a `test` block only (E0500; `RuntimeError` at run time); fields are typed (E0200, `TypeError`), and a secret is refused (E0414, `SecretError`).
+- **`grenat_imap`.** A blocking protocol crate that knows nothing of the language, as `grenat_ssh`: the `imap` crate without its TLS features, `rustls` with `ring` and Mozilla's roots (`webpki-roots`), and `mail-parser` for MIME — pure Rust, no OpenSSL nor any system library. Its `fake` feature is an IMAP server in process (implicit TLS with an authority made for the run, STARTTLS, or clear text; MOVE, UIDPLUS, IMAP4rev2, LOGINDISABLED and XOAUTH2 switches; connections that drop or stall), used by its tests and the interpreter's. What was read before relying on it: RFC 9051 and RFC 3501 (`UID SEARCH`/`FETCH`/`STORE`, `BODY.PEEK`, `UIDVALIDITY`), RFC 6851 (`MOVE`, and the `COPY`, `STORE \Deleted`, `UID EXPUNGE` it replaces), Microsoft's "Authenticate an IMAP, POP or SMTP connection using OAuth" (the `XOAUTH2` string, scopes, application access), Google's Gmail IMAP notes (`imap.gmail.com:993`, `XOAUTH2`, sessions closed after about an hour with OAuth), and mail-parser's documentation (0.11: RFC 5322, MIME, RFC 2047 and 2231, 41 charsets through `encoding_rs`).
+- **Tests.** The crate: URLs, UTF-7 folders, batch planning, attachment names, MIME fixtures, and every connection path against the fake server (TLS, STARTTLS, password, token, LOGINDISABLED, moves, UIDVALIDITY, reconnections, timeouts, secrets kept out of errors). The interpreter: `deliver_email` (fields, outcomes, `folder:`, refusals), taint of every field at run time, a PDF attachment reaching a mocked prompt, the declaration's capability, URL and options; and `grenat serve` against the fake server: messages handled once then seen, moved, a raising handler retried three times then flagged while the next message is handled and four events recorded, a dropped connection, and a `Credentials` URL whose password — right or wrong — never shows. The checker: types, the `net` effect (literal and configured URLs, callers, workflows), E0100, E0500, E0414 and the taint of every field. Use case 13 (`examples/usecases/13_support_inbox.grn`) triages a support mailbox, with its tests.
+- **Limits.** The mailbox is polled, not pushed (no `IDLE`); one folder per declaration; retries are counted in memory; Grenat does not get OAuth tokens itself; signed or encrypted mail (S/MIME, OpenPGP) is read as its parts, unverified; there is no reply threading (`Mail` sends a new message: `In-Reply-To` is not set).
+
 ### Phase 14 status: edges as Ruby has them
 
 A review of the strings, arrays, time and test-double phases ran programs through `grenat check` and `grenat run` side by side with Ruby, and found places where the two Grenat stages disagreed, where Grenat disagreed with Ruby, and two where a secret showed. Each is fixed, with a test that failed before.

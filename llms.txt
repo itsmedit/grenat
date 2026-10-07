@@ -228,6 +228,28 @@ end
 
 A handler's value is the response: a string, a hash/record (JSON), `json(v)`, `html(page)` (escape untrusted with `Html.escape`), `status(201, v)`, `redirect(url)`, an integer status, `nil` (204). `stream do |out| … end` answers as Server-Sent Events; `expose "/mcp", tools: [:read_doc], agents: [Support], token: Credentials.fetch(:api, :token)` serves tools and agents over MCP.
 
+Email in: `grenat serve` reads a mailbox (Gmail, Microsoft 365, any IMAP server) and hands each new message to its handler, then marks it seen (or moves it with `move_to:`); a handler that raises leaves it unseen, tried three times, then flagged.
+
+```ruby
+struct Triage
+  urgent: Bool
+  summary: String
+end
+
+prompt triage(subject: String, body: String, documents: Array(Attachment)) -> ~Triage using :fast
+  user subject, body
+  documents.each { |d| user d }  # attachments go to the model
+end
+
+on_email Credentials.fetch(:support, :imap_url), every: 1.minute, move_to: "Done" do |email|
+  documents = email.attachments.select { |a| a.kind != "file" }  # PDFs, images, audio
+  t = triage(email.subject, email.text, documents).check { |t| t.summary.size < 300 }?
+  enqueue(:follow_up, t.summary) if t.urgent
+end
+```
+
+The URL is `imaps://user%40acme.io:APP-PASSWORD@imap.gmail.com/INBOX` (folder in the path), a `Credentials` secret; `token: :fn` names a function returning an OAuth access token instead (Microsoft 365 requires one). `email` is an `IncomingEmail`: `from`, `from_name`, `to`, `cc` (`Array(String)`), `reply_to`, `subject`, `date` (`Float?`), `message_id`, `text`, `html`, `attachments` (`Array(Attachment)`: `kind` `document`/`image`/`audio`/`file`, `media_type`, `name`) — every field untrusted, the sender's address included. Reading the mailbox needs `net` (`net("imap.gmail.com")` for a literal URL).
+
 ## Tests
 
 Tests run offline; every external call must be mocked. Put them in `tests/*_test.grn` (or `x_test.grn` with `require "./x"`).
@@ -248,7 +270,7 @@ test "a summary" do
 end
 ```
 
-Doubles: `mock :model, replies: [...]` (a reply is a value of the return type as a hash, a string, or `call(:tool, args…)`), `mock_http "GET https://api.x.com/*", json: {…}` (or `status:`, `body:`), `mock_shell "git status*", stdout: "…"`, `mock_mcp :linear, tools: {"create_issue" => "L-1"}`, `mock_embed :docs`, `mock_credentials({"github" => {"token" => "t"}})`, `mock_env({"SMTP_URL" => "smtp://smtp.test"})` (what `Env` reads in this test), `mock_mail(raise: "SMTP down")` (sends raise `MailError`; `raise: nil` restores), `with_human(approve_all) do … end` (or `deny_all`), `freeze_time("2026-09-28T08:00:00Z") do … end` (`Time.now`/`Time.today` answer that instant inside; only in a `test` block), `request :get, "/tickets/1"`, `deliver_webhook "/github", json: {…}`, `Jobs.perform`, `Mail.deliveries`, `Http.requests`. `freeze_time`, `mock_env`, `mock_mail` and `Http.requests` work only inside a `test` block. Assertions: `assert x`, `assert_equal expected, actual`, `assert_raises TaintError { … }`.
+Doubles: `mock :model, replies: [...]` (a reply is a value of the return type as a hash, a string, or `call(:tool, args…)`), `mock_http "GET https://api.x.com/*", json: {…}` (or `status:`, `body:`), `mock_shell "git status*", stdout: "…"`, `mock_mcp :linear, tools: {"create_issue" => "L-1"}`, `mock_embed :docs`, `mock_credentials({"github" => {"token" => "t"}})`, `mock_env({"SMTP_URL" => "smtp://smtp.test"})` (what `Env` reads in this test), `mock_mail(raise: "SMTP down")` (sends raise `MailError`; `raise: nil` restores), `with_human(approve_all) do … end` (or `deny_all`), `freeze_time("2026-09-28T08:00:00Z") do … end` (`Time.now`/`Time.today` answer that instant inside; only in a `test` block), `request :get, "/tickets/1"`, `deliver_webhook "/github", json: {…}`, `deliver_email(from: "ada@example.com", subject: "Refund", text: "…", attachments: [Pdf.read("invoice.pdf")])` (runs the `on_email` handler; returns `{"status" => "seen"}`, `"moved"` with `"folder"`, or `"failed"` with `"error"`), `Jobs.perform`, `Mail.deliveries`, `Http.requests`. `freeze_time`, `mock_env`, `mock_mail`, `deliver_email` and `Http.requests` work only inside a `test` block. Assertions: `assert x`, `assert_equal expected, actual`, `assert_raises TaintError { … }`.
 
 - `mock :model, replies: [...]` fails the test ("mock has no reply left") when the model is called more often than replies were given: that is how a test proves a workflow did not call the model again.
 - `mock_http` options: `json:`, `body:`, `status:`, `headers:` (the response's); an unstubbed request raises `HttpError`. `Http.requests` lists what the test sent (stubbed or not), in order, as hashes: `req = Http.requests.last; assert_equal "POST", req["method"]; assert_equal({"title" => "x"}, req["json"]); assert_equal "Bearer t", req["headers"]["Authorization"]` (also `"url"`, `"body"`; `"json"` is nil when the body is not JSON; a secret stays a `Secret`, equal to its text).
