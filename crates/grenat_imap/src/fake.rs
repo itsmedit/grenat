@@ -54,11 +54,22 @@ pub struct Config {
     /// The OAuth 2.0 access token `AUTHENTICATE XOAUTH2` takes (announced
     /// as `AUTH=XOAUTH2` only when there is one).
     pub token: Option<String>,
+    /// Reports the folder's size (`* n EXISTS`, `* 0 RECENT`) during every
+    /// `UID SEARCH`, unasked, as RFC 9051 (section 5.2) lets a server do.
+    pub chatty: bool,
 }
 
 impl Config {
     pub fn new(mode: Mode) -> Config {
-        Config { mode, move_command: true, uidplus: true, login_disabled: false, rev2: false, token: None }
+        Config {
+            mode,
+            move_command: true,
+            uidplus: true,
+            login_disabled: false,
+            rev2: false,
+            token: None,
+            chatty: false,
+        }
     }
 }
 

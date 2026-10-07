@@ -248,6 +248,11 @@ impl Session {
                 .map(|m| m.uid.to_string())
                 .collect()
         };
+        if self.config.chatty {
+            let exists = self.state.lock().unwrap().folder(self.selected.as_ref().expect("selected")).messages.len();
+            self.send(&format!("* {exists} EXISTS"))?;
+            self.send("* 0 RECENT")?;
+        }
         let mut line = String::from("* SEARCH");
         for uid in found {
             line.push(' ');

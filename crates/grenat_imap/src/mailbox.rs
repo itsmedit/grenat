@@ -7,6 +7,11 @@
 //! uses what a server announces beyond it: `MOVE` (RFC 6851) and `UIDPLUS`
 //! (`UID EXPUNGE`, RFC 4315), both part of IMAP4rev2 (RFC 9051).
 //! Credentials go out only once the connection is protected.
+//!
+//! What a server reports unasked (RFC 9051, section 5.2: mailbox sizes and
+//! flag changes, sent during any command) is dropped before each command:
+//! a connection kept for weeks would otherwise hold all of it. Errors show
+//! neither the password or token nor the user name.
 
 use crate::auth::{self, Login};
 use crate::error::{Error, ErrorKind, Result};
@@ -27,8 +32,9 @@ pub struct Mailbox {
     uidplus: bool,
     max_message_size: u64,
     batch: usize,
-    /// What an error must never show.
+    /// What an error must never show: the password or the token, the user.
     secret: String,
+    user: String,
 }
 
 impl Mailbox {
@@ -51,12 +57,13 @@ impl Mailbox {
         let offered = client.capabilities().map_err(|e| Error::imap("CAPABILITY", e))?;
         let mut session = auth::log_in(client, url, login, &offered)?;
         // servers announce more once logged in
-        let offered = session.capabilities().map_err(|e| Error::imap("CAPABILITY", e).hiding(&secret))?;
+        let hide = |e: Error| e.hiding(&secret).hiding(&url.user);
+        let offered = session.capabilities().map_err(|e| hide(Error::imap("CAPABILITY", e)))?;
         let rev2 = offered.has_str("IMAP4rev2");
         // folder names travel in modified UTF-7 (the library quotes them)
         let selected = session
             .select(utf7::encode(&url.folder))
-            .map_err(|e| Error::imap(&format!("selecting the folder `{}`", url.folder), e).hiding(&secret))?;
+            .map_err(|e| hide(Error::imap(&format!("selecting the folder `{}`", url.folder), e)))?;
         Ok(Mailbox {
             uid_validity: selected.uid_validity.unwrap_or(0),
             can_move: rev2 || offered.has_str("MOVE"),
@@ -65,6 +72,7 @@ impl Mailbox {
             batch: options.batch,
             session,
             secret,
+            user: url.user.clone(),
         })
     }
 
@@ -75,7 +83,7 @@ impl Mailbox {
 
     /// The UIDs of the messages neither seen nor deleted, oldest first.
     pub fn unseen(&mut self) -> Result<Vec<u32>> {
-        let found = self.session.uid_search("UNSEEN UNDELETED").map_err(|e| self.error("UID SEARCH", e))?;
+        let found = self.session().uid_search("UNSEEN UNDELETED").map_err(|e| self.error("UID SEARCH", e))?;
         let mut uids: Vec<u32> = found.into_iter().collect();
         uids.sort_unstable();
         Ok(uids)
@@ -87,7 +95,7 @@ impl Mailbox {
         let mut known = std::collections::HashMap::new();
         for chunk in uids.chunks(SIZES_PER_COMMAND) {
             let fetched = self
-                .session
+                .session()
                 .uid_fetch(fetch::uid_set(chunk), "(UID RFC822.SIZE)")
                 .map_err(|e| self.error("UID FETCH", e))?;
             known.extend(fetched.iter().filter_map(|f| Some((f.uid?, u64::from(f.size?)))));
@@ -107,7 +115,7 @@ impl Mailbox {
             too_large.into_iter().map(|(uid, size)| (uid, Fetched::TooLarge { uid, size })).collect();
         for batch in batches {
             let fetched = self
-                .session
+                .session()
                 .uid_fetch(fetch::uid_set(&batch), "(UID BODY.PEEK[])")
                 .map_err(|e| self.error("UID FETCH", e))?;
             for message in fetched.iter() {
@@ -135,30 +143,32 @@ impl Mailbox {
         self.store(uid, "+FLAGS.SILENT (\\Seen \\Flagged)")
     }
 
-    /// Marks the message seen, then moves it to `folder` (which must exist):
-    /// `UID MOVE` where the server has it; else a copy, the original marked
+    /// Moves the message to `folder` (which must exist), as it is: `UID
+    /// MOVE` where the server has it; else a copy, the original marked
     /// `\Deleted` and expunged — by `UID EXPUNGE` with `UIDPLUS`, otherwise
     /// by `EXPUNGE`, which also removes the folder's other messages already
-    /// marked `\Deleted` (as their owner asked).
+    /// marked `\Deleted` (as their owner asked). Refused, the message stays
+    /// where it is, its flags unchanged (RFC 6851, section 3.3).
     pub fn move_to(&mut self, uid: u32, folder: &str) -> Result<()> {
-        self.mark_seen(uid)?;
         let what = format!("moving a message to `{folder}`");
         if self.can_move {
-            return self.session.uid_mv(uid.to_string(), utf7::encode(folder)).map_err(|e| self.error(&what, e));
+            let moved = self.session().uid_mv(uid.to_string(), utf7::encode(folder));
+            return moved.map_err(|e| self.error(&what, e));
         }
         // the library sends COPY's folder as given: quoted here
-        self.session.uid_copy(uid.to_string(), utf7::quoted(folder)).map_err(|e| self.error(&what, e))?;
+        let copied = self.session().uid_copy(uid.to_string(), utf7::quoted(folder));
+        copied.map_err(|e| self.error(&what, e))?;
         self.store(uid, "+FLAGS.SILENT (\\Deleted)")?;
         if self.uidplus {
-            self.session.uid_expunge(uid.to_string()).map(drop).map_err(|e| self.error("UID EXPUNGE", e))
+            self.session().uid_expunge(uid.to_string()).map(drop).map_err(|e| self.error("UID EXPUNGE", e))
         } else {
-            self.session.expunge().map(drop).map_err(|e| self.error("EXPUNGE", e))
+            self.session().expunge().map(drop).map_err(|e| self.error("EXPUNGE", e))
         }
     }
 
     /// Asks the server for nothing: whether the connection still works.
     pub fn noop(&mut self) -> Result<()> {
-        self.session.noop().map_err(|e| self.error("NOOP", e))
+        self.session().noop().map_err(|e| self.error("NOOP", e))
     }
 
     /// Logs out (the connection is closed either way).
@@ -167,11 +177,18 @@ impl Mailbox {
     }
 
     fn store(&mut self, uid: u32, flags: &str) -> Result<()> {
-        self.session.uid_store(uid.to_string(), flags).map(drop).map_err(|e| self.error("UID STORE", e))
+        self.session().uid_store(uid.to_string(), flags).map(drop).map_err(|e| self.error("UID STORE", e))
+    }
+
+    /// The session, what the server reported unasked since the last
+    /// command dropped.
+    fn session(&mut self) -> &mut imap::Session<Stream> {
+        drop(self.session.take_all_unsolicited());
+        &mut self.session
     }
 
     fn error(&self, what: &str, e: imap::Error) -> Error {
-        Error::imap(what, e).hiding(&self.secret)
+        Error::imap(what, e).hiding(&self.secret).hiding(&self.user)
     }
 }
 
@@ -183,4 +200,31 @@ fn greeted(mut client: imap::Client<Stream>) -> Result<imap::Client<Stream>> {
         return Err(Error::new(ErrorKind::Refused, format!("the server does not welcome us: {}", text.trim())));
     }
     Ok(client)
+}
+
+#[cfg(all(test, feature = "fake"))]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::fake::{Config, FakeImap, Mode};
+    use crate::tls::Trust;
+
+    #[test]
+    fn what_the_server_reports_unasked_is_not_kept() {
+        let server = FakeImap::start(Config { chatty: true, ..Config::new(Mode::Implicit) });
+        server.deliver("INBOX", b"Subject: a\r\n\r\nA\r\n");
+        let url = MailboxUrl::parse(&server.url("imaps", "INBOX")).unwrap();
+        let options = Options {
+            trust: Trust::default().with(server.authority()),
+            timeout: Duration::from_secs(10),
+            ..Options::default()
+        };
+        let mut mailbox = Mailbox::open(&url, Login::Password, &options).unwrap();
+        for _ in 0..50 {
+            assert_eq!(mailbox.unseen().unwrap(), [1]);
+        }
+        // the last search's `EXISTS` and `RECENT`, not fifty of each
+        assert_eq!(mailbox.session.take_all_unsolicited().len(), 2);
+    }
 }

@@ -2,7 +2,7 @@
 //! tests (fields, outcomes, taint, attachments into a prompt), and
 //! `grenat serve` against an IMAP server in process — a message handled
 //! once then seen or moved, a raising handler retried then flagged, a
-//! dropped connection, a password never shown.
+//! refused move flagged message by message, a dropped connection, a password and a user never shown.
 
 mod common;
 
@@ -363,8 +363,11 @@ fn served_a_secret_url_never_shows_its_password() {
     let good = server.url("imaps", "INBOX");
     let bad = good.replace(PASSWORD, "hunter2-wrong");
     location.write(&format!("support:\n  imap_url: \"{good}\"\n  wrong_url: \"{bad}\"\n")).unwrap();
-    let src = "on_email Credentials.fetch(:support, :imap_url), every: 0.1 do |email|\n  puts \"handled #{email.subject.trust!}\"\nend\non_email Credentials.fetch(:support, :wrong_url), every: 0.1 do |email|\n  puts \"never\"\nend\n";
-    let output = serve(src, &server, Some(root));
+    let (path, database) = events_database();
+    let src = format!(
+        "{database}on_email Credentials.fetch(:support, :imap_url), every: 0.1 do |email|\n  puts \"handled #{{email.subject.trust!}}\"\nend\non_email Credentials.fetch(:support, :wrong_url), every: 0.1 do |email|\n  puts \"never\"\nend\n"
+    );
+    let output = serve(&src, &server, Some(root));
     wait_until("seen", &output, || seen(&server, "INBOX") == 1);
     wait_until("the wrong one refused", &output, || {
         output.lock().unwrap().contains("[imap] 127.0.0.1/INBOX: ImapError")
@@ -372,7 +375,64 @@ fn served_a_secret_url_never_shows_its_password() {
     std::thread::sleep(Duration::from_millis(300));
     let out = output.lock().unwrap().clone();
     assert!(out.contains("handled hello\n"), "{out}");
-    assert!(!out.contains(PASSWORD) && !out.contains("hunter2"), "{out}");
+    assert!(out.contains("logging in on 127.0.0.1"), "{out}");
+    // neither the password nor the user, in the logs or in the events
+    let events = format!("{:?}", email_events(&path));
+    assert!(events.contains("logging in on 127.0.0.1"), "{events}");
+    for hidden in [PASSWORD, "hunter2", "support@acme.com", "support%40acme.com"] {
+        assert!(!out.contains(hidden) && !events.contains(hidden), "{hidden}: {out}\n{events}");
+    }
+}
+
+/// A served program's SQLite database (where events go): its path, and
+/// the line declaring it.
+fn events_database() -> (std::path::PathBuf, String) {
+    let path = temp_dir("email-events").join("app.db");
+    let url = format!("sqlite://{}", path.display());
+    (path, format!("database \"{url}\"\n"))
+}
+
+/// The `email` events recorded: their subject and error type.
+fn email_events(path: &std::path::Path) -> Vec<(String, String, String)> {
+    let mut connection = grenat_db::connect(&format!("sqlite://{}", path.display())).unwrap();
+    let events = grenat_ops::events::latest(connection.as_mut(), false, 100).unwrap();
+    events.into_iter().filter(|e| e.source == "email").map(|e| (e.subject, e.error, e.message)).collect()
+}
+
+#[test]
+fn served_a_refused_move_flags_each_message_and_the_read_goes_on() {
+    let server = FakeImap::start(Config::new(Mode::Implicit));
+    for subject in ["m1", "m2", "m3"] {
+        server.deliver("INBOX", &message(subject));
+    }
+    let (path, database) = events_database();
+    let url = server.url("imaps", "INBOX");
+    // there is no `Done` folder yet
+    let src = format!(
+        "{database}on_email \"{url}\", every: 0.1, move_to: \"Done\" do |email|\n  puts \"handled #{{email.subject.trust!}}\"\nend\n"
+    );
+    let output = serve(&src, &server, None);
+    let all_flagged = || server.messages("INBOX").iter().all(|m| m.has("\\Flagged") && m.has("\\Seen"));
+    wait_until("all flagged", &output, all_flagged);
+    // once the folder exists, handled messages go there
+    server.create("Done");
+    server.deliver("INBOX", &message("m4"));
+    wait_until("m4 moved", &output, || server.messages("Done").len() == 1);
+    std::thread::sleep(Duration::from_millis(300));
+    let out = output.lock().unwrap().clone();
+    for subject in ["m1", "m2", "m3", "m4"] {
+        assert_eq!(out.matches(&format!("handled {subject}\n")).count(), 1, "{out}");
+    }
+    // one read: the three handled before the first new read
+    assert_eq!(out.matches("[imap] 127.0.0.1/INBOX: 3 new\n").count(), 1, "{out}");
+    assert_eq!(server.messages("INBOX").len(), 3);
+    let events = email_events(&path);
+    let subjects: Vec<&str> = events.iter().map(|(s, _, _)| s.as_str()).collect();
+    for uid in 1..=3 {
+        assert!(subjects.contains(&format!("127.0.0.1/INBOX (UID {uid})").as_str()), "{events:?}");
+    }
+    assert_eq!(events.len(), 3, "{events:?}");
+    assert!(events.iter().all(|(_, error, message)| error == "ImapError" && message.contains("`Done`")), "{events:?}");
 }
 
 #[test]

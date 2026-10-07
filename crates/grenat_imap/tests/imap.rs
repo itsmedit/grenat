@@ -126,8 +126,11 @@ fn a_wrong_password_is_refused_and_never_shown() {
         MailboxUrl::parse(&format!("imaps://support%40acme.com:hunter2@127.0.0.1:{}/INBOX", server.port())).unwrap();
     let e = Mailbox::open(&wrong, Login::Password, &options(&server)).err().unwrap();
     assert_eq!(e.kind(), ErrorKind::Auth, "{e}");
-    assert!(e.message().contains("support@acme.com") && e.message().contains("Invalid credentials"), "{e}");
-    assert!(!e.message().contains("hunter2") && !format!("{e:?}").contains("hunter2"), "{e:?}");
+    assert!(e.message().contains("logging in on 127.0.0.1") && e.message().contains("Invalid credentials"), "{e}");
+    // neither the password nor the user: logs and events name the host
+    for hidden in ["hunter2", "support@acme.com", "support%40acme.com"] {
+        assert!(!e.message().contains(hidden) && !format!("{e:?}").contains(hidden), "{e:?}");
+    }
     assert!(!format!("{wrong:?}").contains("hunter2"));
 }
 
@@ -194,34 +197,27 @@ fn moved_with(config: Config) -> Vec<String> {
     mailbox.move_to(b, "Done").unwrap();
     let done = server.messages("Done");
     assert_eq!(done.len(), 1);
-    assert!(done[0].has("\\Seen") && !done[0].has("\\Deleted"), "{:?}", done[0].flags);
+    // moved as it was: seen only by whoever reads it there
+    assert!(!done[0].has("\\Seen") && !done[0].has("\\Deleted"), "{:?}", done[0].flags);
     assert_eq!(Message::parse(&done[0].raw).unwrap().subject, "b");
     assert!(!server.messages("INBOX").iter().any(|m| m.uid == b));
     let sent = commands(&server);
-    let at = sent.iter().position(|c| c.starts_with("UID STORE 2")).unwrap();
+    let at = sent.iter().position(|c| c.starts_with("UID MOVE 2") || c.starts_with("UID COPY 2")).unwrap();
     sent[at..].iter().filter(|c| *c != "LOGOUT").cloned().collect()
 }
 
 #[test]
 fn moves_with_move_when_offered() {
-    assert_eq!(moved_with(Config::new(Mode::Implicit)), ["UID STORE 2 +FLAGS.SILENT (\\Seen)", "UID MOVE 2 \"Done\""]);
+    assert_eq!(moved_with(Config::new(Mode::Implicit)), ["UID MOVE 2 \"Done\""]);
     // IMAP4rev2 has MOVE without announcing it
     let rev2 = Config { rev2: true, move_command: false, uidplus: false, ..Config::new(Mode::Implicit) };
-    assert_eq!(moved_with(rev2), ["UID STORE 2 +FLAGS.SILENT (\\Seen)", "UID MOVE 2 \"Done\""]);
+    assert_eq!(moved_with(rev2), ["UID MOVE 2 \"Done\""]);
 }
 
 #[test]
 fn moves_with_copy_and_uid_expunge_under_uidplus() {
     let config = Config { move_command: false, ..Config::new(Mode::Implicit) };
-    assert_eq!(
-        moved_with(config),
-        [
-            "UID STORE 2 +FLAGS.SILENT (\\Seen)",
-            "UID COPY 2 \"Done\"",
-            "UID STORE 2 +FLAGS.SILENT (\\Deleted)",
-            "UID EXPUNGE 2"
-        ]
-    );
+    assert_eq!(moved_with(config), ["UID COPY 2 \"Done\"", "UID STORE 2 +FLAGS.SILENT (\\Deleted)", "UID EXPUNGE 2"]);
 }
 
 #[test]
@@ -251,7 +247,15 @@ fn moving_to_a_missing_folder_is_refused() {
     let e = open(&server, "imaps").move_to(uid, "Nowhere").unwrap_err();
     assert_eq!(e.kind(), ErrorKind::Refused, "{e}");
     assert!(e.message().contains("Nowhere"), "{e}");
-    assert_eq!(server.messages("INBOX").len(), 1);
+    // left where it was, as it was: unseen, for the caller to decide
+    let inbox = server.messages("INBOX");
+    assert_eq!(inbox.len(), 1);
+    assert!(inbox[0].flags.is_empty(), "{:?}", inbox[0].flags);
+    // the same without MOVE
+    let server = FakeImap::start(Config { move_command: false, ..Config::new(Mode::Implicit) });
+    let uid = server.deliver("INBOX", &message("a"));
+    assert_eq!(open(&server, "imaps").move_to(uid, "Nowhere").unwrap_err().kind(), ErrorKind::Refused);
+    assert!(server.messages("INBOX")[0].flags.is_empty());
 }
 
 #[test]

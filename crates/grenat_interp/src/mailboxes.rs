@@ -7,16 +7,17 @@
 //! the next reads, [`MAX_ATTEMPTS`] times in all (counted in memory, per
 //! UID and UIDVALIDITY), then flagged — and marked seen — for a human to
 //! look at; a message too large to download, or that is no message, is
-//! flagged at once. Each failure is an event (`grenat console`) and a line
-//! on standard error; a mailbox that cannot be read is too (its event
-//! recorded once until the error changes), and is read again at the next
-//! turn. Nothing stops the server. Logs and events name a mailbox by its
-//! host and folder: never its user, password or token.
+//! flagged at once, and so is a handled message the server refuses to move
+//! (it stays in its folder, the read goes on with the next one). Each failure is an event (`grenat
+//! console`) and a line on standard error; a mailbox that cannot be read is
+//! too (its event recorded once until the error changes), and is read again
+//! at the next turn. Nothing stops the server. Logs and events name a
+//! mailbox by its host and folder: never its user, password or token.
 
 use std::collections::HashMap;
 use std::time::Duration;
 
-use grenat_imap::{Fetched, Inbox, Message, Trust};
+use grenat_imap::{ErrorKind, Fetched, Inbox, Message, Trust};
 
 use crate::RuntimeError;
 use crate::builtins::email_value;
@@ -135,15 +136,22 @@ impl<'p> Interp<'p> {
                 };
                 match self.call_block(&block, vec![email_value(&message)]) {
                     Ok(_) => {
+                        watch.attempts.forget(validity, uid);
                         let inbox = &mut watch.inbox;
-                        grenat_green::blocking(|| {
+                        let done = grenat_green::blocking(|| {
                             inbox.with_uids(validity, |m| match &move_to {
                                 Some(folder) => m.move_to(uid, folder),
                                 None => m.mark_seen(uid),
                             })
-                        })
-                        .map_err(imap_error)?;
-                        watch.attempts.forget(validity, uid);
+                        });
+                        match done {
+                            Ok(()) => {}
+                            // handled, but not filed (a folder missing, full…): for a human
+                            Err(e) if e.kind() == ErrorKind::Refused => {
+                                self.give_up(watch, validity, uid, &subject, imap_error(e))?;
+                            }
+                            Err(e) => return Err(imap_error(e)),
+                        }
                     }
                     Err(ctrl) => {
                         let error = self.runtime_error(ctrl);

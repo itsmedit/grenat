@@ -19,7 +19,7 @@
 //! OAuth 2.0 access token (SASL `XOAUTH2`, [`Login::OAuth2`]), which
 //! Gmail and Microsoft 365 take — Microsoft 365 takes nothing else. The
 //! token is the caller's to obtain and refresh. The password and the token
-//! never appear in an error or in `Debug` output.
+//! never appear in an error or in `Debug` output, nor the user in an error.
 //!
 //! **Messages are known by UID**, under the folder's UIDVALIDITY, and read
 //! with `BODY.PEEK[]` in bounded batches ([`Mailbox::fetch`]; a message over

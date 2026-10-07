@@ -2,7 +2,8 @@
 //! (an app password, for Gmail), or SASL `XOAUTH2` with an OAuth 2.0
 //! access token (Gmail, Microsoft 365, Outlook.com). Getting and
 //! refreshing the token is the caller's business. A server that announces
-//! `LOGINDISABLED` is never sent a password.
+//! `LOGINDISABLED` is never sent a password. A refusal names the host,
+//! never the user, the password or the token.
 
 use std::cell::Cell;
 use std::fmt;
@@ -46,9 +47,10 @@ pub(crate) fn log_in(
     offered: &imap::types::Capabilities,
 ) -> Result<imap::Session<Stream>> {
     let refused = |e: imap::Error| {
-        let e = Error::imap(&format!("logging in as {} on {}", url.user, url.host), e);
+        // the user is no one's business either: logs and events name the host
+        let e = Error::imap(&format!("logging in on {}", url.host), e);
         let e = if e.kind() == ErrorKind::Refused { Error::new(ErrorKind::Auth, e.message()) } else { e };
-        e.hiding(login.secret(url))
+        e.hiding(login.secret(url)).hiding(&url.user)
     };
     match login {
         Login::Password if offered.has_str("LOGINDISABLED") => Err(Error::new(
