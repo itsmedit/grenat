@@ -15,6 +15,7 @@ mod control;
 mod deadlines;
 mod eval;
 mod evals;
+mod folders;
 mod http;
 mod io;
 mod llm;

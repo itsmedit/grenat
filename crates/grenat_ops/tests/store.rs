@@ -7,6 +7,7 @@ use grenat_ops::approvals::{self, Decision};
 use grenat_ops::calls::{self, By, Call};
 use grenat_ops::evals::{self, Run};
 use grenat_ops::events;
+use grenat_ops::files;
 use grenat_ops::jobs::{self, Status};
 use grenat_ops::journal;
 use serde_json::json;
@@ -238,4 +239,21 @@ fn journals_are_written_read_and_listed() {
     assert_eq!(journal::read(&found.path).unwrap().result, Some(json!(42)));
     assert!(journal::find(&dir, "../etc/passwd").is_none());
     assert!(journal::list(&dir.join("missing")).is_empty());
+}
+
+#[test]
+fn handled_files_are_kept_per_watch_until_they_leave() {
+    on_every_database(|db| {
+        assert!(files::handled(db, "inbox/*.pdf").unwrap().is_empty());
+        files::record(db, "inbox/*.pdf", "inbox/a.pdf", "d1", 1.0).unwrap();
+        files::record(db, "inbox/*.pdf", "inbox/b.pdf", "d2", 2.0).unwrap();
+        files::record(db, "drive/**/*", "inbox/a.pdf", "d9", 2.0).unwrap();
+        // new content: the latest digest only
+        files::record(db, "inbox/*.pdf", "inbox/a.pdf", "d3", 3.0).unwrap();
+        let handled = files::handled(db, "inbox/*.pdf").unwrap();
+        assert_eq!(handled, [("inbox/a.pdf".into(), "d3".into()), ("inbox/b.pdf".into(), "d2".into())]);
+        files::forget(db, "inbox/*.pdf", "inbox/a.pdf").unwrap();
+        assert_eq!(files::handled(db, "inbox/*.pdf").unwrap().len(), 1);
+        assert_eq!(files::handled(db, "drive/**/*").unwrap(), [("inbox/a.pdf".into(), "d9".into())]);
+    });
 }

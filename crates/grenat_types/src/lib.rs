@@ -34,6 +34,7 @@ mod effects;
 mod email;
 mod embeddings;
 mod expr;
+mod file_trigger;
 mod folds;
 mod formatting;
 mod functions;

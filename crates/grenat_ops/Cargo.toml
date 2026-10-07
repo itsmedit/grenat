@@ -1,6 +1,6 @@
 [package]
 name = "grenat_ops"
-description = "The operations store of a Grenat application: jobs, approvals, model calls, events, eval runs, workflow journals"
+description = "The operations store of a Grenat application: jobs, approvals, model calls, events, eval runs, handled files, workflow journals"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

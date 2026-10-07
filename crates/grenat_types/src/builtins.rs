@@ -517,6 +517,8 @@ pub const GLOBALS: &[&str] = &[
     "deliver_webhook",
     "on_email",
     "deliver_email",
+    "on_file",
+    "deliver_file",
     "cassette",
     "fixture",
     "call",

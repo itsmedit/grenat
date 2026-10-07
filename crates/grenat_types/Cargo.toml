@@ -10,6 +10,8 @@ rust-version.workspace = true
 [dependencies]
 grenat_ast.workspace = true
 grenat_llm.workspace = true
+# Patterns only (`on_file`): parsed as the runtime parses them.
+grenat_watch.workspace = true
 
 [dev-dependencies]
 grenat_parser.workspace = true

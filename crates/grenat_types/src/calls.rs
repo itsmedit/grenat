@@ -365,6 +365,8 @@ impl<'p> Checker<'p> {
             }
             "on_email" => self.on_email_call(cx, span, argv, block),
             "deliver_email" => self.deliver_email_call(cx, span, argv),
+            "on_file" => self.on_file_call(cx, span, argv, block),
+            "deliver_file" => self.deliver_file_call(cx, span, argv),
             "deliver_webhook" | "request" => V::new(Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Unknown))),
             "get" | "post" | "put" | "patch" | "delete" if block.is_some() => {
                 self.walk_block(cx, block, &[V::new(Ty::User(builtins::REQUEST.into()))]);

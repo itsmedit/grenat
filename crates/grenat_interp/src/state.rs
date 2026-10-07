@@ -71,10 +71,11 @@ pub(crate) struct Shared<'p> {
     pub deliveries: Mutex<Vec<crate::mail::Email>>,
     /// Why every email a test sends fails (`mock_mail(raise: "SMTP down")`).
     pub mail_failure: Mutex<Option<String>>,
-    /// Triggers declared by the script (`every`, `on_webhook`, `on_email`).
+    /// Triggers declared by the script (`every`, `on_webhook`, `on_email`, `on_file`).
     pub schedules: Mutex<Vec<crate::builtins::Schedule<'p>>>,
     pub webhooks: Mutex<Vec<crate::builtins::Webhook<'p>>>,
     pub mailboxes: Mutex<Vec<crate::builtins::EmailTrigger<'p>>>,
+    pub folders: Mutex<Vec<crate::builtins::FileTrigger<'p>>>,
     /// See [`Options::trusted_certificates`].
     pub trusted_certificates: Vec<Vec<u8>>,
     /// Routes of a web application (`get "/…" do … end`).
@@ -225,6 +226,7 @@ impl<'p> Interp<'p> {
             schedules: Mutex::new(Vec::new()),
             webhooks: Mutex::new(Vec::new()),
             mailboxes: Mutex::new(Vec::new()),
+            folders: Mutex::new(Vec::new()),
             trusted_certificates: options.trusted_certificates.clone(),
             routes: Mutex::new(Vec::new()),
             exposures: Mutex::new(Vec::new()),

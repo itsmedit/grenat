@@ -1,7 +1,7 @@
 //! The operations store of a Grenat application: what the runtime keeps in
 //! the application's database — jobs, approvals that wait for a human, model
-//! calls and their cost, events (failures, refusals), eval runs — and the
-//! journals of workflows, on disk.
+//! calls and their cost, events (failures, refusals), eval runs, the files
+//! `on_file` handled — and the journals of workflows, on disk.
 //!
 //! The runtime writes it (`grenat serve`, `grenat eval`); `grenat console`
 //! reads it and acts on it (approve, retry). Tables are created when first
@@ -15,6 +15,7 @@ pub mod calls;
 mod columns;
 pub mod evals;
 pub mod events;
+pub mod files;
 pub mod jobs;
 pub mod journal;
 mod row;

@@ -16,6 +16,7 @@ mod doubles;
 mod email_double;
 pub(crate) mod embeddings;
 mod environment;
+mod file_double;
 
 pub(crate) use doubles::{HttpStub, ShellStub};
 mod errors;
