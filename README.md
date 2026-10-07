@@ -341,7 +341,7 @@ The latest release, v0.1.2, has phases 0 to 11; phases 12 to 15 are on `main`.
 **Phase 15 — email in**: `on_email` reads a mailbox (Gmail, Microsoft 365, any IMAP server, over
 TLS; app passwords or OAuth tokens) under `grenat serve`, each new email — its PDFs and images
 ready for a prompt — handled once then marked seen or moved, a failing one retried then flagged,
-every field untrusted; `deliver_email` hands a handler messages in tests.
+every field untrusted, a crafted email flagged before it is parsed; `deliver_email` hands a handler messages in tests.
 
 **Phase 14 — the gaps LLMs found**: a benchmark of models writing Grenat from `llms.txt` showed
 what they reach for. Time (`Time.parse` for ISO 8601, `Time.iso`, `Time.date`, `Time.weekday`,
