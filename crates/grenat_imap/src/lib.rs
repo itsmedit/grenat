@@ -26,7 +26,11 @@
 //! [`Options::max_message_size`], 25 MiB by default, is reported, never
 //! downloaded): reading one never marks it seen — the caller decides when
 //! ([`Mailbox::mark_seen`], [`Mailbox::mark_flagged`], [`Mailbox::move_to`]).
-//! [`Message::parse`] makes a program's values of one.
+//! [`Message::parse`] makes a program's values of one — once its structure
+//! is checked: a message nesting more than [`MAX_NESTED`] messages, holding
+//! more than [`MAX_PARTS`] parts, or forwarding a message encoded in base64
+//! or quoted-printable is [`Malformed`], never parsed (the MIME parser would
+//! exhaust its stack or its memory on it).
 //!
 //! **Tests.** The `fake` feature adds the `fake` module: an IMAP server in
 //! process (implicit TLS with a generated certificate, STARTTLS, or plain
@@ -38,8 +42,10 @@ mod error;
 mod fetch;
 mod inbox;
 mod mailbox;
+mod malformed;
 mod message;
 mod options;
+mod shape;
 mod starttls;
 mod tls;
 mod url;
@@ -54,8 +60,10 @@ pub use error::{Error, ErrorKind, Result};
 pub use fetch::Fetched;
 pub use inbox::Inbox;
 pub use mailbox::Mailbox;
+pub use malformed::Malformed;
 pub use message::Message;
 pub use options::{BATCH, MAX_MESSAGE_SIZE, Options};
+pub use shape::{MAX_NESTED, MAX_PARTS};
 pub use tls::Trust;
 pub use url::{MailboxUrl, Security, is_loopback};
 pub use utf7::encode as encode_folder;

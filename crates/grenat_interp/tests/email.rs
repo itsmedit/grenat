@@ -2,7 +2,8 @@
 //! tests (fields, outcomes, taint, attachments into a prompt), and
 //! `grenat serve` against an IMAP server in process — a message handled
 //! once then seen or moved, a raising handler retried then flagged, a
-//! refused move flagged message by message, a dropped connection, a password and a user never shown.
+//! crafted message flagged unparsed, a refused move flagged message by
+//! message, a dropped connection, a password and a user never shown.
 
 mod common;
 
@@ -397,6 +398,53 @@ fn email_events(path: &std::path::Path) -> Vec<(String, String, String)> {
     let mut connection = grenat_db::connect(&format!("sqlite://{}", path.display())).unwrap();
     let events = grenat_ops::events::latest(connection.as_mut(), false, 100).unwrap();
     events.into_iter().filter(|e| e.source == "email").map(|e| (e.subject, e.error, e.message)).collect()
+}
+
+/// A message forwarding, base64-encoded, 20,000 messages each in the one
+/// before: parsed, it would overflow a mailbox task's stack.
+fn crafted() -> Vec<u8> {
+    let mut nested = b"From: a@b.c\r\n".to_vec();
+    nested.extend(b"Content-Type: message/rfc822\r\n\r\nFrom: a@b.c\r\n".repeat(20_000));
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut encoded = String::new();
+    for (i, chunk) in nested.chunks(3).enumerate() {
+        if i > 0 && i % 19 == 0 {
+            encoded.push_str("\r\n");
+        }
+        let n = chunk.iter().enumerate().fold(0u32, |n, (j, b)| n | u32::from(*b) << (16 - 8 * j));
+        for j in 0..4 {
+            encoded.push(if j <= chunk.len() { ALPHABET[(n >> (18 - 6 * j) & 63) as usize] as char } else { '=' });
+        }
+    }
+    let mut raw = b"From: eve@evil.example\r\nSubject: crafted\r\nContent-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: message/rfc822\r\nContent-Transfer-Encoding: base64\r\n\r\n".to_vec();
+    raw.extend(encoded.as_bytes());
+    raw.extend(b"\r\n--b--\r\n");
+    raw
+}
+
+#[test]
+fn served_a_crafted_message_is_flagged_unparsed_and_the_server_goes_on() {
+    let server = FakeImap::start(Config::new(Mode::Implicit));
+    server.deliver("INBOX", &message("first"));
+    server.deliver("INBOX", &crafted());
+    let (path, database) = events_database();
+    let url = server.url("imaps", "INBOX");
+    let src = format!(
+        "{database}on_email \"{url}\", every: 0.1 do |email|\n  puts \"handled #{{email.subject.trust!}}\"\nend\n"
+    );
+    let output = serve(&src, &server, None);
+    let flagged = || server.messages("INBOX").iter().any(|m| m.uid == 2 && m.has("\\Flagged") && m.has("\\Seen"));
+    wait_until("the crafted one flagged", &output, flagged);
+    // still serving
+    server.deliver("INBOX", &message("third"));
+    wait_until("the third seen", &output, || seen(&server, "INBOX") == 3);
+    let out = output.lock().unwrap().clone();
+    assert_eq!(out.matches("handled ").count(), 2, "{out}");
+    assert!(out.contains("handled first\n") && out.contains("handled third\n"), "{out}");
+    assert!(out.contains("[imap] 127.0.0.1/INBOX (UID 2): given up (it forwards a message encoded"), "{out}");
+    let events = email_events(&path);
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert_eq!((events[0].0.as_str(), events[0].1.as_str()), ("127.0.0.1/INBOX (UID 2)", "EmailError"));
 }
 
 #[test]

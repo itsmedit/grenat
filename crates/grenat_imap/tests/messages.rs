@@ -1,8 +1,11 @@
 //! Messages parsed from MIME fixtures: addresses and encoded words,
 //! dates as epoch seconds, text and HTML (quoted-printable, base64, legacy
-//! and CJK charsets), attachments with safe names, messages forwarded whole.
+//! and CJK charsets), attachments with safe names, messages forwarded whole;
+//! and crafted messages refused before parsing (nested too deep, encoded
+//! forwarded messages, too many parts), on a stack as small as a mailbox
+//! task's.
 
-use grenat_imap::{Attachment, Message};
+use grenat_imap::{Attachment, MAX_NESTED, MAX_PARTS, Malformed, Message};
 
 fn fixture(name: &str) -> Vec<u8> {
     let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
@@ -10,7 +13,7 @@ fn fixture(name: &str) -> Vec<u8> {
 }
 
 fn parse(name: &str) -> Message {
-    Message::parse(&fixture(name)).unwrap_or_else(|| panic!("{name} is a message"))
+    Message::parse(&fixture(name)).unwrap_or_else(|e| panic!("{name} is a message: {e}"))
 }
 
 #[test]
@@ -116,9 +119,88 @@ fn legacy_charsets_and_a_bad_date() {
 
 #[test]
 fn what_is_no_message() {
-    assert_eq!(Message::parse(b""), None);
-    assert_eq!(Message::parse(b"\r\n\r\njust a body"), None);
+    assert_eq!(Message::parse(b""), Err(Malformed::NoHeader));
+    assert_eq!(Message::parse(b"\r\n\r\njust a body"), Err(Malformed::NoHeader));
+    assert_eq!(Malformed::NoHeader.to_string(), "it is not an email (no header)");
     // a header alone is a message, empty
     let m = Message::parse(b"Subject: hi\r\n\r\n").unwrap();
     assert_eq!((m.subject.as_str(), m.text.as_str(), m.from), ("hi", "", None));
+}
+
+// ── Crafted messages ──────────────────────────────────────────────────
+
+/// Parses `raw` on a thread with a mailbox task's stack (16 MiB): a stack
+/// overflow there would abort the whole process.
+fn parse_on_a_task_stack(raw: Vec<u8>) -> Result<Message, Malformed> {
+    std::thread::Builder::new().stack_size(16 << 20).spawn(move || Message::parse(&raw)).unwrap().join().unwrap()
+}
+
+/// `levels` messages, each in the one before (`message/rfc822`, unencoded).
+fn nested(levels: usize) -> Vec<u8> {
+    let mut raw = b"From: eve@evil.example\r\nSubject: hi\r\n".to_vec();
+    raw.extend(b"Content-Type: message/rfc822\r\n\r\nFrom: a@b.c\r\n".repeat(levels));
+    raw.extend(b"\r\nhi\r\n");
+    raw
+}
+
+#[test]
+fn a_message_nested_too_deeply_is_refused() {
+    // 15 MB of nesting: freeing it alone overflowed a 16 MiB stack
+    let raw = nested(15_000_000 / 45);
+    assert!(raw.len() > 15_000_000);
+    let e = parse_on_a_task_stack(raw).unwrap_err();
+    assert!(matches!(e, Malformed::TooNested(n) if n > MAX_NESTED), "{e:?}");
+    assert!(e.to_string().contains("over the limit of 100"), "{e}");
+    // within the limit, the outer message reads as any other
+    let m = parse_on_a_task_stack(nested(MAX_NESTED - 1)).unwrap();
+    assert_eq!((m.subject.as_str(), m.attachments.len()), ("hi", 1));
+    assert_eq!(m.attachments[0].media_type, "message/rfc822");
+}
+
+/// Base64 lines of 76 characters.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for (i, chunk) in bytes.chunks(3).enumerate() {
+        if i > 0 && i % 19 == 0 {
+            out.push_str("\r\n");
+        }
+        let n = chunk.iter().enumerate().fold(0u32, |n, (j, b)| n | u32::from(*b) << (16 - 8 * j));
+        for j in 0..4 {
+            out.push(if j <= chunk.len() { ALPHABET[(n >> (18 - 6 * j) & 63) as usize] as char } else { '=' });
+        }
+    }
+    out
+}
+
+#[test]
+fn a_forwarded_message_encoded_is_refused() {
+    // its nesting hides in base64: 20,000 levels in 1 MB, copied by recursion
+    let mut raw = b"From: eve@evil.example\r\nSubject: hi\r\nContent-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: message/rfc822\r\nContent-Transfer-Encoding: base64\r\n\r\n".to_vec();
+    raw.extend(base64(&nested(20_000)).as_bytes());
+    raw.extend(b"\r\n--b--\r\n");
+    assert!(raw.len() < 1_300_000);
+    let e = parse_on_a_task_stack(raw).unwrap_err();
+    assert_eq!(e, Malformed::EncodedMessage);
+    assert!(e.to_string().contains("cannot be checked before parsing"), "{e}");
+}
+
+/// A `multipart/mixed` message of `parts` tiny parts.
+fn tiny_parts(parts: usize) -> Vec<u8> {
+    let mut raw =
+        b"From: eve@evil.example\r\nSubject: hi\r\nContent-Type: multipart/mixed; boundary=b\r\n\r\n".to_vec();
+    raw.extend(b"--b\r\nContent-Type: a/b\r\n\r\nx\r\n".repeat(parts));
+    raw.extend(b"--b--\r\n");
+    raw
+}
+
+#[test]
+fn a_message_of_too_many_parts_is_refused() {
+    // 24 MB of parts: parsed, it took 700 MB, then 1.3 GB as values
+    let e = parse_on_a_task_stack(tiny_parts(24_000_000 / 30)).unwrap_err();
+    assert!(matches!(e, Malformed::TooManyParts(Some(n)) if n > MAX_PARTS), "{e:?}");
+    assert!(e.to_string().contains("over the limit of 1000"), "{e}");
+    // within the limit: every part is an attachment
+    let m = parse_on_a_task_stack(tiny_parts(MAX_PARTS - 2)).unwrap();
+    assert_eq!(m.attachments.len(), MAX_PARTS - 2);
 }

@@ -6,9 +6,10 @@
 //! A handler that raises leaves its message unseen: it is tried again at
 //! the next reads, [`MAX_ATTEMPTS`] times in all (counted in memory, per
 //! UID and UIDVALIDITY), then flagged — and marked seen — for a human to
-//! look at; a message too large to download, or that is no message, is
-//! flagged at once, and so is a handled message the server refuses to move
-//! (it stays in its folder, the read goes on with the next one). Each failure is an event (`grenat
+//! look at; a message too large to download, or that is no message or a
+//! malformed one (see `grenat_imap::Malformed`), is flagged at once, and so
+//! is a handled message the server refuses to move (it stays in its folder,
+//! the read goes on with the next one). Each failure is an event (`grenat
 //! console`) and a line on standard error; a mailbox that cannot be read is
 //! too (its event recorded once until the error changes), and is read again
 //! at the next turn. Nothing stops the server. Logs and events name a
@@ -120,9 +121,7 @@ impl<'p> Interp<'p> {
                 let uid = message.uid();
                 let subject = format!("{label} (UID {uid})");
                 let parsed = match message {
-                    Fetched::Message { raw, .. } => {
-                        Message::parse(&raw).ok_or("it is not an email (no header)".to_string())
-                    }
+                    Fetched::Message { raw, .. } => Message::parse(&raw).map_err(|why| why.to_string()),
                     Fetched::TooLarge { size, .. } => {
                         Err(format!("it is {size} bytes, over the limit: never downloaded"))
                     }
