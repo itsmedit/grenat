@@ -56,10 +56,15 @@ pub(crate) fn url_host(url: &str) -> Option<&str> {
 }
 
 /// The host of a server's URL, whatever its scheme
-/// (`smtps://bot:pw@smtp.acme.io:465` → `smtp.acme.io`).
+/// (`smtps://bot:pw@smtp.acme.io:465` → `smtp.acme.io`), an IPv6 address
+/// without its brackets (`imaps://u:p@[::1]:993/INBOX` → `::1`).
 pub(crate) fn server_host(url: &str) -> Option<&str> {
     let (_, rest) = url.split_once("://")?;
-    let host = rest.rsplit('@').next()?.split([':', '/', '?', '#']).next()?;
+    let address = rest.rsplit('@').next()?;
+    let host = match address.strip_prefix('[') {
+        Some(bracketed) => bracketed.split(']').next()?,
+        None => address.split([':', '/', '?', '#']).next()?,
+    };
     (!host.is_empty()).then_some(host)
 }
 
@@ -73,6 +78,35 @@ pub(crate) fn ssh_host(target: &str) -> Option<&str> {
         None => address.split(':').next()?,
     };
     (!host.is_empty()).then_some(host)
+}
+
+/// A number written as such: `30`, `-1`, `0.5`, or a duration of one
+/// (`2.minutes`), in seconds.
+pub(crate) fn literal_number(e: &Expr) -> Option<f64> {
+    match &e.kind {
+        ExprKind::Int(n) => Some(*n as f64),
+        ExprKind::Float(n) => Some(*n),
+        ExprKind::Unary { op: grenat_ast::UnOp::Neg, expr } => literal_number(expr).map(|n| -n),
+        ExprKind::Call { recv: Some(recv), name, args, .. } if args.is_empty() => {
+            let unit = match name.name.as_str() {
+                "s" | "sec" | "second" | "seconds" => 1.0,
+                "min" | "minute" | "minutes" => 60.0,
+                "h" | "hour" | "hours" => 3600.0,
+                "day" | "days" => 86400.0,
+                _ => return None,
+            };
+            literal_number(recv).map(|n| n * unit)
+        }
+        _ => None,
+    }
+}
+
+/// A symbol written as such: `:outlook_token`.
+pub(crate) fn literal_symbol(e: &Expr) -> Option<String> {
+    match &e.kind {
+        ExprKind::Symbol(name) => Some(name.clone()),
+        _ => None,
+    }
 }
 
 pub(crate) fn literal_string(e: &Expr) -> Option<String> {

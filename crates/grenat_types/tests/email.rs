@@ -45,6 +45,43 @@ fn arguments_are_checked() {
 }
 
 #[test]
+fn options_the_runtime_refuses_are_refused_here() {
+    for every in ["0", "-1", "0.5 - 1", "0.minutes"] {
+        let src = format!("on_email {URL}, every: {every} do |e|\nend\n");
+        if every == "0.5 - 1" {
+            // computed: the runtime checks it
+            clean(&src);
+            continue;
+        }
+        let d = single(&src, "E0200", every);
+        assert!(d.message.contains("a positive duration"), "{}", d.message);
+    }
+    clean(&format!("on_email {URL}, every: 0.5 do |e|\nend\n"));
+    for blank in ["\"\"", "\"  \""] {
+        single(&format!("on_email {URL}, move_to: {blank} do |e|\nend\n"), "E0200", blank);
+    }
+    // `token:` names a function called with no argument, giving a trusted string or a secret
+    let d =
+        single(&format!("def token -> String = \"t\"\non_email {URL}, token: :tokn do |e|\nend\n"), "E0100", ":tokn");
+    assert_eq!(d.help.as_deref(), Some("did you mean `token`?"));
+    let d = single(
+        &format!("def tok(tenant: String) -> String = tenant\non_email {URL}, token: :tok do |e|\nend\n"),
+        "E0200",
+        ":tok",
+    );
+    assert!(d.message.contains("takes arguments"), "{}", d.message);
+    single(&format!("def tok -> Int = 1\non_email {URL}, token: :tok do |e|\nend\n"), "E0200", ":tok");
+    let src = format!(
+        "{PRELUDE}prompt tok -> ~String using :fast\n  user \"a token\"\nend\non_email {URL}, token: :tok do |e|\nend\n"
+    );
+    single(&src, "E0412", ":tok");
+    clean(&format!("def tok(tenant: String = \"acme\") -> String = tenant\non_email {URL}, token: :tok do |e|\nend\n"));
+    clean(&format!(
+        "def tok uses env\n  Credentials.fetch(:outlook, :token)\nend\ndef watch uses net, env\n  on_email {URL}, token: :tok do |e|\n  end\nend\n"
+    ));
+}
+
+#[test]
 fn reading_a_mailbox_is_net_on_its_host() {
     let src = format!("def watch uses net(\"api.github.com\")\n  on_email {URL} do |e|\n  end\nend\n");
     let d = single(&src, "E0300", &format!("on_email {URL} do |e|\n  end"));
@@ -63,6 +100,15 @@ fn reading_a_mailbox_is_net_on_its_host() {
         "E0300",
         "on_email Env.fetch(\"IMAP_URL\") do |e|\n  end",
     );
+    // an IPv6 address, without its brackets
+    let ipv6 = "\"imaps://u:p@[::1]:993/INBOX\"";
+    clean(&format!("def watch uses net(\"::1\")\n  on_email {ipv6} do |e|\n  end\nend\n"));
+    let d = single(
+        &format!("def watch uses net(\"imap.gmail.com\")\n  on_email {ipv6} do |e|\n  end\nend\n"),
+        "E0300",
+        &format!("on_email {ipv6} do |e|\n  end"),
+    );
+    assert_eq!(d.help.as_deref(), Some("add `net(\"::1\")` to `uses`"));
     // declaring opens nothing: in a workflow, no `step`
     clean(&format!("workflow watch(n: Int) uses net(\"imap.gmail.com\")\n  on_email {URL} do |e|\n  end\nend\n"));
 }

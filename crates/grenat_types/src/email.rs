@@ -1,7 +1,10 @@
 //! Email in, checked: `on_email url, every:, move_to:, token: do |email| … end`
 //! reaches an IMAP server — a `net` effect on the host of a literal URL
 //! (any `net` grant for a configured one, whose host the runtime checks) —
-//! and hands its block an `IncomingEmail`, every field untrusted;
+//! and hands its block an `IncomingEmail`, every field untrusted; its
+//! options are refused here as the runtime refuses them (`every:` not
+//! positive, `move_to:` blank, `token:` naming no function, or one that
+//! needs arguments or gives no trusted `String` or `Secret`);
 //! `deliver_email(from:, subject:, …)` exists inside a `test` block only.
 
 use grenat_ast::{Block, Span};
@@ -55,13 +58,61 @@ impl<'p> Checker<'p> {
                     _ => "a function (`token: :outlook_token`)",
                 };
                 self.error(E_TYPE, arg.span, format!("`on_email` expects `{name}:` {what}, got `{}`", arg.v.ty));
+                continue;
             }
+            self.on_email_option(arg);
         }
         if block.is_none() {
             self.error(E_TYPE, span, format!("`on_email` expects a block: {USAGE}"));
         }
         self.walk_block(cx, block, &[V::new(Ty::User(builtins::INCOMING_EMAIL.into()))]);
         V::new(Ty::Nil)
+    }
+
+    /// What the runtime refuses of an option's value, when it is written out.
+    fn on_email_option(&mut self, arg: &ArgV) {
+        match arg.name.as_deref() {
+            Some("every") if arg.number.is_some_and(|s| !(s > 0.0 && s.is_finite())) => {
+                self.error(E_TYPE, arg.span, "`on_email` expects `every:` a positive duration (`every: 1.minute`)");
+            }
+            Some("move_to") if arg.lit.as_deref().is_some_and(|folder| folder.trim().is_empty()) => {
+                self.error(E_TYPE, arg.span, "`on_email` expects `move_to:` a folder's name, not a blank one");
+            }
+            Some("token") => {
+                if let Some(function) = arg.symbol.as_deref() {
+                    self.token_function(arg.span, function);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// `token: :outlook_token`: a function called with no argument before
+    /// each read, which gives the access token — a trusted `String` or a `Secret`.
+    fn token_function(&mut self, span: Span, function: &str) {
+        let Some(def) = self.fns.get(function).copied() else {
+            let message = format!("`on_email` takes `token:` a function: no function `{function}`");
+            let known: Vec<&str> = self.fns.keys().copied().collect();
+            self.error_help(E_NAME, span, message, suggest(function, known));
+            return;
+        };
+        if def.params.iter().any(|p| p.default.is_none()) {
+            let message = format!(
+                "`token: :{function}`: `{function}` takes arguments, but it is called with none before each read"
+            );
+            self.error(E_TYPE, span, message);
+            return;
+        }
+        let (token, _) = self.check_fn(def, None, vec![None; def.params.len()], None);
+        if !secrets::is_secret(&token.ty) && !self.compat(&token.ty, &Ty::Str) {
+            let message =
+                format!("`token: :{function}`: `{function}` gives `{}`, not a `String` nor a `Secret`", token.ty);
+            self.error(E_TYPE, span, message);
+        } else if token.taint.is_some() || def.kind == grenat_ast::FnKind::Prompt {
+            let message =
+                format!("`token: :{function}`: `{function}` gives an untrusted token: validate it before use");
+            self.error(E_TAINT, span, message);
+        }
     }
 
     /// `deliver_email(from: "ada@acme.com", subject: "…", text: "…",

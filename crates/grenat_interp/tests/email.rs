@@ -195,9 +195,11 @@ fn the_declaration_checks_its_url_its_host_and_its_options() {
         ("every: 0", "ArgumentError"),
         ("move_to: \"\"", "ArgumentError"),
         ("token: :nope", "NameError"),
+        ("token: :needs_one", "ArgumentError"),
         ("tls: false", "ArgumentError"),
     ] {
-        let e = run_err(&format!("on_email \"{URL}\", {option} do |e|\nend\n"), Vec::new());
+        let src = format!("def needs_one(x: Int) -> String = \"t\"\non_email \"{URL}\", {option} do |e|\nend\n");
+        let e = run_err(&src, Vec::new());
         assert_eq!(e.ty, error, "{option}: {}", e.message);
     }
     let src = format!("{SUMMARY}s = summarize(\"x\")\non_email s.title do |e|\nend\n");

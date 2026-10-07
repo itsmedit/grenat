@@ -119,6 +119,10 @@ pub(crate) struct ArgV {
     /// A boolean literal: an option that changes a result's type
     /// (`segments: true`).
     pub(crate) flag: Option<bool>,
+    /// A number written as such, in seconds when a duration (`0`, `-1`, `30.s`).
+    pub(crate) number: Option<f64>,
+    /// A symbol written as such (`:outlook_token`).
+    pub(crate) symbol: Option<String>,
 }
 
 pub(crate) type Key = (usize, Vec<bool>, bool);

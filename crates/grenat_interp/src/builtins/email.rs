@@ -74,6 +74,13 @@ pub(crate) fn on_email<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
             }
             ("move_to", Value::Str(folder)) if !folder.trim().is_empty() => trigger.move_to = Some(folder.to_string()),
             ("token", Value::Symbol(function)) if interp.fns.contains_key(&**function) => {
+                // called with no argument before each read
+                if interp.fns[&**function].params.iter().any(|p| p.default.is_none()) {
+                    return raise(
+                        "ArgumentError",
+                        format!("`on_email` takes `token:` a function of no argument: `{function}` takes some"),
+                    );
+                }
                 trigger.token = Some(function.to_string());
             }
             ("token", Value::Symbol(function)) => {

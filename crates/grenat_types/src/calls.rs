@@ -19,7 +19,8 @@ impl<'p> Checker<'p> {
                         grenat_ast::ExprKind::Symbol(name) => Some(name.clone()),
                         _ => None,
                     });
-                    out.push(ArgV { name: None, v, span: e.span, lit, flag: None });
+                    let (number, symbol) = (literal_number(e), literal_symbol(e));
+                    out.push(ArgV { name: None, v, span: e.span, lit, flag: None, number, symbol });
                 }
                 Arg::Named { name, value } => {
                     let (v, span, lit) = match value {
@@ -30,7 +31,9 @@ impl<'p> Checker<'p> {
                         Some(grenat_ast::ExprKind::Bool(b)) => Some(*b),
                         _ => None,
                     };
-                    out.push(ArgV { name: Some(name.name.clone()), v, span, lit, flag });
+                    let number = value.as_ref().and_then(literal_number);
+                    let symbol = value.as_ref().and_then(literal_symbol);
+                    out.push(ArgV { name: Some(name.name.clone()), v, span, lit, flag, number, symbol });
                 }
                 Arg::BlockPass(e) => {
                     self.expr(cx, e);
