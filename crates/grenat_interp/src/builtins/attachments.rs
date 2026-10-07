@@ -28,10 +28,10 @@ pub(crate) fn call_attachment<'p>(interp: &mut Interp<'p>, module: &str, name: &
             interp.check_fs("fs.read", &target)?;
             let media_type = media_type(module, &target)?;
             let bytes = std::fs::read(&target).or_else(|e| raise("IoError", format!("reading `{target}`: {e}")))?;
-            Ok(attachment(kind, &media_type, "base64", base64(&bytes)))
+            Ok(attachment(kind, &media_type, "base64", base64(&bytes), Some(file_name(&target))))
         }
         "url" if target.starts_with("https://") || target.starts_with("http://") => {
-            Ok(attachment(kind, "", "url", target))
+            Ok(attachment(kind, "", "url", target, None))
         }
         "url" => raise("ArgumentError", format!("`{module}.url` expects an http(s) URL, got {target:?}")),
         _ => raise("NoMethodError", format!("unknown method `{module}.{name}`")),
@@ -51,7 +51,16 @@ fn media_type<'p>(module: &str, path: &str) -> Result<String, Ctrl<'p>> {
     .to_string())
 }
 
-pub(crate) fn attachment<'p>(kind: &str, media_type: &str, source: &str, data: String) -> Value<'p> {
+/// An attachment: what it is for a model (`document`, `image`, `audio`,
+/// or `file` for what a model does not read), its media type, where its
+/// bytes are (`base64` in `data`, or a `url`), and its file name if it has one.
+pub(crate) fn attachment<'p>(
+    kind: &str,
+    media_type: &str,
+    source: &str,
+    data: String,
+    name: Option<&str>,
+) -> Value<'p> {
     Value::record(
         ATTACHMENT,
         vec![
@@ -59,7 +68,29 @@ pub(crate) fn attachment<'p>(kind: &str, media_type: &str, source: &str, data: S
             ("media_type".into(), Value::str(media_type)),
             ("source".into(), Value::str(source)),
             ("data".into(), Value::str(data)),
+            ("name".into(), name.map_or(Value::Nil, Value::str)),
         ],
+    )
+}
+
+/// The last component of a path: an attachment's name.
+pub(crate) fn file_name(path: &str) -> &str {
+    path.rsplit(['/', '\\']).next().unwrap_or(path)
+}
+
+/// Refuses an attachment no model reads (a `file`: an archive, a
+/// spreadsheet… received by email), saying what it is.
+pub(crate) fn readable_attachment<'p>(fields: &Fields<'p>) -> Result<(), Ctrl<'p>> {
+    let get = |n: &str| fields.iter().find(|(k, _)| &**k == n).map(|(_, v)| v.to_display()).unwrap_or_default();
+    if get("kind") != "file" {
+        return Ok(());
+    }
+    raise(
+        "ArgumentError",
+        format!(
+            "a model reads PDFs, images (PNG, JPEG, GIF, WebP) and audio; this attachment is `{}`: read it in the program",
+            get("media_type")
+        ),
     )
 }
 

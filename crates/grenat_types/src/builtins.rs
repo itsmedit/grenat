@@ -325,6 +325,10 @@ pub fn sanitizes(module: &str, name: &str) -> bool {
 /// image or audio for a model.
 pub const ATTACHMENT: &str = "Attachment";
 
+/// What an `on_email` handler receives: a message, every field untrusted.
+/// (`Email` names an address: a `String`.)
+pub const INCOMING_EMAIL: &str = "IncomingEmail";
+
 /// What `transcribe(…, segments: true)` lists: a stretch of speech.
 pub const TRANSCRIPT_SEGMENT: &str = "TranscriptSegment";
 
@@ -421,6 +425,13 @@ pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
         (SFTP_ENTRY, "size") => (Ty::Int, false),
         (SFTP_ENTRY, "dir?") => (Ty::Bool, false),
         (SFTP_ENTRY, "modified") => (Ty::opt(Ty::Float), false),
+        (ATTACHMENT, "kind" | "media_type") => (Ty::Str, false),
+        (ATTACHMENT, "name") => (Ty::opt(Ty::Str), false),
+        (INCOMING_EMAIL, "from" | "from_name" | "reply_to" | "message_id" | "html") => (Ty::opt(Ty::Str), true),
+        (INCOMING_EMAIL, "to" | "cc") => (Ty::array(Ty::Str), true),
+        (INCOMING_EMAIL, "subject" | "text") => (Ty::Str, true),
+        (INCOMING_EMAIL, "date") => (Ty::opt(Ty::Float), true),
+        (INCOMING_EMAIL, "attachments") => (Ty::array(Ty::User(ATTACHMENT.into())), true),
         (TRANSCRIPT_SEGMENT, "start" | "end") => (Ty::Float, false),
         (TRANSCRIPT_SEGMENT, "text") => (Ty::Str, true),
         (TRANSCRIPT_SEGMENT, "speaker") => (Ty::opt(Ty::Str), true),
@@ -446,6 +457,7 @@ pub const RECORD_NAMES: &[&str] = &[
     SFTP,
     SFTP_ENTRY,
     EVENT_STREAM,
+    INCOMING_EMAIL,
 ];
 
 pub const TYPE_NAMES: &[&str] = &[
@@ -503,6 +515,8 @@ pub const GLOBALS: &[&str] = &[
     "request",
     "on_webhook",
     "deliver_webhook",
+    "on_email",
+    "deliver_email",
     "cassette",
     "fixture",
     "call",

@@ -41,7 +41,7 @@ Usage:
   grenat serve [--listen host:port] [<file.grn>]
                                  serve the program: routes, `expose`d tools and agents,
                                  `on_webhook` handlers (127.0.0.1:3000 by default),
-                                 `every` schedules, and job workers
+                                 `every` schedules, `on_email` mailboxes, and job workers
   grenat console [--listen host:port] [--token <token>] [<file.grn>]
                                  the operations console, in a browser: approvals,
                                  jobs, journals, costs, evals, refusals, MCP servers

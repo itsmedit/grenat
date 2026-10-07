@@ -1,4 +1,4 @@
-//! `grenat serve`: runs a program's triggers (`every`, `on_webhook`) until
+//! `grenat serve`: runs a program's triggers (`every`, `on_webhook`, `on_email`) until
 //! the process is stopped.
 
 use std::process::ExitCode;

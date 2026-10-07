@@ -19,6 +19,7 @@ mod http;
 mod io;
 mod llm;
 mod mail;
+mod mailboxes;
 mod outcome;
 mod prelude;
 mod process;
@@ -110,6 +111,9 @@ pub struct Options {
     /// The bridge facets the program may call (`native def` too): their
     /// servers and manifests, trusted by the application.
     pub bridges: Vec<grenat_bridge::Installed>,
+    /// Certificates (DER) trusted beyond Mozilla's roots by the mailboxes
+    /// of `on_email`: a test's own authority, a server of the company's.
+    pub trusted_certificates: Vec<Vec<u8>>,
 }
 
 impl Default for Options {
@@ -128,6 +132,7 @@ impl Default for Options {
             offline: false,
             natives: Vec::new(),
             bridges: Vec::new(),
+            trusted_certificates: Vec::new(),
         }
     }
 }

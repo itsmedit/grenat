@@ -13,6 +13,7 @@ mod concurrency;
 mod construct;
 pub(crate) mod conversation;
 mod doubles;
+mod email_double;
 pub(crate) mod embeddings;
 mod environment;
 

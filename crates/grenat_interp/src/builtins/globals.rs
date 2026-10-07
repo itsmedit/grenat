@@ -83,7 +83,7 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             for v in &args.pos {
                 match v.untainted() {
                     Value::Record(r) if &*r.ty == ATTACHMENT => {
-                        if let Err(refused) = trusted_attachment(r) {
+                        if let Err(refused) = trusted_attachment(r).and_then(|()| readable_attachment(&r.fields)) {
                             return Some(Err(refused));
                         }
                         blocks.push(attachment_block(&r.fields));
@@ -223,6 +223,8 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
         "every" => every(interp, &args),
         "on_webhook" => on_webhook(interp, &args),
         "deliver_webhook" => deliver_webhook(interp, &args),
+        "on_email" => on_email(interp, &args),
+        "deliver_email" => interp.deliver_email(&args),
         "mcp" => interp.declare_mcp(&args),
         "mock_mcp" => interp.mock_mcp(&args),
         "mock_ssh" => interp.mock_ssh(&args),

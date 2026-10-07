@@ -6,6 +6,7 @@ mod audio;
 mod charsets;
 mod collections;
 mod db;
+mod email;
 mod events;
 pub(crate) mod format;
 mod globals;
@@ -31,6 +32,7 @@ pub(crate) use attachments::*;
 pub(crate) use audio::*;
 pub(crate) use collections::*;
 pub(crate) use db::*;
+pub(crate) use email::*;
 pub(crate) use events::*;
 pub(crate) use globals::*;
 pub(crate) use hashes::*;
@@ -65,4 +67,5 @@ pub(crate) const RECORD_NAMES: &[&str] = &[
     SFTP,
     SFTP_ENTRY,
     EVENT_STREAM,
+    INCOMING_EMAIL,
 ];

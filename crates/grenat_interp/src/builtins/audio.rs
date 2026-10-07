@@ -53,7 +53,7 @@ fn read<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
     if bytes.len() > MAX_AUDIO_BYTES {
         return raise("ArgumentError", too_large(&path, None));
     }
-    Ok(attachment("audio", media_type, "base64", base64(&bytes)))
+    Ok(attachment("audio", media_type, "base64", base64(&bytes), Some(file_name(&path))))
 }
 
 fn io_error<'p, T>(path: &str, e: std::io::Error) -> Result<T, Ctrl<'p>> {
@@ -115,7 +115,7 @@ fn download<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
             ),
         );
     };
-    Ok(attachment("audio", media_type, "base64", base64(&got.body)))
+    Ok(attachment("audio", media_type, "base64", base64(&got.body), None))
 }
 
 /// What to do with audio over the limit; its size, when known.

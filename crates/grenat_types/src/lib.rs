@@ -31,6 +31,7 @@ mod context;
 mod declarations;
 mod doubles;
 mod effects;
+mod email;
 mod embeddings;
 mod expr;
 mod folds;
