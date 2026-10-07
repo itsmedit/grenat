@@ -23,9 +23,330 @@ end
 ```
 
 - Specification: [`SPEC.md`](SPEC.md)
-- Examples: [`basics.grn`](examples/basics.grn), [`reviews.grn`](examples/reviews.grn) (native statistics + validated LLM analysis), [`explorer.grn`](examples/explorer.grn) (a real agent), [`support_desk.grn`](examples/support_desk.grn) (multi-agent, human approval), [`triage.grn`](examples/triage.grn) (tests with mocks, evals with an LLM judge), [`macros.grn`](examples/macros.grn) (compile-time code generation), [`usecases/`](examples/usecases) (agent use cases: the ten of the phase 7 target, and a knowledge base searched by meaning)
+- A compact reference for LLMs writing Grenat: [`llms.txt`](llms.txt)
+- Examples: [`basics.grn`](examples/basics.grn), [`reviews.grn`](examples/reviews.grn) (native statistics + validated LLM analysis), [`explorer.grn`](examples/explorer.grn) (a real agent), [`support_desk.grn`](examples/support_desk.grn) (multi-agent, human approval), [`triage.grn`](examples/triage.grn) (tests with mocks, evals with an LLM judge), [`macros.grn`](examples/macros.grn) (compile-time code generation), [`usecases/`](examples/usecases) (twelve agent use cases: support, code review, research, data, documents, a weekly digest, operations, a chat with memory, a team of agents, MCP tools, a knowledge base searched by meaning, meeting minutes from a recording)
+
+## A tour in code
+
+Every snippet below passes `grenat check`, `grenat test` and `grenat fmt --check`.
+
+### Typed prompts, and answers that must be checked
+
+A `prompt` is a function a model implements. Its return type becomes a JSON schema, and the
+`##` comments describe the fields to the model. A model's answer is **untrusted** (`~T`): it
+must be checked, approved by a human, or explicitly trusted before it reaches the network, a
+file, a command, an email or a page — otherwise `grenat check` fails (E0412).
+
+```ruby
+struct Summary
+  title: String           ## 8 words at most
+  bullets: Array(String)  ## 3 to 5 key points
+end
+
+## Summarizes an article.
+prompt summarize(article: String) -> ~Summary using :fast
+  user "Summarize:\n#{article}"
+end
+
+def headline(article: String) -> String uses llm
+  summarize(article).check { |s| s.bullets.size.between?(3, 5) }?.title
+end
+```
+
+### Tools, agents, budgets and human approval
+
+A `tool` is a function a model may call; an `agent` is an actor whose `run` loop calls the
+model and its tools until it produces the handler's return type, within a budget. Effects
+(`uses …`) are capabilities checked by the compiler, then again at run time.
+
+```ruby
+## Reads a page of the handbook.
+tool read_page(name: String) -> String uses fs.read("./handbook")
+  File.read("./handbook/#{name}")
+end
+
+## Opens a ticket. A human approves it first.
+tool open_ticket(title: String) -> Int uses net("tracker.acme.io"), human, env
+  approve! "Open “#{title}”?"
+  token = Credentials.fetch(:tracker, :token)  # a Secret: never printed, never sent to a model
+  Http.post(
+    "https://tracker.acme.io/tickets",
+    json: {title:},
+    headers: {"Authorization" => "Bearer #{token}"},
+  ).status
+end
+
+agent Support
+  model :smart
+  tools read_page, open_ticket
+  budget usd: 0.50, time: 2.min
+  max_turns 12
+  instructions "Answer from the handbook only. Open a ticket for bugs."
+
+  on Ask(question: String) -> ~String
+    run "Customer question: #{question}"
+  end
+end
+
+def answer(question: String) -> ~String uses llm, fs.read("./handbook"), net("tracker.acme.io"), human, env
+  spawn(Support).ask(Ask(question:))
+end
+```
+
+### Durable workflows, schedules, HTTP and time
+
+Each `step` of a `workflow` is journaled: after a crash, or a human answering days later, the
+run resumes where it stopped and no model call is billed twice.
+
+```ruby
+def recent_releases(repo: String) -> Array(String) uses net("api.github.com"), env, time
+  token = Credentials.fetch(:github, :token)
+  res = Http.get(
+    "https://api.github.com/repos/#{repo}/releases",
+    headers: {"Authorization" => "Bearer #{token}"},
+  )
+  week_ago = Time.now - 7.days
+  res.json.trust!.select { |r| Time.parse(r["published_at"]) > week_ago }.map { |r| r["tag_name"] }
+end
+
+workflow weekly_digest(monday: String) uses llm, net("api.github.com"), net("smtp.acme.io"), env, human, time
+  tags = step(:fetch) { recent_releases("rust-lang/rust") }
+  digest = step(:summarize) { summarize(tags.join(", ")).trust! }
+  step(:review) { approve! "Send “#{digest.title}”?" }
+  step(:email) do
+    Mail.connect(Credentials.fetch(:smtp, :url)).send(
+      from: "bot@acme.io",
+      to: ["team@acme.io"],
+      subject: digest.title,
+      body: digest.bullets.join("\n"),
+    )
+  end
+end
+
+every cron: "0 8 * * MON" do  # UTC, run by `grenat serve`
+  weekly_digest(Time.today)
+end
+```
+
+### Routes and streaming
+
+```ruby
+## Answers a customer, three sentences at most.
+prompt reply(question: String) -> ~String using :fast
+  user question
+end
+
+get "/chat" do |req|
+  stream do |out|  # Server-Sent Events, as the model writes
+    reply(req.params["q"]) { |chunk| out << chunk }
+  end
+end
+```
+
+### Records, embeddings and search by meaning
+
+```ruby
+struct Passage
+  table :passages
+  id: Int?
+  text: String
+  embedding: Vector(1024)
+end
+
+migration "001_create_passages" do |db|
+  db.migrate("CREATE TABLE passages (id #{db.primary_key}, text TEXT NOT NULL, embedding #{db.vector(1024)} NOT NULL)")
+end
+
+def index(parts: Array(String)) uses llm, db
+  vectors = embed(:docs, parts)  # one request for many texts
+  parts.each_with_index { |text, i| Passage.create(text:, embedding: vectors[i]) }
+end
+
+def search(question: String) -> Array(Passage) uses llm, db.read
+  Passage.nearest(:embedding, embed(:docs, question), limit: 3)  # pgvector, or brute force on SQLite
+end
+```
+
+### SSH and SFTP
+
+```ruby
+def restart(server: SshSession) -> Bool uses ssh("api.acme.com")
+  server.run(["systemctl", "restart", "shop"]).ok?  # an argument vector: no shell injection
+end
+
+def main uses ssh("api.acme.com"), env
+  server = Ssh.connect("deploy@api.acme.com", key: Credentials.fetch(:deploy, :ssh_key))
+  puts restart(server)
+end
+```
+
+### Tests that never reach a real model or service
+
+```ruby
+test "only this week's releases" do
+  freeze_time("2026-10-05T08:00:00Z") do
+    mock_http "GET https://api.github.com/repos/rust-lang/rust/releases", json: [
+      {tag_name: "1.95.0", published_at: "2026-10-01T10:00:00Z"},
+      {tag_name: "1.94.0", published_at: "2026-08-20T10:00:00Z"},
+    ]
+    assert_equal ["1.95.0"], recent_releases("rust-lang/rust")
+    assert_equal "Bearer test-github-token", Http.requests.last["headers"]["Authorization"]
+  end
+end
+
+test "the agent reads the handbook, then answers" do
+  File.write("./handbook/refunds.md", "Refunds: within 30 days.")
+  mock :smart, replies: [
+    call(:read_page, name: "refunds.md"),
+    "Refunds are possible within 30 days.",
+  ]
+  assert_equal "Refunds are possible within 30 days.", answer("Can I get a refund?").trust!
+end
+
+test "a model answer out of bounds is refused" do
+  mock :fast, replies: [{title: "Rust 2.0", bullets: ["only one"]}]
+  assert_raises CheckError do
+    headline("…")
+  end
+end
+
+test "the chat streams its answer" do
+  mock :fast, replies: ["Hello, Ada"]
+  assert_equal "Hello, Ada", request(:get, "/chat?q=hi")["events"].first["data"]
+end
+
+test "the passage about refunds is found" do
+  mock_embed :docs  # vectors made from the texts' words
+  index(["A refund is asked for within 30 days.", "Invoices export to CSV."])
+  assert_equal "A refund is asked for within 30 days.", search("How do I get a refund?").first&.text
+end
+```
+
+Other doubles: `mock_shell`, `mock_ssh`, `mock_mcp`, `mock_transcribe`, `mock_env`,
+`mock_mail(raise: "SMTP down")`, `mock_credentials`, `cassette` (real calls recorded once,
+then replayed), `with_human(approve_all | deny_all)`, `deliver_webhook`, `Jobs.perform`,
+`Mail.deliveries`.
+
+### Models and secrets: configured, not coded
+
+```yaml
+# config/models.yml — the first model is the default one
+fast:
+  provider: anthropic          # anthropic, openai, gemini, mistral, xai, openrouter, groq, deepseek, together, ollama
+  name: claude-haiku-4-5
+smart:
+  provider: openai
+  name: gpt-5
+docs:
+  provider: voyage             # embeddings: voyage, openai, gemini, mistral, ollama
+  name: voyage-3.5
+  kind: embedding
+  dimensions: 1024
+```
+
+```sh
+grenat credentials edit                    # config/credentials.yml.enc, AES-256-GCM, key in config/master.key
+grenat credentials edit --env production   # one per environment, chosen by GRENAT_ENV
+```
+
+Keys are read from the credentials (`openai: {api_key: …}`), else from the provider's variable
+(`OPENAI_API_KEY`…). Anthropic agents use prompt caching by default (`cache: true` extends it to
+prompts and conversations).
+
+## Command line
+
+```text
+grenat new <name>                      a package: grenat.toml, src/, tests/
+grenat new --app <name>                an application: database, models, routes, src/app.grn, tests/
+grenat generate agent|workflow|record|tool|eval <name> [field:Type…]
+                                       a part of the application, with its tests (alias: grenat g)
+grenat check [<file.grn>…]             names, types, effects, taint and secrets
+grenat run [--log] [--unchecked] [--no-jit] [<file.grn>] [args…]
+                                       check, then run `main`
+grenat test [<file.grn>…]              the `test` blocks, offline (mocks and cassettes)
+grenat eval <file.grn> [name]          the `eval` blocks, against the real models, scored
+grenat serve [--listen host:port]      routes, webhooks, schedules, exposed tools and agents, job workers
+grenat console [--listen host:port] [--token <token>]
+                                       the operations console: approvals, jobs, journals, costs, evals
+grenat migrate                         apply the migrations the database has not seen
+grenat credentials edit|show [--env <environment>]
+                                       the application's encrypted secrets
+grenat build [--native] [--release] [<file.grn>] [-o <executable>]
+                                       an executable (--native: without the interpreter;
+                                       --release: optimized by LLVM)
+grenat fmt [--check] <file.grn | dir>… the canonical layout
+grenat lsp                             the language server
+grenat update                          the latest commits of git dependencies
+grenat parse | tokens <file.grn>       the syntax tree, the tokens
+grenat --version
+
+setter init                            add a Facetfile to the current package
+setter new <name>                      create a facet (a library to share)
+setter add <name> ["~> 1.2"]           use a facet from the indexes (or --path <dir>, --git <url> [--tag <tag>])
+setter install | update | list         install (and build trusted native facets), update, list
+setter publish                         tag this facet's version for the indexes
+```
+
+| Variable | Effect |
+|---|---|
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, … | a provider's key, when the credentials have none |
+| `GRENAT_LOG=1` | log every model, tool, HTTP and SSH call, and what the JIT compiled (same as `--log`) |
+| `GRENAT_RECORD=1` | record every cassette again, with real calls |
+| `GRENAT_ENV` | the environment (`development` by default): which credentials |
+| `GRENAT_MASTER_KEY` | the credentials' key, rather than `config/master.key` |
+| `GRENAT_CONSOLE_TOKEN` | the token of `grenat console` (rather than `--token`) |
+| `GRENAT_JIT=0` | interpret everything (same as `--no-jit`) |
+| `GRENAT_HOME` | where `grenat build` finds `lib/grenat/libgrenat_{host,standalone}.a` |
+| `CC` | the linker of `grenat build` (default: `cc`) |
+
+## Writing Grenat with an LLM
+
+[`llms.txt`](llms.txt) is a reference of about 4,000 tokens written for models: the syntax, the
+effects, taint, agents, workflows, the standard library, the test doubles and the mistakes to
+avoid. Every code block in it passes `grenat check` and `grenat test`.
+
+It was measured: agents were given two real tasks — a support agent (tools, a ticket opened after
+human approval, a structured answer) and a weekly release digest (GitHub, a validated summary,
+email, resumption after a crash without calling the model again) — once in Python with the
+official Anthropic SDK, once in Grenat with `llms.txt` as its only documentation, twice each.
+Every program passes its tests.
+
+| Average of 2 runs | Python | Grenat |
+|---|---|---|
+| Tokens, support agent | 79,700 | **43,000 (−46%)** |
+| Tokens, weekly digest | **38,300** | 45,000 (+18%) |
+| Tokens, both tasks | 118,000 | **88,000 (−25%)** |
+| Lines of program, support / digest | 237 / 207 | **64 / 79** |
+
+The agent loop, structured answers, approvals and journaled steps are part of the language, so
+the code a model writes is 2.5 to 3.5 times shorter; where a task is mostly plumbing (HTTP,
+dates, email), Python's familiarity still pays.
 
 ## Status
+
+The latest release, v0.1.2, has phases 0 to 11; phases 12 to 14 are on `main`.
+
+**Phase 14 — the gaps LLMs found**: a benchmark of models writing Grenat from `llms.txt` showed
+what they reach for. Time (`Time.parse` for ISO 8601, `Time.iso`, `Time.date`, `Time.weekday`,
+`Time.at`, `Time.now - 7.days`, `freeze_time` in tests), Ruby's everyday methods (`s[0, 4]`,
+`s[1..]`, `flatten`, `each_slice`, `reduce(:+)`, `transform_values`, `format`, `then`…), test
+doubles (`Http.requests` to assert what was sent, `mock_env`, `mock_mail(raise:)`), and email
+held to the `net` effect by the checker.
+
+**Phase 13 — what agents need in production**: embeddings and search by meaning (`embed`,
+`Vector(n)` fields, `nearest`, pgvector or brute force), prompt caching (Anthropic breakpoints
+placed by Grenat, cached tokens in the ledger and the console), streaming (blocks receiving the
+answer as it is written, Server-Sent Events from routes), and audio (`Audio.read`, `transcribe`,
+audio in prompts).
+
+**Phase 12 — libraries in other languages**: native facets (Rust code called as ordinary
+functions, behind a versioned ABI), bridge facets (Ruby or Python functions in a sandboxed
+process over JSON-RPC — no interpreter embedded), and two official facets: `sheets` (Excel,
+OpenDocument, CSV) and `html` (CSS selectors, links, tables).
+
+**Phase 11 — reaching servers**: `Ssh.connect`, commands as argument vectors, `upload`,
+`download`, SFTP (`list`, `read`, `write`, `rename`…), host keys always verified; proxies for
+`Http` (SOCKS5, SOCKS4, HTTP) and for SSH.
 
 **Phase 10 — configured, not coded**: secrets encrypted per environment as with Rails
 (`grenat credentials edit`), as `Secret` values the language keeps away from models and logs;
@@ -128,7 +449,6 @@ Alpine (musl) is not supported by the binaries: use a glibc distribution, or the
 
 ## Try it
 
-
 ```sh
 cargo build
 target/debug/grenat run examples/basics.grn            # the core language, no LLM
@@ -144,6 +464,7 @@ target/debug/grenat run examples/support_desk.grn examples/tickets.jsonl        
 
 target/debug/grenat new --app desk && cd desk # an application: database, models, routes, tests
 grenat generate agent triage                 # a part and its tests (also workflow, record, tool, eval)
+grenat generate record doc text:String "embedding:Vector(1536)"   # a record searched by meaning
 grenat migrate && grenat test && grenat serve
 grenat console                               # its operations console: http://127.0.0.1:4000
 
@@ -155,8 +476,37 @@ target/debug/grenat check examples/*.grn     # names, types, effects, taint
 target/debug/grenat fmt examples             # canonical layout (--check: only report)
 target/debug/grenat test examples/triage.grn # `test` blocks: mocks and cassettes, never a real model
 target/debug/grenat eval examples/triage.grn # `eval` blocks: the real model, scored on a dataset
-cargo test                                   # ~440 tests: unit, integration, CLI, HTTP, MCP, JIT, build
+cargo test                                   # ~950 tests: unit, integration, CLI, HTTP, MCP, SSH, JIT, build
+scripts/test-linux.sh                        # the same suite on Linux, in Docker
 ```
+
+## Official facets
+
+Two facets ship with Grenat, in [`facets/`](facets): native code the application trusts
+explicitly, built by `setter install`.
+
+```ruby
+# Facetfile
+facet "sheets", path: "../grenat/facets/sheets", native: true
+facet "html", path: "../grenat/facets/html", native: true
+```
+
+```ruby
+require "sheets"
+require "html"
+
+def main uses fs.read, fs.write, net("acme.io")
+  orders = Sheets.records("orders.xlsx", sheet: "2026").trust!          # .xlsx, .xls, .ods, CSV
+  big = orders.select { |o| o["total"].to_f > 1000.0 }
+  Sheets.write_csv("big_orders.csv", Sheets.table(big, ["id", "customer", "total"]))
+
+  page = Http.get("https://acme.io/pricing").body
+  prices = table_records(page, "table.prices")                           # untrusted, as the page
+  puts prices.size
+end
+```
+
+See [`facets/sheets`](facets/sheets/README.md) and [`facets/html`](facets/html/README.md).
 
 ## Native facets
 
@@ -235,8 +585,8 @@ end })
 | `grenat_lexer` | tokens, interpolation, heredocs, `##` doc comments |
 | `grenat_ast` | syntax tree |
 | `grenat_parser` | recursive descent + Pratt, diagnostics with error recovery |
-| `grenat_llm` | model providers: the catalog, Anthropic's Messages API and Chat Completions (OpenAI, Gemini, Mistral, Ollama…), embeddings (those and Voyage), transcriptions (OpenAI's, uploaded as `multipart/form-data`) and audio in prompts (OpenAI, Gemini); mocks, fake embeddings and transcripts, cassettes and a scripted provider for tests |
-| `grenat_types` | checker: names, types, effects, `~T` taint (E0100–E0500) |
+| `grenat_llm` | model providers: the catalog, Anthropic's Messages API and Chat Completions (OpenAI, Gemini, Mistral, Ollama…), streaming, prompt caching, embeddings (those and Voyage), transcriptions (OpenAI's, uploaded as `multipart/form-data`) and audio in prompts (OpenAI, Gemini); mocks, fake embeddings and transcripts, cassettes and a scripted provider for tests |
+| `grenat_types` | checker: names, types, effects, `~T` taint, secrets (E0100–E0500) |
 | `grenat_codegen` | Cranelift: typing, liveness (Perceus), translation, boundary; JIT and object files; LLVM IR for release builds |
 | `grenat_runtime` | reference-counted strings, arrays and records called by native code |
 | `grenat_driver` | load, check and run a program (shared by the CLI and built executables) |
@@ -246,7 +596,7 @@ end })
 | `grenat_db` | databases: SQLite (embedded) and PostgreSQL behind one interface; vectors (pgvector, or bytes searched by brute force) |
 | `grenat_mcp` | the Model Context Protocol: a client (stdio and HTTP), and the server side of `expose` |
 | `grenat_ssh` | SSH and SFTP: host keys verified, commands quoted, SOCKS5 proxies, a blocking API; a real server in process for tests |
-| `grenat_serve` | triggers: cron schedules, webhook signatures, the HTTP server of `grenat serve` |
+| `grenat_serve` | triggers: cron schedules, calendar arithmetic, webhook signatures, the HTTP server of `grenat serve`, streamed responses |
 | `grenat_generate` | `grenat new --app` and `grenat generate`: an application's parts, with their tests |
 | `grenat_ops` | the operations store: jobs, approvals, model calls, events, eval runs, workflow journals |
 | `grenat_console` | `grenat console`: pages and actions of the operations console, and who may use it |
@@ -265,7 +615,7 @@ end })
 | `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities, workflows, test doubles, evals |
 | `grenat_cli` | the `grenat` binary |
 
-External dependencies: `ureq` (HTTP + rustls), `serde_json`, `toml`, `rusqlite` (SQLite, compiled in), `postgres`, and Cranelift for native code.
+External dependencies: `ureq` (HTTP + rustls), `serde_json`, `toml`, `yaml-rust2`, `rusqlite` (SQLite, compiled in), `postgres`, `russh` (SSH), and Cranelift for native code.
 
 ## License
 
