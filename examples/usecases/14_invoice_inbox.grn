@@ -1,0 +1,38 @@
+# Invoices dropped in a folder — a synced drive (Dropbox, Google Drive,
+# OneDrive), a scanner's share — each read once it is whole, extracted,
+# checked and filed as JSON: no polling loop, nothing handled twice.
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+struct Line
+  label: String
+  amount: Float
+end
+
+struct Invoice
+  number: String
+  supplier: String
+  date: String  ## ISO 8601
+  total: Float
+  lines: Array(Line)
+end
+
+## Extracts an invoice.
+prompt extract(invoice: Attachment) -> ~Invoice using :fast
+  user "Extract this invoice.", invoice
+end
+
+NAME = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
+
+## Its lines add up to its total, and its number can name a file.
+def valid?(i: Invoice) -> Bool
+  sum = i.lines.map { |l| l.amount }.sum
+  named = i.number.size.between?(1, 40) && i.number.chars.all? { |c| NAME.include?(c.upcase) }
+  (sum - i.total).abs < 0.01 && named
+end
+
+# `path` is untrusted — its name is whoever dropped the file's — so it is
+# only read; what is filed is named by the checked invoice.
+on_file "invoices/**/*.{pdf,PDF}", settle: 5.s do |path|
+  invoice = extract(Pdf.read(path)).check { |i| valid?(i) }?
+  File.write("#{invoice.number}.json", Json.dump(invoice))
+end

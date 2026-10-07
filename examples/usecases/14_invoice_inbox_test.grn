@@ -1,0 +1,29 @@
+require "./14_invoice_inbox"
+
+def invoice(number: String, total: Float)
+  {
+    "number" => number,
+    "supplier" => "Acme",
+    "date" => "2026-10-01",
+    "total" => total,
+    "lines" => [{"label" => "x", "amount" => 1.0}, {"label" => "y", "amount" => 2.0}],
+  }
+end
+
+test "an invoice dropped is filed under its number" do
+  mock :fast, replies: [invoice("A-1", 3.0)]
+  assert_equal({"status" => "handled"}, deliver_file("invoices/a.pdf"))
+  assert_equal "Acme", Json.parse(File.read("A-1.json"))["supplier"]
+end
+
+test "an invoice that does not add up is tried again later" do
+  mock :fast, replies: [invoice("A-2", 4.0)]
+  r = deliver_file("invoices/b.pdf")
+  assert_equal "failed", r["status"]
+  assert !File.exist?("A-2.json")
+end
+
+test "a number that cannot name a file is refused" do
+  mock :fast, replies: [invoice("../../etc/cron", 3.0)]
+  assert_equal "failed", deliver_file("invoices/a.pdf")["status"]
+end

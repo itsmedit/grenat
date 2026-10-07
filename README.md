@@ -155,6 +155,28 @@ on_email Credentials.fetch(:support, :imap_url), every: 1.minute, move_to: "Done
 end
 ```
 
+### Files in
+
+`grenat serve` watches a folder — a synced drive, a scanner's share — told of changes by the
+system (inotify, FSEvents), and hands each file once it has stopped changing, once per content;
+its path is untrusted, its name being the dropper's.
+
+```ruby
+struct Invoice
+  supplier: String
+  total: Float
+end
+
+prompt extract(pdf: Attachment) -> ~Invoice using :fast
+  user "Extract this invoice.", pdf
+end
+
+on_file "invoices/**/*.{pdf,PDF}", settle: 5.s do |path|
+  invoice = extract(Pdf.read(path)).check { |i| i.total > 0 }?
+  puts "#{invoice.supplier}: #{invoice.total}"
+end
+```
+
 ### Records, embeddings and search by meaning
 
 ```ruby
@@ -277,7 +299,7 @@ grenat run [--log] [--unchecked] [--no-jit] [<file.grn>] [args…]
                                        check, then run `main`
 grenat test [<file.grn>…]              the `test` blocks, offline (mocks and cassettes)
 grenat eval <file.grn> [name]          the `eval` blocks, against the real models, scored
-grenat serve [--listen host:port]      routes, webhooks, schedules, mailboxes, exposed tools and agents, job workers
+grenat serve [--listen host:port]      routes, webhooks, schedules, mailboxes, folders, exposed tools and agents, job workers
 grenat console [--listen host:port] [--token <token>]
                                        the operations console: approvals, jobs, journals, costs, evals
 grenat migrate                         apply the migrations the database has not seen
@@ -336,7 +358,14 @@ dates, email), Python's familiarity still pays.
 
 ## Status
 
-The latest release, v0.1.2, has phases 0 to 11; phases 12 to 15 are on `main`.
+The latest release, v0.1.2, has phases 0 to 11; phases 12 to 16 are on `main`.
+
+**Phase 16 — files in**: `on_file "inbox/**/*.pdf"` watches a folder under `grenat serve` — told
+of changes by inotify on Linux and FSEvents on macOS, scanned on a timer too — and hands each file
+once it has stopped changing (never half-written), once per content (SHA-256, kept in the database
+across restarts), the files there at the start included unless `existing: false`; a link leading
+out of the folder is refused, a failing file retried then given up, the path untrusted;
+`deliver_file` hands a handler paths in tests.
 
 **Phase 15 — email in**: `on_email` reads a mailbox (Gmail, Microsoft 365, any IMAP server, over
 TLS; app passwords or OAuth tokens) under `grenat serve`, each new email — its PDFs and images
@@ -614,9 +643,10 @@ end })
 | `grenat_mcp` | the Model Context Protocol: a client (stdio and HTTP), and the server side of `expose` |
 | `grenat_ssh` | SSH and SFTP: host keys verified, commands quoted, SOCKS5 proxies, a blocking API; a real server in process for tests |
 | `grenat_imap` | IMAP over TLS (implicit or STARTTLS): password or OAuth (`XOAUTH2`) logins, unseen messages by UID, flags and moves, MIME parsed into what `on_email` gives; a server in process for tests |
+| `grenat_watch` | folders watched for `on_file`: glob patterns, scans that keep links inside, files handed once settled and once per content, the system's notifications (inotify, FSEvents) through `notify` |
 | `grenat_serve` | triggers: cron schedules, calendar arithmetic, webhook signatures, the HTTP server of `grenat serve`, streamed responses |
 | `grenat_generate` | `grenat new --app` and `grenat generate`: an application's parts, with their tests |
-| `grenat_ops` | the operations store: jobs, approvals, model calls, events, eval runs, workflow journals |
+| `grenat_ops` | the operations store: jobs, approvals, model calls, events, eval runs, handled files, workflow journals |
 | `grenat_console` | `grenat console`: pages and actions of the operations console, and who may use it |
 | `grenat_config` | the application's configuration: encrypted credentials per environment, `config/*.yml` |
 | `grenat_setter` | `setter`: creates, adds, installs and publishes facets (libraries) |
@@ -633,7 +663,7 @@ end })
 | `grenat_interp` | interpreter: values, evaluation, prompts, agents, budgets, taint, capabilities, workflows, test doubles, evals |
 | `grenat_cli` | the `grenat` binary |
 
-External dependencies: `ureq` (HTTP + rustls), `serde_json`, `toml`, `yaml-rust2`, `rusqlite` (SQLite, compiled in), `postgres`, `russh` (SSH), `imap` and `mail-parser` (email in, over `rustls` with `ring`), `lettre` (email out), and Cranelift for native code.
+External dependencies: `ureq` (HTTP + rustls), `serde_json`, `toml`, `yaml-rust2`, `rusqlite` (SQLite, compiled in), `postgres`, `russh` (SSH), `imap` and `mail-parser` (email in, over `rustls` with `ring`), `lettre` (email out), `notify` (folders watched: inotify, FSEvents), and Cranelift for native code.
 
 ## License
 

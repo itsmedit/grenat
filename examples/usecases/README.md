@@ -22,6 +22,7 @@ block is gone** and each program runs against real services.
 | 11 | [`11_knowledge_base.grn`](11_knowledge_base.grn) (documentation embedded, searched by meaning) | 51 | 0 | **yes** | — |
 | 12 | [`12_meeting_minutes.grn`](12_meeting_minutes.grn) (a recording transcribed, then minutes and tasks) | 41 | 0 | **yes** | — |
 | 13 | [`13_support_inbox.grn`](13_support_inbox.grn) (a support mailbox read over IMAP, emails triaged with their attachments) | 36 | 0 | **yes** | — |
+| 14 | [`14_invoice_inbox.grn`](14_invoice_inbox.grn) (invoices dropped in a synced folder, extracted and filed as they arrive) | 25 | 0 | **yes** | — |
 
 Case 11 came with phase 13 (embeddings and vector search): where the
 support desk's `search_docs` counts the words a page shares with a query,
@@ -33,6 +34,10 @@ Case 13 came with email in (`on_email`): `grenat serve` reads the support
 mailbox (Gmail, Microsoft 365, any IMAP server), a prompt triages each new
 email with its PDFs and images, an urgent one is told to its team, and the
 message is moved to a folder; its tests hand it emails (`deliver_email`).
+Case 14 came with files in (`on_file`): where case 5 extracts a folder of
+invoices in one batch, `grenat serve` watches the folder — a synced drive,
+a scanner's share — and each invoice is extracted once it is whole, checked,
+and filed under its number; its tests drop files (`deliver_file`).
 
 Lines of code, without blank lines and comments. A stub is shorter than
 the real code it stands for: with `Http`, cases 2 and 3 grew from 47 to 70
