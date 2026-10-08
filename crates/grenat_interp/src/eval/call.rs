@@ -29,6 +29,13 @@ impl<'p> Interp<'p> {
         {
             return self.race(block);
         }
+        // `limit net("api.x.com"), …`: `net(…)` names the host, it is no call
+        if recv.is_none()
+            && name.name == "limit"
+            && let Some(host) = crate::eval::limits::net_host(args)
+        {
+            return self.declare_limit(host, &args[1..]);
+        }
         let receiver = match recv {
             Some(r) => {
                 let v = self.eval(r)?;

@@ -89,10 +89,12 @@ impl<'p> Interp<'p> {
         self.check_budgets()?;
         let started = Instant::now();
         let (provider, fake) = self.transcriber(request.model)?;
+        let permit = self.throttle_model(request.model)?;
         let transcript = match grenat_green::blocking(|| provider.transcribe(request)) {
             Ok(transcript) => transcript,
             Err(e) => return raise("LlmError", e.message),
         };
+        drop(permit);
         self.llm_calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let cost = if fake { 0.0 } else { self.transcription_cost(request.model, &transcript) };
         for budget in &self.budgets {

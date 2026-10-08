@@ -14,6 +14,7 @@ mod globals;
 mod hashes;
 mod html;
 mod http;
+mod http_retry;
 pub(crate) mod iso8601;
 mod mail;
 mod methods;
@@ -72,4 +73,5 @@ pub(crate) const RECORD_NAMES: &[&str] = &[
     SFTP_ENTRY,
     EVENT_STREAM,
     INCOMING_EMAIL,
+    crate::eval::limits::RATE,
 ];

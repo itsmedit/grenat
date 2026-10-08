@@ -48,18 +48,21 @@ impl<'p> Interp<'p> {
     // ── mock_http ─────────────────────────────────────────────
 
     /// `mock_http "GET https://api.x.io/items", status: 200, json: {…}`
-    /// (or `body: "…"`): the reply of every matching request, until the end
-    /// of the test. Without a method, any method; a URL ending with `*`
-    /// matches every URL it starts.
+    /// (or `body: "…"`, `headers: {…}`): the reply of every matching
+    /// request until the end of the test, or of the next `times: n` ones.
+    /// Without a method, any method; a URL ending with `*` matches every
+    /// URL it starts.
     pub(crate) fn mock_http(&mut self, target: &str, args: &Args<'p>) -> R<'p> {
         let (method, url) = match target.split_once(' ') {
             Some((m, u)) if m.chars().all(|c| c.is_ascii_uppercase()) => (Some(m.to_string()), u.trim().to_string()),
             _ => (None, target.to_string()),
         };
         let mut reply = HttpReply { status: 200, headers: Vec::new(), body: String::new() };
+        let mut left = None;
         for (option, value) in &args.named {
             match (option.as_str(), value.untainted()) {
                 ("status", Value::Int(n)) => reply.status = *n as u16,
+                ("times", Value::Int(n)) if *n >= 1 => left = Some(*n as usize),
                 ("body", Value::Str(s)) => reply.body = s.to_string(),
                 ("json", v) => {
                     reply.body = value_to_json(v).to_string();
@@ -73,13 +76,20 @@ impl<'p> Interp<'p> {
                 }
             }
         }
-        self.http_stubs.borrow_mut().push(HttpStub { method, url, reply });
+        self.http_stubs.borrow_mut().push(HttpStub { method, url, reply, left });
         Ok(Value::Nil)
     }
 
-    /// The reply of the latest stub matching `request`, if any.
+    /// The reply of the latest stub matching `request` that has replies
+    /// left, if any (a stub with `times: n` answers `n` requests, then gives
+    /// way to the stubs declared before it).
     pub(crate) fn http_stub(&self, request: &HttpRequest) -> Option<HttpReply> {
-        self.http_stubs.borrow().iter().rev().find(|s| s.matches(request)).map(|s| s.reply.clone())
+        let mut stubs = self.http_stubs.borrow_mut();
+        let stub = stubs.iter_mut().rev().find(|s| s.left != Some(0) && s.matches(request))?;
+        if let Some(left) = stub.left.as_mut() {
+            *left -= 1;
+        }
+        Some(stub.reply.clone())
     }
 
     /// The reply to `request`: a stub's, else the network's (never in tests).
@@ -225,6 +235,8 @@ pub(crate) struct HttpStub {
     method: Option<String>,
     url: String,
     reply: HttpReply,
+    /// The replies left (`times:`), if counted.
+    left: Option<usize>,
 }
 
 impl HttpStub {

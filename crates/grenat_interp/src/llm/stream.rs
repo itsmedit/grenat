@@ -59,6 +59,8 @@ impl<'p> Interp<'p> {
         self.before_call(request)?;
         let started = Instant::now();
         let provider = self.provider(request.model)?;
+        // held until the stream ends
+        let _permit = self.throttle_model(request.model)?;
         let (sender, pieces) = grenat_green::channel();
         // cleared when the program no longer listens: the provider stops
         let listening = Arc::new(AtomicBool::new(true));

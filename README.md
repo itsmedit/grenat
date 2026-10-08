@@ -383,6 +383,13 @@ dates, email), Python's familiarity still pays.
 
 The latest release, v0.1.2, has phases 0 to 11; phases 12 to 16 are on `main`.
 
+**Phase 16 — rate limits**: `limit net("api.hubspot.com"), 10.per_second` (or `5000.per_hour,
+concurrent: 4`) declares a host's quota once; a token bucket shared by every task, agent and job of
+the process makes a call over the limit wait its turn — a green sleep, cancellable, counted in a
+budget's time — for `Http`, Slack, mail and model calls (`limit net("api.anthropic.com"),
+50.per_minute`); a `429` with `Retry-After` (seconds or an HTTP date) pauses the host and is sent
+again, at most three times, for idempotent methods or `retry: true`.
+
 **Phase 16 — Slack and Teams**: `on_webhook` checks Slack's signatures (`v0` HMAC-SHA256 of the
 timestamp and body, five minutes, replays refused, `url_verification` answered) and Teams' (HMAC
 keyed by the outgoing webhook's token); `approvals_in_slack` posts each question a job waits on to a
@@ -673,6 +680,7 @@ end })
 | `grenat_mcp` | the Model Context Protocol: a client (stdio and HTTP), and the server side of `expose` |
 | `grenat_ssh` | SSH and SFTP: host keys verified, commands quoted, SOCKS5 proxies, a blocking API; a real server in process for tests |
 | `grenat_imap` | IMAP over TLS (implicit or STARTTLS): password or OAuth (`XOAUTH2`) logins, unseen messages by UID, flags and moves, MIME parsed into what `on_email` gives; a server in process for tests |
+| `grenat_limits` | rate limits shared by every task: token buckets (the generic cell rate algorithm), concurrency slots served in order, pauses, `Retry-After` read as seconds or an HTTP date in its three formats |
 | `grenat_watch` | folders watched for `on_file`: glob patterns, scans that keep links inside, files handed once settled and once per content, the system's notifications (inotify, FSEvents) through `notify` |
 | `grenat_serve` | triggers: cron schedules, calendar arithmetic, webhook signatures (GitHub, Slack, Teams) and replays refused, the HTTP server of `grenat serve`, streamed responses |
 | `grenat_generate` | `grenat new --app` and `grenat generate`: an application's parts, with their tests |

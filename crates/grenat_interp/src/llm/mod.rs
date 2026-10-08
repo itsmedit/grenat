@@ -11,5 +11,6 @@ mod stream;
 
 pub(crate) use agent_loop::tool_output;
 pub(crate) use json::*;
+pub(crate) use model::model_host;
 pub(crate) use prompt::text_to;
 pub(crate) use schema::*;

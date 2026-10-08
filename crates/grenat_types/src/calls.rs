@@ -60,6 +60,13 @@ impl<'p> Checker<'p> {
         {
             return self.block(cx, b, &[]);
         }
+        // `limit net("api.x.com"), …`: `net(…)` names the host, it is no call
+        if recv.is_none()
+            && name.name == "limit"
+            && let Some(host) = limits::net_host(args)
+        {
+            return self.limit_call(cx, span, host, &args[1..]);
+        }
         let receiver = recv.map(|r| self.expr(cx, r));
         let argv = self.args(cx, args);
         // `xs.push(v)`: the array becomes tainted if `v` is
@@ -362,6 +369,11 @@ impl<'p> Checker<'p> {
             "on_webhook" => self.on_webhook_call(cx, span, argv, block),
             "approvals_in_slack" => self.approvals_in_slack_call(cx, span, argv),
             "deliver_slack_click" => self.deliver_slack_click_call(cx, span, argv),
+            "limit" => {
+                let message = "`limit` expects a host first: `limit net(\"api.github.com\"), 5000.per_hour`";
+                self.error(E_TYPE, span, message);
+                V::new(Ty::Nil)
+            }
             "on_email" => self.on_email_call(cx, span, argv, block),
             "deliver_email" => self.deliver_email_call(cx, span, argv),
             "on_file" => self.on_file_call(cx, span, argv, block),

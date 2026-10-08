@@ -23,6 +23,7 @@ grenat_mcp.workspace = true
 grenat_serve.workspace = true
 grenat_ssh.workspace = true
 grenat_imap.workspace = true
+grenat_limits.workspace = true
 grenat_watch = { workspace = true, features = ["watch"] }
 grenat_native.workspace = true
 grenat_bridge.workspace = true

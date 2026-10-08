@@ -39,6 +39,7 @@ mod file_trigger;
 mod folds;
 mod formatting;
 mod functions;
+mod limits;
 mod methods;
 mod model_options;
 mod names;
@@ -78,6 +79,7 @@ pub const E_DECL: &str = "E0500";
 pub fn check(program: &Program) -> Vec<Diagnostic> {
     let mut checker = Checker::new(program);
     checker.collect();
+    checker.limits_declared_once();
     checker.infer_ivars();
     // tainted `@…` state and the effects of recursive functions propagate from one pass to the next
     for _ in 0..4 {

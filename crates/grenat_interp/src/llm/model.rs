@@ -6,6 +6,23 @@ use grenat_llm::{Anthropic, ModelConfig, ModelKind, OpenAi, Request, Response, c
 
 use crate::value::money;
 
+/// The address `model` is given (`base_url:`, or `ANTHROPIC_BASE_URL` for
+/// the Messages API), if not its provider's own.
+fn given_base_url(model: &ModelConfig, catalogued: &catalog::Catalogued) -> Option<String> {
+    model.base_url.clone().or_else(|| {
+        // the Messages API's own override
+        (catalogued.protocol == Protocol::Anthropic).then(|| std::env::var("ANTHROPIC_BASE_URL").ok()).flatten()
+    })
+}
+
+/// The host a call to `model` reaches (`api.anthropic.com`): what a
+/// `limit net("…")` holds it to.
+pub(crate) fn model_host(model: &ModelConfig) -> Option<String> {
+    let catalogued = catalog::provider(&model.provider)?;
+    let url = given_base_url(model, catalogued).unwrap_or_else(|| catalogued.base_url.to_string());
+    crate::http::host(&url).map(str::to_ascii_lowercase)
+}
+
 impl<'p> Interp<'p> {
     // ── Models and calls ────────────────────────────────────
 
@@ -114,10 +131,7 @@ impl<'p> Interp<'p> {
         let Some(catalogued) = catalog::provider(&model.provider) else {
             return raise("LlmError", format!("unknown provider `{}` (known: {})", model.provider, catalog::names()));
         };
-        let base_url = model.base_url.clone().or_else(|| {
-            // the Messages API's own override
-            (catalogued.protocol == Protocol::Anthropic).then(|| std::env::var("ANTHROPIC_BASE_URL").ok()).flatten()
-        });
+        let base_url = given_base_url(model, catalogued);
         let key = format!("{}|{}", catalogued.name, base_url.as_deref().unwrap_or(catalogued.base_url));
         if let Some(client) = self.clients.borrow().get(&key) {
             return Ok(client.clone());
@@ -167,6 +181,7 @@ impl<'p> Interp<'p> {
             Some(batch) => batch.call(request),
             None => {
                 let provider = self.provider(request.model)?;
+                let _permit = self.throttle_model(request.model)?;
                 // off the worker threads: the other tasks run meanwhile
                 grenat_green::blocking(|| provider.complete(request))
             }

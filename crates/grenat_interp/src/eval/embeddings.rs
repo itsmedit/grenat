@@ -92,10 +92,12 @@ impl<'p> Interp<'p> {
         let provider = self.embedder(model)?;
         let count = texts.len();
         let request = EmbeddingRequest { model, inputs: texts };
+        let permit = self.throttle_model(model)?;
         let answer = match grenat_green::blocking(|| provider.embed(&request)) {
             Ok(answer) => answer,
             Err(e) => return raise("LlmError", e.message),
         };
+        drop(permit);
         if answer.vectors.len() != count {
             return raise("LlmError", format!("{count} texts embedded, {} vectors received", answer.vectors.len()));
         }

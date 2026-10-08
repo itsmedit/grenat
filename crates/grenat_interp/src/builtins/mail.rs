@@ -76,6 +76,8 @@ pub(crate) fn mailer_send<'p>(interp: &mut Interp<'p>, fields: &Fields<'p>, args
     interp.check_net(&host, &format!("smtp://{host}"))?;
     let email = Email { from, to, subject, body };
     interp.mail_double()?;
+    // held to `limit net("<SMTP host>")`, in a test too
+    let _permit = interp.throttle(&host)?;
     if interp.offline {
         interp.deliveries.borrow_mut().push(email);
         return Ok(Value::Nil);

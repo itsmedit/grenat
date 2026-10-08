@@ -358,6 +358,11 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
             interp.check_cancel()?;
             Ok(Value::Nil)
         })(),
+        // `limit net("…"), …` is declared before arguments are evaluated (see `eval::limits`)
+        "limit" => raise(
+            "ArgumentError",
+            "`limit` expects a host first: `limit net(\"api.github.com\"), 5000.per_hour, concurrent: 4`",
+        ),
         "exit" => Err(Ctrl::Exit(args.pos.first().and_then(|v| number(v)).unwrap_or(0.0) as i32)),
         _ => return None,
     })

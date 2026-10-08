@@ -38,6 +38,15 @@ pub(crate) fn int_method<'p>(interp: &mut Interp<'p>, n: i64, name: &str, args: 
         "min" | "minute" | "minutes" => return duration(60.0),
         "h" | "hour" | "hours" => return duration(3600.0),
         "day" | "days" => return duration(86_400.0),
+        // rates (`limit net("api.x.com"), 10.per_second`)
+        "per_second" => crate::eval::limits::rate(n, 1.0),
+        "per_minute" => crate::eval::limits::rate(n, 60.0),
+        "per_hour" => crate::eval::limits::rate(n, 3600.0),
+        "per_day" => crate::eval::limits::rate(n, 86_400.0),
+        "per" => match args.pos.first().map(Value::untainted) {
+            Some(Value::Duration(seconds)) => crate::eval::limits::rate(n, *seconds),
+            _ => raise("ArgumentError", "`per` expects a duration: `100.per(15.minutes)`"),
+        },
         _ => return None,
     })
 }

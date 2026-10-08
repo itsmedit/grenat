@@ -1474,6 +1474,7 @@ dependencies = [
  "grenat_db",
  "grenat_green",
  "grenat_imap",
+ "grenat_limits",
  "grenat_llm",
  "grenat_mcp",
  "grenat_native",
@@ -1491,6 +1492,10 @@ dependencies = [
 
 [[package]]
 name = "grenat_lexer"
+version = "0.1.2"
+
+[[package]]
+name = "grenat_limits"
 version = "0.1.2"
 
 [[package]]

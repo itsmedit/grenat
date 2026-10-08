@@ -50,6 +50,9 @@ pub fn method(recv: &Ty, name: &str, args: &[Ty], block: Option<&Ty>) -> Option<
             "zero?" | "even?" | "odd?" | "between?" => Bool,
             "s" | "sec" | "second" | "seconds" | "min" | "minute" | "minutes" | "h" | "hour" | "hours" | "day"
             | "days" => Duration,
+            // rates (`limit net("api.x.com"), 10.per_second`)
+            "per_second" | "per_minute" | "per_hour" | "per_day" => User(RATE.into()),
+            "per" if matches!(args, [Duration | Unknown]) => User(RATE.into()),
             _ => return None,
         },
         Float => match name {
@@ -393,12 +396,17 @@ pub fn record_method(record: &str, name: &str) -> Option<(Ty, &'static str)> {
 /// What `Http` requests return.
 pub const HTTP_RESPONSE: &str = "HttpResponse";
 
+/// What `10.per_second` makes (`limit net("…"), 10.per_second`).
+pub const RATE: &str = "Rate";
+
 /// A field (or method without arguments) of a built-in record: its type,
 /// and whether it is untrusted (tainted).
 pub fn record_field(record: &str, name: &str) -> Option<(Ty, bool)> {
     Some(match (record, name) {
         (DATABASE, "primary_key") => (Ty::Str, false),
         (DATABASE, "dialect") => (Ty::Sym, false),
+        (RATE, "count") => (Ty::Int, false),
+        (RATE, "period") => (Ty::Duration, false),
         (HTTP_RESPONSE, "status") => (Ty::Int, false),
         (HTTP_RESPONSE, "ok?") => (Ty::Bool, false),
         (HTTP_RESPONSE, "body") => (Ty::Str, true),
@@ -461,6 +469,7 @@ pub const RECORD_NAMES: &[&str] = &[
     SFTP_ENTRY,
     EVENT_STREAM,
     INCOMING_EMAIL,
+    RATE,
 ];
 
 pub const TYPE_NAMES: &[&str] = &[
@@ -524,6 +533,7 @@ pub const GLOBALS: &[&str] = &[
     "deliver_file",
     "approvals_in_slack",
     "deliver_slack_click",
+    "limit",
     "cassette",
     "fixture",
     "call",

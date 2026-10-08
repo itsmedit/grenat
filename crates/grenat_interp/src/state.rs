@@ -85,6 +85,8 @@ pub(crate) struct Shared<'p> {
     pub slack_api: String,
     /// The Slack signatures accepted lately: a replay is refused.
     pub slack_replays: Mutex<grenat_serve::replay::Replays>,
+    /// Hosts called at a limited rate (`limit net("…"), 10.per_second`).
+    pub limits: Mutex<Vec<crate::eval::limits::DeclaredLimit>>,
     /// Routes of a web application (`get "/…" do … end`).
     pub routes: Mutex<Vec<crate::builtins::Route<'p>>>,
     /// Tools and agents served to other programs (`expose`).
@@ -238,6 +240,7 @@ impl<'p> Interp<'p> {
             slack_approvals: Mutex::new(None),
             slack_api: options.slack_api.clone().unwrap_or_else(|| crate::slack::API.to_string()),
             slack_replays: Mutex::new(Default::default()),
+            limits: Mutex::new(Vec::new()),
             routes: Mutex::new(Vec::new()),
             exposures: Mutex::new(Vec::new()),
             mcp_servers: Mutex::new(HashMap::new()),

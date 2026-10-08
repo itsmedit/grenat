@@ -211,6 +211,7 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
             interp.credentials_double.borrow_mut().take();
             interp.frozen_clock.borrow_mut().take();
             *interp.slack_replays.borrow_mut() = Default::default();
+            interp.end_test_limits();
             outcomes.push(TestOutcome { name, error });
         }
         Ok(outcomes)

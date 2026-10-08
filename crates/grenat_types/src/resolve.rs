@@ -56,7 +56,8 @@ impl<'p> Checker<'p> {
                     | builtins::REQUEST
                     | builtins::MAILER
                     | builtins::CONVERSATION
-                    | builtins::RESPONSE) => Ty::user(n),
+                    | builtins::RESPONSE
+                    | builtins::RATE) => Ty::user(n),
                     n => {
                         let known: Vec<&str> =
                             self.types.keys().copied().chain(builtins::TYPE_NAMES.iter().copied()).collect();

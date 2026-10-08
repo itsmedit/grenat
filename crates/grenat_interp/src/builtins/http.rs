@@ -9,6 +9,7 @@
 //! Http.get("https://api.x.io/search", query: {q: "rust & grenat"})  # encoded
 //! Http.get(url, proxy: "socks5h://user:pass@127.0.0.1:1080")      # or socks5, socks4, http
 //! Http.get(url, proxy: false)                                      # not even the environment's
+//! Http.post(url, json: {…}, retry: true)   # a 429 sent again, as for GET
 //! Http.requests.last["json"]   # in a test: what was sent (see `eval::requests`)
 //! ```
 //!
@@ -17,6 +18,10 @@
 //! Nothing untrusted may go out (a tainted URL, header or body is a
 //! `TaintError`), and what comes back is untrusted: the body and headers of
 //! a response are tainted, as a model's answer is.
+//!
+//! A `429 Too Many Requests` with `Retry-After` is waited out and sent again
+//! (see `http_retry`), and the host's `limit`, if declared, holds every call
+//! (see `eval::limits`).
 //!
 //! Without `proxy:`, a request goes through the proxy the environment names
 //! (`https_proxy`, `http_proxy`, `all_proxy`, `no_proxy`), as curl's would. A
@@ -28,6 +33,7 @@ use std::time::Duration;
 use crate::http::{HttpReply, HttpRequest, ProxyChoice, host, validate_proxy, without_credentials};
 use crate::prelude::*;
 
+use super::http_retry as retry;
 use super::*;
 
 /// The record a request returns.
@@ -56,12 +62,49 @@ pub(crate) fn call_http<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p>)
     };
     interp.check_net(host, &url)?;
     let request = request(method, url.clone(), &args)?;
-    interp.record_request(method, &request.url, &args);
-    // an error names the URL: one holding a secret is not named
+    let may_retry = retry::allowed(method, &args)?;
+    let secret_proxy = args.named.iter().any(|(n, v)| n == "proxy" && v.contains_secret());
+    // a URL holding a secret is logged as `[secret]`
+    let shown = if args.pos[0].contains_secret() { args.pos[0].to_display() } else { url.clone() };
+    let via = match &request.proxy {
+        ProxyChoice::Url(_) if secret_proxy => " via [secret]".to_string(),
+        ProxyChoice::Url(proxy) => format!(" via {}", without_credentials(proxy)),
+        _ => String::new(),
+    };
+    let mut retried = 0;
+    loop {
+        let reply = {
+            // the host's turn, under its `limit`, held while the request is in flight
+            let _permit = interp.throttle(host)?;
+            interp.record_request(method, &request.url, &args);
+            send(interp, &request, host, &args)?
+        };
+        if interp.log {
+            interp.write_err(&format!("[http] {method} {shown}{via} → {}\n", reply.status));
+        }
+        let Some(wait) = retry::asked_wait(&reply) else {
+            return Ok(response(reply));
+        };
+        // nobody calls the host before then
+        interp.pause_host(host, wait);
+        if !may_retry || retried == retry::MAX_RETRIES || wait > retry::MAX_WAIT {
+            return Ok(response(reply));
+        }
+        if interp.log {
+            interp.write_err(&format!("[http] {method} {shown}: again in {:.1}s (Retry-After)\n", wait.as_secs_f64()));
+        }
+        interp.wait_out(wait)?;
+        retried += 1;
+    }
+}
+
+/// One attempt of `request`: the reply, or an error that names neither a
+/// secret URL nor a secret proxy.
+fn send<'p>(interp: &Interp<'p>, request: &HttpRequest, host: &str, args: &Args<'p>) -> Result<HttpReply, Ctrl<'p>> {
     let secret_url =
         args.pos[0].contains_secret() || args.named.iter().any(|(n, v)| n == "query" && v.contains_secret());
     let secret_proxy = args.named.iter().any(|(n, v)| n == "proxy" && v.contains_secret());
-    let reply = match interp.http(&request) {
+    match interp.http(request) {
         Err(Ctrl::Raise(e)) if secret_url || secret_proxy => {
             let mut message = e.message.clone();
             if secret_url {
@@ -70,21 +113,10 @@ pub(crate) fn call_http<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p>)
             if let (true, ProxyChoice::Url(proxy)) = (secret_proxy, &request.proxy) {
                 message = hide_proxy(&message, proxy);
             }
-            return raise(&e.ty, message);
+            raise(&e.ty, message)
         }
-        other => other?,
-    };
-    if interp.log {
-        // a URL holding a secret is logged as `[secret]`
-        let shown = if args.pos[0].contains_secret() { args.pos[0].to_display() } else { url };
-        let via = match &request.proxy {
-            ProxyChoice::Url(_) if secret_proxy => " via [secret]".to_string(),
-            ProxyChoice::Url(proxy) => format!(" via {}", without_credentials(proxy)),
-            _ => String::new(),
-        };
-        interp.write_err(&format!("[http] {method} {shown}{via} → {}\n", reply.status));
+        other => other,
     }
-    Ok(response(reply))
 }
 
 fn request<'p>(method: &'static str, url: String, args: &Args<'p>) -> Result<HttpRequest, Ctrl<'p>> {
@@ -116,6 +148,8 @@ fn request<'p>(method: &'static str, url: String, args: &Args<'p>) -> Result<Htt
                 request.timeout = Duration::from_secs_f64(*s);
             }
             ("proxy", value) => request.proxy = proxy(value)?,
+            // see `retry::allowed`
+            ("retry", Value::Bool(_)) => {}
             (option, value) => {
                 return raise("ArgumentError", format!("invalid `Http` option `{option}: {}`", value.inspect()));
             }

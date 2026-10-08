@@ -614,6 +614,56 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 16 status: rate limits
+
+A CRM allows 10 calls a second, GitHub 5000 an hour, a model provider so many requests a minute — and a program running forty agents at once, jobs beside them, goes over and gets `429 Too Many Requests` back. `limit` declares a host's quota once; every call to the host, from any task, agent or job of the process, waits its turn instead of failing.
+
+```ruby
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+limit net("api.hubspot.com"), 10.per_second
+limit net("api.github.com"), 5000.per_hour, concurrent: 4
+limit net("api.anthropic.com"), 50.per_minute
+
+## A one-line summary of an issue for the CRM.
+prompt brief(title: String) -> ~String using :fast
+  user "Summarize for a sales rep, in one line: #{title}"
+end
+
+def sync(repo: String) -> Int uses llm, net("api.github.com"), net("api.hubspot.com")
+  issues = Http.get("https://api.github.com/repos/#{repo}/issues").json.check { |j| j.is_a?(Array) }?
+  notes = issues.parallel_map do |issue|
+    text = brief(issue["title"].to_s).check { |t| t.size < 200 }.or_else { "New issue" }
+    Http.post(
+      "https://api.hubspot.com/crm/v3/objects/notes",
+      json: {properties: {hs_note_body: text}},
+      retry: true,
+    ).status
+  end
+  notes.count { |s| s == 201 }
+end
+
+test "forty issues, every call within its host's limit" do
+  mock :fast, replies: (1..40).to_a.map { |i| "Issue #{i}" }
+  mock_http "GET https://api.github.com/*", json: (1..40).to_a.map { |i| {title: "Bug #{i}"} }
+  mock_http "POST https://api.hubspot.com/*", status: 201, json: {id: "1"}
+  mock_http "POST https://api.hubspot.com/*", status: 429, headers: {"Retry-After" => "1"}, times: 1
+  assert_equal 40, sync("acme/app")
+  assert_equal 42, Http.requests.size
+end
+```
+
+- **The declaration.** `limit net("host"), rate, concurrent: n` names a host as `uses net("…")` does — a host and nothing more: no scheme, port, path or user (`ArgumentError`; E0200 for a literal) — compared without case. A rate is `10.per_second`, `50.per_minute`, `5000.per_hour`, `1000.per_day` or `100.per(15.minutes)`: a `Rate` record (`count`, `period`), one call at least, a period of a year at most. `concurrent:` is the most calls in flight at once, a positive `Int`. Either is enough, both may be given; nothing else is taken (`ArgumentError` when it runs; E0200). The host and the options are trusted values (E0412, `TaintError`), the host never a secret (E0414, `SecretError`). Declaring calls nothing and has no effect. A host is limited once: declaring it again is an `ArgumentError` (E0200 for two top-level declarations of the same literal host).
+- **The bucket.** A token bucket, kept as the instant it is next empty (the generic cell rate algorithm): after a quiet while, `count` calls go at once, then one each `period / count` — 10 at once and one each 100 ms for `10.per_second`. Calls take their turn in the order they asked, and so do calls queued for a slot. One limiter per host for the whole process: every green task, agent, `parallel_map` branch, job, workflow step and handler of `grenat serve` draws on it. Two processes (two servers) have a limit each.
+- **Waiting.** A call over the limit is not refused: it waits — a green sleep, the other tasks running meanwhile — first for a slot, then for its turn, then for the end of a pause. The wait is cut in slices of 20 ms: a task cancelled while waiting (`race` won by another branch, `parallel_map` failed) stops at once and gives its turn back; a `within budget(time: …)` block counts the wait as time spent and stops it with `BudgetExceeded` when the time is up. A slot is held while the request is in flight — until the end of a stream for `prompt … stream:` — and given back when it ends, whatever way it ends. With `--log`, a declaration and every call that waited are written to standard error (`[limit] net("api.hubspot.com"): waited 0.40s`).
+- **What is held.** `Http` (all methods), `Audio.url`'s download, the Slack Web API (`Slack.post`, the questions and updates of `approvals_in_slack`, held to `net("slack.com")` wherever the API is), a `Mailer`'s `send` (its SMTP host), and every model call — prompts, agents' turns, streams, embeddings, transcriptions — by the host its provider is reached at (`api.anthropic.com`, `api.openai.com`…, or the host of `base_url:` / `ANTHROPIC_BASE_URL`). A mock is held as its server would be: a test sees the waits production will. A `batch_map` batch is one request to the batch API, not held per prompt. Not held: IMAP reads of `on_email` (each mailbox is read by one task, paced by `every:`), SSH, MCP servers and databases.
+- **`429` and `Retry-After`.** An `Http` request answered `429 Too Many Requests` (RFC 6585) with a `Retry-After` (RFC 9110, §10.2.3) — seconds (`120`), or an HTTP date in any of the three formats a recipient must accept: IMF-fixdate, RFC 850's and asctime's — pauses the host if it has a `limit`: no task calls it before then (an hour at most), however many tokens its bucket holds. The request itself is sent again once the time has passed — three times at most, and only when the server asks for a minute or less; a longer wait, a `429` without `Retry-After` (or with one that cannot be read) or retries used up return the last `429` for the program to handle (`res.status`). Each retry waits like any call (cancellable, within budgets), is held by the limit again and is one more entry in `Http.requests`. Only a `429` is sent again: a `503` with `Retry-After` is the program's to handle.
+- **Which methods are sent again.** GET, HEAD, PUT and DELETE are idempotent (RFC 9110, §9.2.2): sending them twice is the same as once, so they are retried. POST and PATCH are not — a `429` usually means the server did nothing, but nothing promises it — so they are sent once, unless `retry: true` says the request is safe to repeat (an idempotency key, an upsert); `retry: false` sends any request once (the host still paused). `retry:` takes `true` or `false` (`ArgumentError` otherwise).
+- **Model providers.** Their clients already retry a `429` (and `408`, `409`, `5xx`) with the delay `retry-after` gives, inside the call's turn: a limit spaces the calls so that they are rare.
+- **Tests.** A limit declared at the top of the program holds in every test, each test starting with a full bucket and no pause; one declared in a test ends with it. `mock_http … times: n` answers the next `n` matching requests only, then gives way to the stubs declared before it — a `429` once, then the real answer — and `headers: {"Retry-After" => "1"}` sets the reply's headers. The waits are real: rates in tests are chosen so that they take tenths of a second.
+- **Tests of the implementation.** The bucket with a clock moved by hand (a full bucket then one call per interval, a quiet while filling it again, turns given back), slots first come first served, a limiter shared by real threads (never more in flight than allowed, the rate never exceeded), a cancelled wait giving its turn back, pauses that only lengthen; `Retry-After` as seconds, in the three date formats, two-digit years, and what is not a date. The interpreter: thirty green tasks sharing a bucket, calls within the burst not waiting, hosts limited apart, a concurrency limit against a real server (never more than two in flight), a rate and a concurrency limit together, a task cancelled while waiting, a budget's time running out while calls wait, model calls held by their provider's host (scripted and mocked), a job and a test sharing the bucket, `429` retried (idempotent methods, three retries at most, a date already past, POST and PATCH once unless told, `retry: false`, no or a long `Retry-After`, a `503`), a real server's `Retry-After: 1` waited out, a pause holding the next call back, each refused declaration, limits ending with their test, the log. The checker: the declarations, rates and options, hosts with a scheme, port or user, two declarations of a host, taint and E0414.
+- **Limits.** Limits live in memory, per process: servers sharing a quota divide it by hand (`5.per_second` each for two servers on a `10.per_second` API). A rate counts calls, not tokens: a provider's tokens per minute are approached with a request rate and `concurrent:`. A limit is declared in code, not in `config/`. A `Retry-After` on a model provider's or Slack's reply does not pause the host for the other calls (the provider's client and `SlackError` deal with it).
+
 ### Phase 16 status: Slack and Teams
 
 An ops team runs its bots in Slack or Microsoft Teams, and the approvals its jobs wait for were answered in `grenat console`, a browser tab nobody keeps open. Webhooks signed as Slack and Teams sign them are now checked by `on_webhook`; `approvals_in_slack` posts each question a job asks to a channel, with Approve and Deny buttons that decide it in one click; `Slack.post` tells a channel what happened.

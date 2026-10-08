@@ -81,6 +81,7 @@ fn download<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
         timeout: DOWNLOAD_TIMEOUT,
         proxy: ProxyChoice::Environment,
     };
+    let permit = interp.throttle(&host)?;
     interp.record_request("GET", &url, args);
     let got = match interp.http_stub(&request) {
         Some(reply) => {
@@ -94,6 +95,7 @@ fn download<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
         None => grenat_green::blocking(|| crate::http::download(&request, MAX_AUDIO_BYTES))
             .or_else(|e| raise("HttpError", format!("GET {shown}: {}", e.replace(&url, &shown))))?,
     };
+    drop(permit);
     if interp.log {
         interp.write_err(&format!("[http] GET {shown} → {} ({} bytes)\n", got.status, got.body.len()));
     }

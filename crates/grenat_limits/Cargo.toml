@@ -1,0 +1,10 @@
+[package]
+name = "grenat_limits"
+description = "Rate limits shared by every task of a process: token buckets, concurrency slots, pauses, and Retry-After read as HTTP says"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]

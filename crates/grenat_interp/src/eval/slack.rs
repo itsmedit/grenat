@@ -32,6 +32,8 @@ impl<'p> Interp<'p> {
     /// that names the method and Slack's error code (never the token).
     pub(crate) fn slack_call(&mut self, method: &str, token: &str, body: Json, timeout: Duration) -> R<'p> {
         let request = api::request(&self.slack_api, method, token, &body, timeout);
+        // held to `limit net("slack.com")`, wherever the Web API is
+        let permit = self.throttle(HOST)?;
         self.record_slack_request(&request.url, token, &body);
         let reply = match self.http(&request) {
             Ok(reply) => reply,
@@ -39,6 +41,7 @@ impl<'p> Interp<'p> {
             Err(Ctrl::Raise(e)) => return raise("SlackError", format!("{method}: {}", e.message)),
             Err(other) => return Err(other),
         };
+        drop(permit);
         let answer = api::reply(method, &reply).or_else(|e| raise("SlackError", e))?;
         if self.log {
             self.write_err(&format!("[slack] {method} → ok\n"));
