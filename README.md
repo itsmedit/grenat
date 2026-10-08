@@ -177,6 +177,29 @@ on_file "invoices/**/*.{pdf,PDF}", settle: 5.s do |path|
 end
 ```
 
+### Slack and Teams
+
+A job that waits for a human posts its question to a Slack channel, with Approve and Deny buttons:
+one click decides it, recorded with who clicked, and the message says so. Webhooks signed by Slack
+(replays refused, `url_verification` answered) and Teams are checked before their handler runs.
+
+```ruby
+approvals_in_slack(
+  channel: "#deploys",
+  token: Credentials.fetch(:slack, :bot_token),
+  signing_secret: Credentials.fetch(:slack, :signing_secret),
+)
+
+workflow deploy(version: String) uses human, net("slack.com")
+  step(:ask) { approve! "Deploy #{version}?" }  # Approve and Deny buttons in #deploys
+  step(:announce) { Slack.post("#releases", "#{version} is live") }
+end
+
+on_webhook "/teams", signature: :teams, secret: Credentials.fetch(:teams, :security_token) do |req|
+  {type: "message", text: "On it."}
+end
+```
+
 ### Records, embeddings and search by meaning
 
 ```ruby
@@ -299,7 +322,7 @@ grenat run [--log] [--unchecked] [--no-jit] [<file.grn>] [args…]
                                        check, then run `main`
 grenat test [<file.grn>…]              the `test` blocks, offline (mocks and cassettes)
 grenat eval <file.grn> [name]          the `eval` blocks, against the real models, scored
-grenat serve [--listen host:port]      routes, webhooks, schedules, mailboxes, folders, exposed tools and agents, job workers
+grenat serve [--listen host:port]      routes, webhooks, schedules, mailboxes, folders, Slack clicks, exposed tools and agents, job workers
 grenat console [--listen host:port] [--token <token>]
                                        the operations console: approvals, jobs, journals, costs, evals
 grenat migrate                         apply the migrations the database has not seen
@@ -359,6 +382,13 @@ dates, email), Python's familiarity still pays.
 ## Status
 
 The latest release, v0.1.2, has phases 0 to 11; phases 12 to 16 are on `main`.
+
+**Phase 16 — Slack and Teams**: `on_webhook` checks Slack's signatures (`v0` HMAC-SHA256 of the
+timestamp and body, five minutes, replays refused, `url_verification` answered) and Teams' (HMAC
+keyed by the outgoing webhook's token); `approvals_in_slack` posts each question a job waits on to a
+channel with Approve and Deny buttons (Block Kit), and a signed click — from the users `allowed:`
+only — decides it as the console does, recorded with who decided, the message updated;
+`Slack.post` posts what a program checked; `deliver_slack_click` clicks in tests.
 
 **Phase 16 — files in**: `on_file "inbox/**/*.pdf"` watches a folder under `grenat serve` — told
 of changes by inotify on Linux and FSEvents on macOS, scanned on a timer too — and hands each file
@@ -644,7 +674,7 @@ end })
 | `grenat_ssh` | SSH and SFTP: host keys verified, commands quoted, SOCKS5 proxies, a blocking API; a real server in process for tests |
 | `grenat_imap` | IMAP over TLS (implicit or STARTTLS): password or OAuth (`XOAUTH2`) logins, unseen messages by UID, flags and moves, MIME parsed into what `on_email` gives; a server in process for tests |
 | `grenat_watch` | folders watched for `on_file`: glob patterns, scans that keep links inside, files handed once settled and once per content, the system's notifications (inotify, FSEvents) through `notify` |
-| `grenat_serve` | triggers: cron schedules, calendar arithmetic, webhook signatures, the HTTP server of `grenat serve`, streamed responses |
+| `grenat_serve` | triggers: cron schedules, calendar arithmetic, webhook signatures (GitHub, Slack, Teams) and replays refused, the HTTP server of `grenat serve`, streamed responses |
 | `grenat_generate` | `grenat new --app` and `grenat generate`: an application's parts, with their tests |
 | `grenat_ops` | the operations store: jobs, approvals, model calls, events, eval runs, handled files, workflow journals |
 | `grenat_console` | `grenat console`: pages and actions of the operations console, and who may use it |

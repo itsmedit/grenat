@@ -270,6 +270,38 @@ end
 
 `path` is a `String` as the pattern writes it (`inbox/2026/a.pdf`), untrusted: the dropper chose the name, so check it before a command, a request or a written path. Patterns: `*`, `?`, `[a-z]`, `{a,b}`, `**`; hidden names (`.x`) are left out. Options: `settle:` (2 s), `every:` (10 s), `existing: false` (skip the files there at start). Needs `fs.read` on the folder (`fs.read("inbox")`). A link leading out of the folder is refused; a raising handler is retried three times, then given up until the file changes.
 
+Slack and Teams: `approvals_in_slack` posts every question `approve!` asks in a job to a channel, with Approve and Deny buttons that decide it in one click; `on_webhook` checks Slack's and Teams' signatures.
+
+```ruby
+approvals_in_slack(
+  channel: "#approvals",
+  token: Credentials.fetch(:slack, :bot_token),
+  signing_secret: Credentials.fetch(:slack, :signing_secret),
+  allowed: ["U024BE7LH"],
+)
+
+workflow refund(order: Int) uses human, net("slack.com")
+  step(:ask) { approve! "Refund order #{order}?" }  # posted to #approvals with buttons
+  step(:tell) { Slack.post("#support", "Order #{order} refunded") }
+end
+
+on_webhook "/slack/events", signature: :slack, secret: Credentials.fetch(:slack, :signing_secret) do |req|
+  event = req.json.check { |e| e["type"] == "event_callback" }?
+  enqueue(:refund, 42) if event["event"]["type"] == "app_mention"
+  nil
+end
+
+test "approved in Slack" do
+  mock_http "POST https://slack.com/api/*", json: {ok: true, ts: "1700000000.000100"}
+  enqueue(:refund, 42)
+  Jobs.perform
+  r = deliver_slack_click(Approvals.pending.first["id"], action: :approve, user: "U024BE7LH")
+  assert_equal "approved", r["outcome"]
+end
+```
+
+`approvals_in_slack` is declared once: `channel:`, `token:` (the bot token), `signing_secret:`, optional `allowed:` (Slack user IDs who may decide) and `path:` (the Interactivity Request URL, `/slack/interactivity` by default); it needs `net("slack.com")`. A click is decided as `Approvals.approve`/`deny` (recorded as decided by `slack:U…`) and the message updated; a click on a decided approval changes nothing. `Slack.post(channel, text)` posts (`token:` or the credential `slack.bot_token`), needs `net("slack.com")`, returns the message's `ts` (untrusted) and refuses untrusted text (check it first). `signature: :slack` checks `X-Slack-Signature` (five minutes, replays refused) and answers `url_verification` itself; `signature: :teams` takes the outgoing webhook's base64 security token.
+
 ## Tests
 
 Tests run offline; every external call must be mocked. Put them in `tests/*_test.grn` (or `x_test.grn` with `require "./x"`).
@@ -290,7 +322,7 @@ test "a summary" do
 end
 ```
 
-Doubles: `mock :model, replies: [...]` (a reply is a value of the return type as a hash, a string, or `call(:tool, args…)`), `mock_http "GET https://api.x.com/*", json: {…}` (or `status:`, `body:`), `mock_shell "git status*", stdout: "…"`, `mock_mcp :linear, tools: {"create_issue" => "L-1"}`, `mock_embed :docs`, `mock_credentials({"github" => {"token" => "t"}})`, `mock_env({"SMTP_URL" => "smtp://smtp.test"})` (what `Env` reads in this test), `mock_mail(raise: "SMTP down")` (sends raise `MailError`; `raise: nil` restores), `with_human(approve_all) do … end` (or `deny_all`), `freeze_time("2026-09-28T08:00:00Z") do … end` (`Time.now`/`Time.today` answer that instant inside; only in a `test` block), `request :get, "/tickets/1"`, `deliver_webhook "/github", json: {…}`, `deliver_email(from: "ada@example.com", subject: "Refund", text: "…", attachments: [Pdf.read("invoice.pdf")])` (runs the `on_email` handler; returns `{"status" => "seen"}`, `"moved"` with `"folder"`, or `"failed"` with `"error"`), `deliver_file("inbox/a.pdf")` (runs every `on_file` handler matching the path; returns `{"status" => "handled"}` or `"failed"` with `"error"`), `Jobs.perform`, `Mail.deliveries`, `Http.requests`. `freeze_time`, `mock_env`, `mock_mail`, `deliver_email`, `deliver_file` and `Http.requests` work only inside a `test` block. Assertions: `assert x`, `assert_equal expected, actual`, `assert_raises TaintError { … }`.
+Doubles: `mock :model, replies: [...]` (a reply is a value of the return type as a hash, a string, or `call(:tool, args…)`), `mock_http "GET https://api.x.com/*", json: {…}` (or `status:`, `body:`), `mock_shell "git status*", stdout: "…"`, `mock_mcp :linear, tools: {"create_issue" => "L-1"}`, `mock_embed :docs`, `mock_credentials({"github" => {"token" => "t"}})`, `mock_env({"SMTP_URL" => "smtp://smtp.test"})` (what `Env` reads in this test), `mock_mail(raise: "SMTP down")` (sends raise `MailError`; `raise: nil` restores), `with_human(approve_all) do … end` (or `deny_all`), `freeze_time("2026-09-28T08:00:00Z") do … end` (`Time.now`/`Time.today` answer that instant inside; only in a `test` block), `request :get, "/tickets/1"`, `deliver_webhook "/github", json: {…}`, `deliver_email(from: "ada@example.com", subject: "Refund", text: "…", attachments: [Pdf.read("invoice.pdf")])` (runs the `on_email` handler; returns `{"status" => "seen"}`, `"moved"` with `"folder"`, or `"failed"` with `"error"`), `deliver_file("inbox/a.pdf")` (runs every `on_file` handler matching the path; returns `{"status" => "handled"}` or `"failed"` with `"error"`), `deliver_slack_click(id, action: :approve, user: "U024BE7LH")` (clicks approval `id`'s button in Slack; returns `{"status" => 200, "outcome" => "approved"}`, or `denied`, `already_decided`, `not_allowed`, `unknown`), `Jobs.perform`, `Mail.deliveries`, `Http.requests`. `freeze_time`, `mock_env`, `mock_mail`, `deliver_email`, `deliver_file`, `deliver_slack_click` and `Http.requests` work only inside a `test` block. Assertions: `assert x`, `assert_equal expected, actual`, `assert_raises TaintError { … }`.
 
 - `mock :model, replies: [...]` fails the test ("mock has no reply left") when the model is called more often than replies were given: that is how a test proves a workflow did not call the model again.
 - `mock_http` options: `json:`, `body:`, `status:`, `headers:` (the response's); an unstubbed request raises `HttpError`. `Http.requests` lists what the test sent (stubbed or not), in order, as hashes: `req = Http.requests.last; assert_equal "POST", req["method"]; assert_equal({"title" => "x"}, req["json"]); assert_equal "Bearer t", req["headers"]["Authorization"]` (also `"url"`, `"body"`; `"json"` is nil when the body is not JSON; a secret stays a `Secret`, equal to its text).

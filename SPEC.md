@@ -614,6 +614,64 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 16 status: Slack and Teams
+
+An ops team runs its bots in Slack or Microsoft Teams, and the approvals its jobs wait for were answered in `grenat console`, a browser tab nobody keeps open. Webhooks signed as Slack and Teams sign them are now checked by `on_webhook`; `approvals_in_slack` posts each question a job asks to a channel, with Approve and Deny buttons that decide it in one click; `Slack.post` tells a channel what happened.
+
+```ruby
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+approvals_in_slack(
+  channel: "#deploys",
+  token: Credentials.fetch(:slack, :bot_token),
+  signing_secret: Credentials.fetch(:slack, :signing_secret),
+  allowed: ["U024BE7LH", "U0G9QF9C6"],
+)
+
+## A one-line release note.
+prompt note(version: String) -> ~String using :fast
+  user "One line announcing release #{version}."
+end
+
+workflow deploy(version: String) uses llm, human, net("slack.com")
+  step(:ask) { approve! "Deploy #{version} to production?" }
+  text = step(:note) { note(version).check { |t| t.size < 300 }.or_else { "#{version} is out." } }
+  step(:announce) { Slack.post("#releases", text) }
+end
+
+on_webhook "/slack/events", signature: :slack, secret: Credentials.fetch(:slack, :signing_secret) do |req|
+  event = req.json.check { |e| e["type"] == "event_callback" }?
+  enqueue(:deploy, "v2.4.0") if event["event"]["text"].to_s.include?("deploy")
+  nil
+end
+
+test "a release approved with one click in Slack" do
+  mock :fast, replies: ["Grenat v2.4.0 is out."]
+  mock_http "POST https://slack.com/api/*", json: {ok: true, ts: "1700000000.000100"}
+  enqueue(:deploy, "v2.4.0")
+  Jobs.perform
+  id = Approvals.pending.first["id"]
+  assert_equal "approved", deliver_slack_click(id, action: :approve, user: "U024BE7LH")["outcome"]
+  assert Http.requests.last["json"]["text"].start_with?("Approved by <@U024BE7LH>")
+  Jobs.perform
+  assert_equal "Grenat v2.4.0 is out.", Http.requests.last["json"]["text"]
+end
+```
+
+- **Signed by Slack.** `on_webhook path, signature: :slack, secret: …` takes the app's signing secret (a `String` or a `Secret`, never an untrusted value). A request is read only if `X-Slack-Signature` is `v0=` and the hex HMAC-SHA256 of `v0:<X-Slack-Request-Timestamp>:<the raw body>` — compared in constant time — and its timestamp is within five minutes of now (either way). Within those minutes, a signature already accepted is refused: the same request sent again is a replay (signatures are remembered as long as their timestamp could pass, then forgotten; a restart forgets them, and the five minutes still hold). Anything else is a 401 before the handler runs, logged with its reason (`not signed`, `signed more than five minutes away from now`, `bad signature`, `replayed`). Slack's `url_verification` — `{"type": "url_verification", "challenge": "…"}`, sent when the Events API's Request URL is set, signed like any request — is answered with the challenge as plain text once verified, without the handler. What a request carries is untrusted, as for any webhook.
+- **Signed by Teams.** `signature: :teams, secret: …` takes the security token Teams shows when an outgoing webhook is created (base64; a token that is not is an `ArgumentError` when the declaration runs). A request is read only if its `Authorization` header is `HMAC ` and the base64 HMAC-SHA256 of the raw body keyed by the token's decoded bytes, compared in constant time; Teams signs no timestamp, so no replay window can be enforced. What the handler returns is the reply posted in the thread — `{type: "message", text: "On it."}` — within the five seconds Teams waits.
+- **Approvals in Slack.** `approvals_in_slack channel:, token:, signing_secret:` is declared once, at the top of the program: `channel:` a name (`#deploys`) or an ID (`C0123`) the bot was invited to, `token:` the bot token (`xoxb-…`, scope `chat:write`), `signing_secret:` the app's, `allowed:` the Slack user IDs who may decide (anyone in the channel when left out), `path:` the route Slack sends clicks to (`/slack/interactivity` by default; the app's Interactivity Request URL, served by `grenat serve` next to routes and webhooks — a webhook on the same path is refused). From then on, a question `approve!` stores in a job is also posted to the channel (`chat.postMessage`): a Block Kit message with the question, the job and approval numbers, and two buttons, Approve (`primary`) and Deny (`danger`), each carrying the approval's id. The question is shown as text, `&`, `<` and `>` escaped — what a model drafted cannot mention `@channel` or a user, nor hide a link — and cut to 2800 characters.
+- **A click.** Slack posts it to the route (`application/x-www-form-urlencoded`, a `block_actions` JSON `payload`), signed as above: a click not signed with the signing secret, stale or replayed is a 401 and reads nothing; a payload without the fields used — the user's and channel's IDs, the message's `ts`, the approval's id, each checked — is a 400 and a `slack` event; another interaction (another app's button, a shortcut) is answered 200 and ignored. A user not in `allowed:` decides nothing: they are told so privately (`chat.postEphemeral`) and the refusal is a `slack` event. Otherwise the approval is decided through the same path as `Approvals.approve` and `Approvals.deny` — the job queued again — recorded as decided by `slack:U024BE7LH`, logged (`[approval] 7 approved by slack:U024BE7LH`), and the message is updated (`chat.update`): the question, `Approved by @user` or `Denied by @user`, no more buttons. A click on an approval already decided — in the console, by another click — changes nothing: the message is updated to the decision taken and who took it. Slack waits three seconds for the answer: the decision is taken first, the update given two seconds, then the click answered (200, empty).
+- **Who decided.** `grenat_approvals` gains `decided_by` (added to an existing table on first use): `slack:<user ID>`, `console` for a decision taken in `grenat console`, nothing for one the program took (`Approvals.approve`). The console's approvals page shows it.
+- **`Slack.post(channel, text)`.** Posts a message (`chat.postMessage`, links not unfurled) and returns its `ts`, untrusted as anything from outside. The token is `token:` (a `String` or a `Secret`), or else the credential `slack.bot_token`. It is `net("slack.com")` (E0300 statically, `CapabilityError` at run time); nothing untrusted is posted — the channel, the text or the token (E0412, `TaintError`): a model's answer or a webhook's payload reaches a channel once checked; a secret is never the channel or the text (E0414, `SecretError`). Slack's refusal is a `SlackError` naming the method and Slack's code (`chat.postMessage: channel_not_found`, `not_in_channel`; `rate limited (retry after 30 s)` on a 429), never the token.
+- **Secrets.** The bot token reaches only the `Authorization` header of the Web API's requests, the signing secrets only the signature checks: never a log line, an event, an error or what a test sees (`Http.requests` shows the header as a `Secret`).
+- **Failures.** Posting a question never fails the job that asks: a failed call (Slack down, a channel the bot is not in) is a line on standard error and a `slack` event, and the approval waits as before, to be decided in the console. A failed update or private message after a click is reported the same way; the decision stands. Nothing stops the server.
+- **Effects.** `approvals_in_slack` is `net("slack.com")`: declared in a function, its `uses` must grant it (E0300; `CapabilityError` at run time); declaring posts nothing. Its options are checked as the runtime checks them: unknown ones, a missing `channel:`, `token:` or `signing_secret:`, a blank channel, `allowed:` that is not an `Array(String)` (a value that is no Slack user ID is an `ArgumentError` when it runs), a `path:` not starting with `/` (E0200), a secret as the channel (E0414), anything untrusted (E0412). `on_webhook` knows `signature: :github`, `:slack` and `:teams` (E0200 otherwise, and for a `secret:` without a `signature:`).
+- **Tests.** `deliver_webhook` signs as each declaration requires — a Slack request with the current time, signed anew when the same body is delivered twice. `deliver_slack_click(id, action: :approve, user: "U024BE7LH")` (or `action: :deny`) sends the interactivity request Slack would send for a click on approval `id`'s button, signed with the declared signing secret, through the same route as served, and returns `{"status" => 200, "outcome" => "approved"}` — `denied`, `already_decided`, `not_allowed`, `unknown`. The Web API calls that follow are requests as any other: `mock_http "POST https://slack.com/api/*"` answers them, `Http.requests` lists them; unstubbed, they fail as reported failures, the click still decided. It exists inside a `test` block only (E0500; `RuntimeError` at run time), its id an `Int` and `user:` a Slack user ID (E0200, E0414 for a secret).
+- **What was read.** Slack's "Verifying requests from Slack" (the `v0` base string, HMAC-SHA256 in hex, five minutes, the raw body, a constant-time compare; its example secret, timestamp, body and signature are a unit test), the `url_verification` event (a signed request; the challenge answered in plain text, form or JSON), "Handling user interaction" (a form-encoded `payload`, a 200 within three seconds; `chat.update` for a message posted by the app), the `block_actions` payload reference (`user`, `container.message_ts` and `channel_id`, `channel`, `actions[].action_id`, `value`), `chat.postMessage` (a JSON body with a bearer token, `ts` returned, about one message per second per channel, `channel_not_found`, `not_in_channel`), `chat.update` (`channel` and `ts`; a bot's edit shows no "edited") and `chat.postEphemeral` (`channel`, `user`, `text`); Microsoft's "Create an Outgoing Webhook" (`Authorization: HMAC <base64>`, the HMAC-SHA256 of the UTF-8 body keyed by the base64-decoded security token, a reply within five seconds as `{"type": "message", "text": …}`).
+- **Tests.** Signatures: Slack's documented example, a wrong secret, a timestamp five minutes away either way and one second more, a timestamp changed, missing headers; replays remembered then forgotten; Teams signatures and keys. The interpreter: `deliver_webhook` signed as Slack and Teams, forged, the challenge answered; `Slack.post` (the request, the credential, a `SlackError` that never shows the token, an untrusted text, a secret); `approvals_in_slack` with `deliver_slack_click` (approved and the job resumed, denied then clicked again, a user not allowed told privately, an unknown approval, Slack down and the approval decided anyway), its declaration's checks; and `grenat serve` against a fake Slack: the question posted with its buttons and escaped, forged, stale and unsigned clicks refused, a user not allowed, the click deciding (recorded as `slack:U123`) and the job resuming, the message updated, the same click replayed refused, a second click without effect, no token or secret in the log; Slack events (the challenge, an event, a replay, a timestamp from the future) and Teams messages served. The store: who decided, on SQLite and PostgreSQL, and a table made by an earlier Grenat. The checker: the declarations, options, `net("slack.com")`, taint, E0414 and E0500.
+- **Limits.** Slack only for approvals (Teams outgoing webhooks cannot carry buttons that call back: Microsoft allows them only `openURL`); one channel; Slack retries an event not answered within three seconds (`X-Slack-Retry-Num`): a retry signed as the first one was is refused as a replay, one signed anew is handled again, so a handler that must not run twice keys its work on the event's `event_id`; the replay window lives in memory; `Slack.post` takes text (no blocks, no threads); Grenat does not install the Slack app nor obtain its token.
+
 ### Phase 16 status: files in (`on_file`)
 
 An accounting team drops invoices in a folder — a synced drive (Dropbox, Google Drive, OneDrive), a scanner's share — and a program polled it every ten seconds. `on_file` declares the folder and what to do with a file; `grenat serve` watches it, told of changes by the operating system; a test hands the handler paths without a folder.
