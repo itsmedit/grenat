@@ -39,6 +39,7 @@ pub fn serve(
     on_interpreter_thread(|green| {
         let mut interp = Interp::new(program, options, spawner(green))?;
         if let Err(ctrl) = interp.run_script() {
+            interp.finish_telemetry();
             return Err(interp.runtime_error(ctrl));
         }
         let schedules = interp.schedules.borrow().len();
@@ -84,41 +85,14 @@ pub fn serve(
             loop {
                 let Ok(incoming) = grenat_green::blocking(|| server.next()) else { continue };
                 interp.spawn_task(interp.fork(), move |task| {
-                    let raw = RawRequest {
-                        method: incoming.method.clone(),
-                        path: incoming.path.clone(),
-                        query: incoming.query.clone(),
-                        headers: incoming.headers.clone(),
-                        body: incoming.body.clone(),
-                    };
-                    let mut answer = match task.handle_request(raw) {
-                        Ok(answer) => answer,
-                        Err(ctrl) => {
-                            let error = task.runtime_error(ctrl);
-                            task.write_err(&format!(
-                                "[{} {}] {}: {}\n",
-                                incoming.method, incoming.path, error.ty, error.message
-                            ));
-                            task.record_event("request", &format!("{} {}", incoming.method, incoming.path), &error);
-                            HttpAnswer::text(500, "error")
-                        }
-                    };
-                    if task.log {
-                        task.write_err(&format!("[web] {} {} → {}\n", incoming.method, incoming.path, answer.status));
-                    }
-                    let label = format!("{} {}", incoming.method, incoming.path);
-                    match answer.stream.take() {
-                        Some(block) => {
-                            // a client gone before the head: nothing to stream to
-                            if let Ok(events) = incoming.respond_events(answer.status, &answer.headers) {
-                                task.serve_events(&block, events, &label);
-                            }
-                        }
-                        // written off the green workers: a client that does not read holds no one
-                        None => grenat_green::blocking(move || {
-                            incoming.respond(answer.status, &answer.content_type, &answer.headers, answer.body)
-                        }),
-                    }
+                    let start = crate::telemetry::request_span(&incoming.method, &incoming.headers);
+                    let _ = task.traced(
+                        |_| start,
+                        |task| {
+                            task.serve_request(incoming);
+                            Ok::<(), crate::Ctrl>(())
+                        },
+                    );
                 });
             }
         }
@@ -128,6 +102,48 @@ pub fn serve(
 }
 
 impl<'p> Interp<'p> {
+    /// Answers a request, in its span: its status, and its error if its
+    /// handler raised one.
+    fn serve_request(&mut self, incoming: grenat_serve::Incoming) {
+        let raw = RawRequest {
+            method: incoming.method.clone(),
+            path: incoming.path.clone(),
+            query: incoming.query.clone(),
+            headers: incoming.headers.clone(),
+            body: incoming.body.clone(),
+        };
+        let mut answer = match self.handle_request(raw) {
+            Ok(answer) => answer,
+            Err(ctrl) => {
+                let error = self.runtime_error(ctrl);
+                self.write_err(&format!("[{} {}] {}: {}\n", incoming.method, incoming.path, error.ty, error.message));
+                self.record_event("request", &format!("{} {}", incoming.method, incoming.path), &error);
+                self.span_error(&error.ty, &error.message);
+                HttpAnswer::text(500, "error")
+            }
+        };
+        self.span_set("http.response.status_code", i64::from(answer.status));
+        if answer.status >= 500 {
+            self.span_failed(&answer.status.to_string());
+        }
+        if self.log {
+            self.write_err(&format!("[web] {} {} → {}\n", incoming.method, incoming.path, answer.status));
+        }
+        let label = format!("{} {}", incoming.method, incoming.path);
+        match answer.stream.take() {
+            Some(block) => {
+                // a client gone before the head: nothing to stream to
+                if let Ok(events) = incoming.respond_events(answer.status, &answer.headers) {
+                    self.serve_events(&block, events, &label);
+                }
+            }
+            // written off the green workers: a client that does not read holds no one
+            None => grenat_green::blocking(move || {
+                incoming.respond(answer.status, &answer.content_type, &answer.headers, answer.body)
+            }),
+        }
+    }
+
     /// Streams a response: its block writes events to the client as they
     /// come. A failure once the head is sent ends the stream with an
     /// `error` event (its details stay in the log); a client gone is no
@@ -147,6 +163,7 @@ impl<'p> Interp<'p> {
             Err(error) => {
                 self.write_err(&format!("[{label}] {}: {}\n", error.ty, error.message));
                 self.record_event("request", label, &error);
+                self.span_error(&error.ty, &error.message);
                 let _ = events.send(Some("error"), "error");
             }
         }
@@ -171,7 +188,8 @@ impl<'p> Interp<'p> {
                 (wait, schedule.block.clone(), schedule.label.clone())
             };
             grenat_green::sleep(wait);
-            if let Err(ctrl) = self.call_block(&block, Vec::new()) {
+            let start = |_: &Self| crate::telemetry::trigger_span("schedule", &label);
+            if let Err(ctrl) = self.traced(start, |interp| interp.call_block(&block, Vec::new())) {
                 let error = self.runtime_error(ctrl);
                 self.write_err(&format!("[{label}] failed: {}: {}\n", error.ty, error.message));
                 self.record_event("schedule", &label, &error);

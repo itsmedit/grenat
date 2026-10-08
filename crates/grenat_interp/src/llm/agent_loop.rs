@@ -185,13 +185,17 @@ impl<'p> Interp<'p> {
                         }
                     }
                 }
-                let called = match routes.get(&tool_use.name) {
-                    Some((server, tool)) => self.call_mcp(server, tool, &tool_use.input),
-                    None => self.call_tool_within(tool_use, config.tool_timeout).and_then(|v| {
-                        crate::eval::secrets::not_for_models(std::slice::from_ref(&v))?;
-                        Ok((tool_output(&v), false))
-                    }),
-                };
+                let route = routes.get(&tool_use.name);
+                let called = self.traced(
+                    |_| tool_span(tool_use, route.map(|(server, _)| server.as_str())),
+                    |interp| match route {
+                        Some((server, tool)) => interp.call_mcp(server, tool, &tool_use.input),
+                        None => interp.call_tool_within(tool_use, config.tool_timeout).and_then(|v| {
+                            crate::eval::secrets::not_for_models(std::slice::from_ref(&v))?;
+                            Ok((tool_output(&v), false))
+                        }),
+                    },
+                );
                 let (content, is_error) = match called {
                     Ok(answer) => answer,
                     Err(Ctrl::Raise(e)) if !matches!(&*e.ty, "BudgetExceeded" | "TaintError" | "StackOverflow") => {
@@ -299,6 +303,20 @@ fn answer_to<'p>(block: Value<'p>) -> impl FnMut(&mut Interp<'p>, Delta) -> Resu
         }
         interp.call_block(&block, vec![Value::str(text).taint()]).map(drop)
     }
+}
+
+/// A tool call's span (`execute_tool <tool>`): its name and call id, and
+/// the MCP server it is on; never its arguments or its result.
+fn tool_span(tool_use: &ToolUse, mcp_server: Option<&str>) -> grenat_otel::SpanStart {
+    let mut start = grenat_otel::SpanStart::new(format!("execute_tool {}", tool_use.name), grenat_otel::Kind::Internal)
+        .attr("gen_ai.operation.name", "execute_tool")
+        .attr("gen_ai.tool.name", tool_use.name.as_str())
+        .attr("gen_ai.tool.call.id", tool_use.id.as_str())
+        .attr("gen_ai.tool.type", if mcp_server.is_some() { "extension" } else { "function" });
+    if let Some(server) = mcp_server {
+        start = start.attr("grenat.mcp.server", server);
+    }
+    start
 }
 
 pub(crate) fn tool_result(id: &str, content: String, is_error: bool) -> Json {

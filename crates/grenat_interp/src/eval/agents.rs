@@ -205,7 +205,24 @@ impl<'p> Interp<'p> {
         Ok(())
     }
 
-    pub(crate) fn agent_ask(&mut self, agent: Arc<AgentRef<'p>>, mut args: Args<'p>) -> R<'p> {
+    /// `ask`, in its span (`invoke_agent <Agent>`): the wait for the
+    /// agent's turn included, as the caller lives it.
+    pub(crate) fn agent_ask(&mut self, agent: Arc<AgentRef<'p>>, args: Args<'p>) -> R<'p> {
+        if !self.tracing() {
+            return self.ask_turn(agent, args);
+        }
+        let message = match args.pos.first().map(Value::untainted) {
+            Some(Value::Record(record)) => record.ty.to_string(),
+            _ => String::new(),
+        };
+        let start = grenat_otel::SpanStart::new(format!("invoke_agent {}", agent.ty), grenat_otel::Kind::Internal)
+            .attr("gen_ai.operation.name", "invoke_agent")
+            .attr("gen_ai.agent.name", agent.ty.to_string())
+            .attr("grenat.agent.message", message);
+        self.traced(|_| start, |interp| interp.ask_turn(agent, args))
+    }
+
+    fn ask_turn(&mut self, agent: Arc<AgentRef<'p>>, mut args: Args<'p>) -> R<'p> {
         // the slot reserved by `send` is released when the turn starts, or if sending fails before that
         let reservation = Reservation(&agent);
         let stream = args.block.take();

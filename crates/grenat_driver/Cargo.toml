@@ -15,3 +15,4 @@ grenat_interp.workspace = true
 grenat_report.workspace = true
 grenat_package.workspace = true
 grenat_macros.workspace = true
+grenat_otel.workspace = true

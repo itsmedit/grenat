@@ -1,0 +1,12 @@
+[package]
+name = "grenat_otel"
+description = "OpenTelemetry traces exported over OTLP/HTTP (JSON): spans, W3C traceparent, a batching exporter on its own thread"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+ureq.workspace = true

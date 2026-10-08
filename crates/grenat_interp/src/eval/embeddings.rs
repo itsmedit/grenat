@@ -86,6 +86,14 @@ impl<'p> Interp<'p> {
 
     /// The vectors of `texts`, accounted: budgets, the ledger, the log.
     fn embedding_call(&mut self, model: &ModelConfig, texts: Vec<String>) -> Result<Vec<Vec<f64>>, Ctrl<'p>> {
+        let count = texts.len();
+        self.traced(
+            |interp| crate::telemetry::embedding_span(interp, model, count),
+            |interp| interp.embed_texts(model, texts),
+        )
+    }
+
+    fn embed_texts(&mut self, model: &ModelConfig, texts: Vec<String>) -> Result<Vec<Vec<f64>>, Ctrl<'p>> {
         self.check_cancel()?;
         self.check_budgets()?;
         let started = Instant::now();

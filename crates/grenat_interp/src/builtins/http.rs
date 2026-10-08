@@ -71,31 +71,80 @@ pub(crate) fn call_http<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p>)
         ProxyChoice::Url(proxy) => format!(" via {}", without_credentials(proxy)),
         _ => String::new(),
     };
+    let start = |_: &Interp<'p>| crate::telemetry::http_span(method, &url, host);
+    interp.traced(start, |interp| {
+        let request = with_traceparent(interp, request);
+        send_retrying(interp, &request, host, &args, may_retry, &format!("{method} {shown}{via}"))
+    })
+}
+
+/// `request` carrying the W3C `traceparent` of its span, when spans are
+/// exported and the program gave none: the service called continues the
+/// trace. Never sent otherwise (in tests, nor without a collector).
+fn with_traceparent(interp: &Interp, mut request: HttpRequest) -> HttpRequest {
+    let given = request.headers.iter().any(|(name, _)| name.eq_ignore_ascii_case("traceparent"));
+    if interp.tracing()
+        && !given
+        && let Some(context) = interp.span_context()
+    {
+        request.headers.push(("traceparent".into(), context.traceparent()));
+    }
+    request
+}
+
+/// Sends `request`, again after a `429` that says when (if `may_retry`);
+/// its span told the status and the resends. `shown` is how the log names
+/// it (`GET https://… via …`).
+fn send_retrying<'p>(
+    interp: &mut Interp<'p>,
+    request: &HttpRequest,
+    host: &str,
+    args: &Args<'p>,
+    may_retry: bool,
+    shown: &str,
+) -> R<'p> {
+    let method = request.method;
     let mut retried = 0;
     loop {
         let reply = {
             // the host's turn, under its `limit`, held while the request is in flight
             let _permit = interp.throttle(host)?;
-            interp.record_request(method, &request.url, &args);
-            send(interp, &request, host, &args)?
+            interp.record_request(method, &request.url, args);
+            send(interp, request, host, args)?
         };
         if interp.log {
-            interp.write_err(&format!("[http] {method} {shown}{via} → {}\n", reply.status));
+            interp.write_err(&format!("[http] {shown} → {}\n", reply.status));
         }
         let Some(wait) = retry::asked_wait(&reply) else {
-            return Ok(response(reply));
+            return Ok(answered(interp, reply, retried));
         };
         // nobody calls the host before then
         interp.pause_host(host, wait);
         if !may_retry || retried == retry::MAX_RETRIES || wait > retry::MAX_WAIT {
-            return Ok(response(reply));
+            return Ok(answered(interp, reply, retried));
         }
         if interp.log {
-            interp.write_err(&format!("[http] {method} {shown}: again in {:.1}s (Retry-After)\n", wait.as_secs_f64()));
+            interp.write_err(&format!("[http] {shown}: again in {:.1}s (Retry-After)\n", wait.as_secs_f64()));
         }
         interp.wait_out(wait)?;
         retried += 1;
     }
+}
+
+/// The reply, told to the request's span: its status (an error from
+/// `400` on, as the conventions say of a client) and how often it was sent
+/// again.
+fn answered<'p>(interp: &mut Interp<'p>, reply: HttpReply, retried: u32) -> Value<'p> {
+    if interp.tracing() {
+        interp.span_set("http.response.status_code", i64::from(reply.status));
+        if retried > 0 {
+            interp.span_set("http.request.resend_count", i64::from(retried));
+        }
+        if reply.status >= 400 {
+            interp.span_failed(&reply.status.to_string());
+        }
+    }
+    response(reply)
 }
 
 /// One attempt of `request`: the reply, or an error that names neither a

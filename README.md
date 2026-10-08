@@ -355,6 +355,12 @@ setter publish                         tag this facet's version for the indexes
 | `GRENAT_JIT=0` | interpret everything (same as `--no-jit`) |
 | `GRENAT_HOME` | where `grenat build` finds `lib/grenat/libgrenat_{host,standalone}.a` |
 | `CC` | the linker of `grenat build` (default: `cc`) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | export the traces of `grenat run` and `grenat serve` over OTLP/HTTP (JSON) to this collector (`/v1/traces` appended; `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` for the full URL); unset, nothing is exported |
+| `OTEL_EXPORTER_OTLP_HEADERS` | headers sent with every export (`x-honeycomb-team=…,key2=value2`) |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | the service and resource the spans are about (`deployment.environment.name=production`) |
+| `OTEL_EXPORTER_OTLP_TIMEOUT`, `OTEL_BSP_*` | an export's timeout (ms), and the batching: queue size, batch size, delay |
+| `OTEL_SDK_DISABLED=true` | export nothing, endpoint or not |
+| `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` | export prompts, answers and error messages too (off by default) |
 
 ## Writing Grenat with an LLM
 
@@ -382,6 +388,14 @@ dates, email), Python's familiarity still pays.
 ## Status
 
 The latest release, v0.1.2, has phases 0 to 11; phases 12 to 16 are on `main`.
+
+**Phase 16 — OpenTelemetry**: with `OTEL_EXPORTER_OTLP_ENDPOINT` set, `grenat run` and `grenat
+serve` export traces over OTLP/HTTP (JSON) to Datadog, Grafana, Honeycomb or any collector — a span
+for each request (continuing a received `traceparent`), trigger run, job, workflow and step, agent
+`ask`, model call (GenAI conventions: provider, models, tokens, plus `grenat.usage.cost_usd`), tool
+call, `Http` request (which sends its `traceparent` on) and SSH call; errors by their type; never a
+secret or a URL, and prompts and answers only with `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`;
+batched on a thread of its own, a collector down or slow never holding the program.
 
 **Phase 16 — rate limits**: `limit net("api.hubspot.com"), 10.per_second` (or `5000.per_hour,
 concurrent: 4`) declares a host's quota once; a token bucket shared by every task, agent and job of
@@ -680,6 +694,7 @@ end })
 | `grenat_mcp` | the Model Context Protocol: a client (stdio and HTTP), and the server side of `expose` |
 | `grenat_ssh` | SSH and SFTP: host keys verified, commands quoted, SOCKS5 proxies, a blocking API; a real server in process for tests |
 | `grenat_imap` | IMAP over TLS (implicit or STARTTLS): password or OAuth (`XOAUTH2`) logins, unseen messages by UID, flags and moves, MIME parsed into what `on_email` gives; a server in process for tests |
+| `grenat_otel` | OpenTelemetry traces: spans and their ids, W3C `traceparent`, OTLP/HTTP JSON encoding, the `OTEL_*` configuration, a batching exporter on its own thread (bounded queue, drops counted, timeouts) |
 | `grenat_limits` | rate limits shared by every task: token buckets (the generic cell rate algorithm), concurrency slots served in order, pauses, `Retry-After` read as seconds or an HTTP date in its three formats |
 | `grenat_watch` | folders watched for `on_file`: glob patterns, scans that keep links inside, files handed once settled and once per content, the system's notifications (inotify, FSEvents) through `notify` |
 | `grenat_serve` | triggers: cron schedules, calendar arithmetic, webhook signatures (GitHub, Slack, Teams) and replays refused, the HTTP server of `grenat serve`, streamed responses |

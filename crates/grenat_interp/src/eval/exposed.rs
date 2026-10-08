@@ -166,6 +166,7 @@ impl<'p> Interp<'p> {
             .iter()
             .find(|e| raw.path == e.path || raw.path.strip_prefix(&e.path).is_some_and(|rest| rest.starts_with('/')))
             .cloned()?;
+        self.name_request_span(&raw.method, &exposure.path, "expose");
         let header =
             |name: &str| raw.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str());
         if let Some(token) = &exposure.token

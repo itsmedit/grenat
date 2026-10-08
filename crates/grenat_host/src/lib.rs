@@ -34,6 +34,7 @@ pub unsafe extern "C" fn main(argc: c_int, argv: *const *const c_char) -> c_int 
                 log: grenat_driver::log_from_env(),
                 jit: grenat_driver::native_from_env(),
                 linked: Some(image),
+                telemetry: grenat_driver::telemetry_from_env(),
                 ..Default::default()
             };
             grenat_driver::execute(&sources, &program, args, options)

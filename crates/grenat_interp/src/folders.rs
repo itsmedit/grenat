@@ -156,7 +156,8 @@ impl<'p> Interp<'p> {
         }
         self.write_err(&format!("[file] {label}: {shown:?}\n"));
         let block = self.folders.borrow()[i].block.clone();
-        match self.call_block(&block, vec![dropped_path(&shown)]) {
+        let start = |_: &Self| crate::telemetry::trigger_span("file", label);
+        match self.traced(start, |interp| interp.call_block(&block, vec![dropped_path(&shown)])) {
             Ok(_) => self.handled(label, watch, path, &digest),
             Err(ctrl) => {
                 let error = self.runtime_error(ctrl);

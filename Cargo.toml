@@ -38,6 +38,7 @@ grenat_config = { path = "crates/grenat_config" }
 grenat_ssh = { path = "crates/grenat_ssh" }
 grenat_imap = { path = "crates/grenat_imap" }
 grenat_limits = { path = "crates/grenat_limits" }
+grenat_otel = { path = "crates/grenat_otel" }
 grenat_watch = { path = "crates/grenat_watch", default-features = false }
 grenat_ext = { path = "crates/grenat_ext" }
 grenat_ext_macros = { path = "crates/grenat_ext_macros" }

@@ -11,6 +11,6 @@ mod flags;
 mod loading;
 mod running;
 
-pub use flags::{log_from_env, native_from_env, record_from_env, use_color};
+pub use flags::{log_from_env, native_from_env, record_from_env, telemetry_from_env, use_color};
 pub use loading::{Loaded, load, load_with, parse, read, report};
 pub use running::{execute, options_for, render_runtime_error};

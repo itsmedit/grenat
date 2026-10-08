@@ -85,6 +85,15 @@ impl<'p> Interp<'p> {
 
     /// The transcript of `request`, accounted: budgets, the ledger, the log.
     fn transcription_call(&mut self, request: &TranscriptionRequest) -> Result<Transcript, Ctrl<'p>> {
+        // the audio's size, from its base64
+        let bytes = request.data.len() / 4 * 3;
+        self.traced(
+            |interp| crate::telemetry::transcription_span(interp, request.model, bytes),
+            |interp| interp.transcribe_audio(request),
+        )
+    }
+
+    fn transcribe_audio(&mut self, request: &TranscriptionRequest) -> Result<Transcript, Ctrl<'p>> {
         self.check_cancel()?;
         self.check_budgets()?;
         let started = Instant::now();

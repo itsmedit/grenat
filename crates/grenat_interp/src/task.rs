@@ -46,6 +46,9 @@ impl<'p> Interp<'p> {
             // a job's own tasks store its approvals too
             current_job: self.current_job,
             approval_rank: Default::default(),
+            // its spans are children of the span running now
+            spans: Vec::new(),
+            trace_parent: self.span_context(),
         }
     }
 

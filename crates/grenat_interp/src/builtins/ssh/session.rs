@@ -52,6 +52,7 @@ fn run<'p>(interp: &mut Interp<'p>, fields: &Fields<'p>, args: &Args<'p>) -> R<'
     };
     let output = interp.on_server(fields, |connection, label| connection.run(&argv, label))?;
     let status = output.status.map_or(-1, i64::from);
+    interp.span_set("process.exit.code", status);
     interp
         // the server names the signal: escaped, so that it cannot forge a log line
         .log_ssh(

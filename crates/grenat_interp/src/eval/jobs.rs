@@ -86,11 +86,19 @@ impl<'p> Interp<'p> {
         let (outer_job, outer_rank) = (self.current_job, self.approval_rank.get());
         self.current_job = Some(job.id);
         self.approval_rank.set(0);
-        let outcome = match (self.fns.get(job.name.as_str()).copied(), decode_args(&job.args)) {
-            (Some(def), Ok(values)) => self.call_fn(def, Args { pos: values, ..Args::default() }, None).map(drop),
-            (None, _) => raise("NameError", format!("unknown function `{}`", job.name)),
-            (_, Err(ctrl)) => Err(ctrl),
+        // a job starts a trace of its own: the request that queued it is long gone
+        let start = |_: &Self| {
+            grenat_otel::SpanStart::new(format!("job {}", job.name), grenat_otel::Kind::Consumer)
+                .attr("grenat.job.id", job.id)
+                .attr("grenat.job.name", job.name.as_str())
+                .attr("grenat.job.attempt", job.attempts + 1)
         };
+        let outcome =
+            self.traced(start, |interp| match (interp.fns.get(job.name.as_str()).copied(), decode_args(&job.args)) {
+                (Some(def), Ok(values)) => interp.call_fn(def, Args { pos: values, ..Args::default() }, None).map(drop),
+                (None, _) => raise("NameError", format!("unknown function `{}`", job.name)),
+                (_, Err(ctrl)) => Err(ctrl),
+            });
         self.current_job = outer_job;
         self.approval_rank.set(outer_rank);
         let attempts = job.attempts + 1;

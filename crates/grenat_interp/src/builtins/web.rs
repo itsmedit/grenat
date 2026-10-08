@@ -322,9 +322,12 @@ impl<'p> Interp<'p> {
             return answer;
         }
         if self.webhooks.borrow().iter().any(|w| w.path == raw.path) {
+            // a webhook's path is declared: no data in it
+            self.name_request_span(&raw.method, &raw.path, "webhook");
             return self.handle_webhook(raw);
         }
         if self.is_slack_click(&raw) {
+            self.name_request_span(&raw.method, &raw.path, "slack");
             return self.handle_slack_click(&raw).map(|(answer, _)| answer);
         }
         let mut other_method = false;
@@ -334,16 +337,27 @@ impl<'p> Interp<'p> {
                 other_method = true;
                 return None;
             }
-            Some((route.block.clone(), params))
+            Some((route.block.clone(), params, format!("/{}", route.pattern.join("/"))))
         });
         match found {
-            Some((block, params)) => {
+            Some((block, params, route)) => {
+                self.name_request_span(&raw.method, &route, "route");
                 let request = request_value(&raw, params);
                 let value = self.call_block(&block, vec![request])?;
                 Ok(answer_of(&value))
             }
             None if other_method => Ok(HttpAnswer::text(405, "method not allowed")),
             None => Ok(HttpAnswer::text(404, "not found")),
+        }
+    }
+
+    /// The request's span, named by its route (`GET /tickets/:id`), the
+    /// template declared — never the path asked, which carries data.
+    pub(crate) fn name_request_span(&mut self, method: &str, route: &str, trigger: &str) {
+        if self.tracing() {
+            self.span_rename(format!("{method} {route}"));
+            self.span_set("http.route", route);
+            self.span_set("grenat.trigger", trigger);
         }
     }
 }

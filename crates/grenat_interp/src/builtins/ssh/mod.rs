@@ -52,6 +52,29 @@ fn outgoing<'p>(args: &Args<'p>, target: &str) -> Result<(), Ctrl<'p>> {
     Ok(())
 }
 
+/// An SSH call (`connect`, `run`, `upload`, `list`…) in its span, on `host`.
+pub(crate) fn traced_ssh<'p>(
+    interp: &mut Interp<'p>,
+    operation: &str,
+    host: &str,
+    work: impl FnOnce(&mut Interp<'p>) -> R<'p>,
+) -> R<'p> {
+    interp.traced(|_| crate::telemetry::ssh_span(operation, host), work)
+}
+
+/// The host of an `SshSession` or `Sftp` record.
+pub(crate) fn host_of(fields: &Fields<'_>) -> String {
+    field(fields, "host").map(Value::to_display).unwrap_or_default()
+}
+
+/// The host `Ssh.connect("user@host")` names (empty when it names none).
+pub(crate) fn host_named(args: &Args<'_>) -> String {
+    match args.pos.first() {
+        Some(Value::Str(text)) => crate::ssh::Target::parse(text).map(|t| t.host).unwrap_or_default(),
+        _ => String::new(),
+    }
+}
+
 impl<'p> Interp<'p> {
     /// The connection behind an `SshSession` or `Sftp` record (its `id`).
     fn ssh_entry(&self, fields: &Fields<'p>) -> Result<SharedSsh, Ctrl<'p>> {

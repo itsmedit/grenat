@@ -3,7 +3,7 @@
 
 use std::process::ExitCode;
 
-use grenat_driver::{load, options_for, render_runtime_error};
+use grenat_driver::{load, options_for, render_runtime_error, telemetry_from_env};
 
 /// Where webhooks are received, by default.
 const DEFAULT_ADDRESS: &str = "127.0.0.1:3000";
@@ -35,7 +35,8 @@ pub fn serve(args: &[String]) -> ExitCode {
     };
     let Some(loaded) = load(&path, false) else { return ExitCode::FAILURE };
     let listening = |at: &str| eprintln!("listening on http://{at}");
-    match grenat_interp::serve(&loaded.program, options_for(&path), &address, listening) {
+    let options = grenat_interp::Options { telemetry: telemetry_from_env(), ..options_for(&path) };
+    match grenat_interp::serve(&loaded.program, options, &address, listening) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             render_runtime_error(&loaded.sources, &error);

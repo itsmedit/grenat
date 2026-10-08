@@ -84,8 +84,12 @@ pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &s
         }
         Value::Record(r) if &*r.ty == MAILER && name == "send" => Some(mailer_send(interp, &r.fields, &args)),
         Value::Record(r) if &*r.ty == SHELL_RESULT && name == "ok?" => shell_result_method(&r.fields, name),
-        Value::Record(r) if &*r.ty == SSH_SESSION => Some(ssh_session_method(interp, &r.fields, name, args)),
-        Value::Record(r) if &*r.ty == SFTP => Some(file_method(interp, &r.fields, name, &args)),
+        Value::Record(r) if &*r.ty == SSH_SESSION => {
+            Some(traced_ssh(interp, name, &host_of(&r.fields), |i| ssh_session_method(i, &r.fields, name, args)))
+        }
+        Value::Record(r) if &*r.ty == SFTP => {
+            Some(traced_ssh(interp, name, &host_of(&r.fields), |i| file_method(i, &r.fields, name, &args)))
+        }
         Value::Record(r) if &*r.ty == SSH_RESULT && name == "ok?" => ssh_result_method(&r.fields, name),
         Value::Record(r) => match name {
             "with" => Some((|| {

@@ -65,6 +65,8 @@ pub fn run_evals(
     filter: Option<&str>,
 ) -> Result<Vec<EvalReport>, RuntimeError> {
     crate::on_interpreter_thread(|green| {
+        // evals are measured in their reports, not traced
+        let options = crate::Options { telemetry: None, ..options };
         let mut interp = Interp::new(program, options, spawner(green))?;
         if let Err(ctrl) = interp.run_script() {
             return Err(interp.runtime_error(ctrl));

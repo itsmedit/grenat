@@ -614,6 +614,81 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 16 status: OpenTelemetry
+
+A team running agents in production follows their latency, their errors and what they cost in Datadog, Grafana or Honeycomb, next to the rest of its services — not only in `grenat console`. `grenat run` and `grenat serve` now export traces over OTLP/HTTP when the standard `OTEL_*` variables say where: a span for each request, trigger run, job, workflow and step, agent `ask`, model call, tool call, `Http` request and SSH call, model calls described by the OpenTelemetry GenAI conventions, with their tokens and their cost. Nothing changes in the program.
+
+```sh
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io
+export OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=your-api-key
+export OTEL_SERVICE_NAME=support-agents
+export OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production
+grenat serve
+```
+
+```ruby
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+struct Triage
+  queue: String
+  urgent: Bool
+end
+
+## Finds a customer's open tickets.
+tool open_tickets(email: String) -> String uses net("crm.acme.com")
+  Http.get("https://crm.acme.com/tickets", query: {email: email}).body.trust!
+end
+
+agent Triager
+  model :fast
+  tools open_tickets
+  instructions "Route the message to billing, tech or sales."
+  on Classify(text: String) -> ~Triage
+    run "Message: #{text}"
+  end
+end
+
+workflow handle(text: String) -> String
+  triager = spawn Triager
+  triage = step(:triage) { triager.ask(Classify(text: text)).check { |t| t.queue.size < 20 }? }
+  step(:route) { triage.queue }
+end
+
+on_webhook "/support" do |req|
+  enqueue(:handle, req.json.check { |j| j["text"].is_a?(String) }?["text"].to_s)
+  "queued"
+end
+```
+
+A message posted to `/support` is one trace: `POST /support` (the request, continuing the caller's trace if it sent `traceparent`); the job `job handle` starts a trace of its own, holding `invoke_workflow handle`, `step triage`, `invoke_agent Triager`, its turns `chat claude-haiku-4-5` with their tokens and cost, `execute_tool open_tickets`, and inside it the `GET` to the CRM — which receives a `traceparent` and continues the trace in its own service.
+
+- **Turning it on.** `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (the full URL), else `OTEL_EXPORTER_OTLP_ENDPOINT` (`/v1/traces` appended: `http://localhost:4318` for a local collector); neither set, nothing is exported and nothing runs. `OTEL_EXPORTER_OTLP_HEADERS` (or `…_TRACES_HEADERS`) are sent with every export — `key=value,key2=value2`, values percent-decoded, never written anywhere. `OTEL_SERVICE_NAME` names the service (else `service.name` from `OTEL_RESOURCE_ATTRIBUTES`, else `unknown_service:grenat`); `OTEL_RESOURCE_ATTRIBUTES` adds to the resource, with `telemetry.sdk.name=grenat`. `OTEL_SDK_DISABLED=true` or `OTEL_TRACES_EXPORTER=none` turn it off. `OTEL_EXPORTER_OTLP_TIMEOUT` (milliseconds, 10 s by default) bounds each export. A setting written wrong (an endpoint that is not an http(s) URL, `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`, a timeout that is not a number) is a warning on standard error, and nothing is exported. `grenat test` and `grenat eval` never export: their runs are not production's.
+- **The wire.** OTLP/HTTP, `POST` with `Content-Type: application/json`, the JSON encoding OTLP specifies: an `ExportTraceServiceRequest`, field names in lowerCamelCase, trace and span ids in lowercase hex (not base64), `kind` and status codes as integers, nanosecond times and 64-bit integers as decimal strings, one resource and one instrumentation scope (`grenat`, its version). The OpenTelemetry Collector, Honeycomb, Grafana Cloud, Datadog's OTLP intake and Jaeger take it on their OTLP/HTTP port (4318). A `2xx` is accepted; any other answer, or none in time, fails the batch.
+- **The spans.** Each operation is a span, closed when it returns:
+
+  | Span | Kind | Attributes |
+  |---|---|---|
+  | `grenat run` (the root of a run) | internal | |
+  | `GET /tickets/:id` (a request served; `GET` when no route matched) | server | `http.request.method`, `http.route` (the template declared, never the path asked), `http.response.status_code`, `grenat.trigger` (`route`, `webhook`, `slack`, `expose`) |
+  | `schedule every 300s`, `email imap.acme.com/INBOX`, `file inbox/*.pdf` | internal | `grenat.trigger`, `grenat.trigger.label`, `grenat.email.uid` |
+  | `job digest` | consumer | `grenat.job.id`, `grenat.job.name`, `grenat.job.attempt` |
+  | `invoke_workflow publish`, `step research` | internal | `gen_ai.operation.name`, `gen_ai.workflow.name`, `grenat.workflow.journaled_steps`, `grenat.workflow.replayed`; `grenat.step.name`, `grenat.step.occurrence`, `grenat.step.replayed` |
+  | `invoke_agent Triager` (an `ask`, the wait for the agent's turn included) | internal | `gen_ai.operation.name`, `gen_ai.agent.name`, `grenat.agent.message` (the message's type) |
+  | `chat claude-haiku-4-5`, `embeddings voyage-3`, `transcription whisper-1` | client | see below |
+  | `execute_tool open_tickets` | internal | `gen_ai.operation.name`, `gen_ai.tool.name`, `gen_ai.tool.call.id`, `gen_ai.tool.type` (`function`, `extension` for an MCP server's), `grenat.mcp.server` |
+  | `GET` (an `Http` request, its `429` retries included) | client | `http.request.method`, `server.address`, `server.port`, `http.response.status_code`, `http.request.resend_count` |
+  | `ssh connect`, `ssh run`, `ssh upload`, `ssh list`… | client | `server.address`, `grenat.ssh.operation`, `process.exit.code` |
+
+- **Model calls.** As the GenAI semantic conventions (development status, from their repository `open-telemetry/semantic-conventions-genai`) describe an inference: `gen_ai.operation.name` (`chat`, `embeddings`, or `transcription`, a custom value), `gen_ai.provider.name` (their well-known values: `anthropic`, `openai`, `gcp.gemini`, `mistral_ai`, `x_ai`, `groq`, `deepseek`; Grenat's name for the others — `gen_ai.system` is the deprecated name, not sent), `gen_ai.request.model`, `gen_ai.response.model` (what answered, a fallback's), `gen_ai.response.finish_reasons`, `gen_ai.usage.input_tokens` (cached tokens included, as they ask), `gen_ai.usage.output_tokens`, `gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_write.input_tokens`, `gen_ai.agent.name` in an agent's turn — and `grenat.usage.cost_usd`, what the call cost in dollars, priced as budgets and the console price it (the attempts a server-side fallback billed added up). A prompt is its size: `grenat.prompt.messages`, `grenat.prompt.bytes`, `grenat.request.tools`. Streams, batches (`batch_map`), mocks and cassettes are spans like any call.
+- **Parents.** The spans a task opens nest in the order they run. A task started by another (`parallel_map`, `race`, `tell`) opens its spans as children of the span its parent was in, so a fan-out of forty agents is forty branches of one trace. A request served continues the trace of the `traceparent` it received (W3C Trace Context, version `00`; an invalid header starts a new trace). A job, a schedule, a mailbox's and a folder's run start a trace each: what queued them is long gone.
+- **`traceparent` going out.** When spans are exported, every `Http` request carries the W3C `traceparent` of its span (`00-<trace>-<span>-01`), so that a service instrumented with OpenTelemetry continues the trace; one the program sets itself (`headers: {"traceparent" => …}`) is kept. It says nothing but random ids. It is never sent when nothing is exported — so never in tests — nor to model providers, Slack, SMTP or MCP servers, whose traces would not be the team's. `tracestate` and baggage are not sent.
+- **What never leaves.** By default spans carry names, ids, counts, sizes, tokens, costs, status codes — never a secret, a prompt's text or system instructions, a model's answer, a tool's arguments or result, a URL (its path and query hold data, sometimes a key), a request's path, a command run over SSH, a file's name, an email's subject, nor an error's message. An error is recorded on its span as OpenTelemetry says: status `ERROR`, `error.type` and an `exception` event with `exception.type` (`LlmError`, `RuntimeError`…). A request answered `5xx` and an `Http` call answered `4xx` or `5xx` fail their span (`error.type` is the status). A job waiting for a human is no error.
+- **Capturing content.** `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` — off by default — adds the conventions' opt-in attributes: `gen_ai.system_instructions`, `gen_ai.input.messages` and `gen_ai.output.messages` (roles and parts: texts, tool calls and their answers; images, documents and audio as their type only), and `exception.message`, with every credential the run has read blanked out as `[secret]`. Secrets never reach a model, so prompts hold none; prompts and answers do hold the users' data: capture it only where the collector may keep it.
+- **The exporter.** Ended spans wait in a bounded queue (`OTEL_BSP_MAX_QUEUE_SIZE`, 2048) and a thread of their own sends them in batches (`OTEL_BSP_MAX_EXPORT_BATCH_SIZE`, 512) every `OTEL_BSP_SCHEDULE_DELAY` (5 s) or once a batch is full. The program never waits for it: ending a span takes a lock held to push it, and a span that finds the queue full is dropped and counted. A collector down or slow costs the exporter's thread its time — each export bounded by its timeout — never a task's; a batch that fails is dropped and counted, not sent again. At the end of `grenat run`, the spans still queued are sent, waiting 5 s at most, and what could not be exported is said once on standard error (`warning: OpenTelemetry: spans 12 not exported (collector unreachable: …), 3 dropped (the queue was full)`). `grenat serve` sends as it goes.
+- **Tests.** Programs' tests export nothing and need nothing: tracing is configured by the environment of `grenat run` and `grenat serve` only.
+- **Tests of the implementation.** Ids (random, unique, never zero, lowercase hex), `traceparent` read and written (the specification's example, invalid headers, later versions), attributes set and summed, cut texts, the OTLP JSON of a span (ids, kinds, times as strings, attributes of every type, events, status, a root without parent), the configuration (endpoints, the traces' own winning, headers percent-decoded and never echoed, resource, timeouts, batching, disabled, `grpc` refused). The exporter against a fake collector: spans arriving with their headers and parents, a collector down (a thousand spans ended without waiting, all counted as failed), a slow one (the program not held, a flush waiting its time only, everything arriving later), an export timing out, a full queue dropping and counting. The interpreter against a fake collector and a fake service: one trace for a run — workflow, steps, an agent's ask, its turns with their tokens and cost, its tool call, `parallel_map`'s calls children of the span they ran in, an `Http` call sending a `traceparent` the service received —, SSH calls, errors by their type and their message only when captured (a credential blanked out), the captured prompts and answers, and none of a secret, a prompt, an answer, a URL's path or query; `grenat serve`: a request continuing its caller's trace, named by its route, a `500` failing its span, jobs (a failed one too) and a schedule; a collector down or slow changing nothing but a warning, and the end of a run held by its timeout at most; a full queue dropping spans and saying how many.
+- **Limits.** Traces only: no metrics (`gen_ai.client.token.usage`) and no logs yet. OTLP/HTTP with JSON only — not protobuf, not gRPC; no compression. Every span is recorded: no sampling, and a caller's `sampled` flag is not honoured. A failed batch is not retried, even after a `429` or `503`. A job does not link to the request that queued it. Under `grenat serve`, a process killed loses the spans of its last few seconds (`OTEL_BSP_SCHEDULE_DELAY` lowers it). A built executable (`grenat build`) exports as `grenat run` does; `grenat build --native` does not.
+
 ### Phase 16 status: rate limits
 
 A CRM allows 10 calls a second, GitHub 5000 an hour, a model provider so many requests a minute — and a program running forty agents at once, jobs beside them, goes over and gets `429 Too Many Requests` back. `limit` declares a host's quota once; every call to the host, from any task, agent or job of the process, waits its turn instead of failing.

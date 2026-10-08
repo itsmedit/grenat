@@ -133,7 +133,9 @@ impl<'p> Interp<'p> {
                         continue;
                     }
                 };
-                match self.call_block(&block, vec![email_value(&message)]) {
+                let start =
+                    |_: &Self| crate::telemetry::trigger_span("email", &label).attr("grenat.email.uid", i64::from(uid));
+                match self.traced(start, |interp| interp.call_block(&block, vec![email_value(&message)])) {
                     Ok(_) => {
                         watch.attempts.forget(validity, uid);
                         let inbox = &mut watch.inbox;

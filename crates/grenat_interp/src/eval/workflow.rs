@@ -69,8 +69,21 @@ impl<'p> Interp<'p> {
         }
     }
 
-    /// Runs a workflow's body, or returns the result of a completed run.
+    /// Runs a workflow's body, or returns the result of a completed run,
+    /// in its span (`invoke_workflow <name>`).
     pub(crate) fn run_workflow(&mut self, def: &'p FnDef, run: Arc<WorkflowRun>) -> R<'p> {
+        let start = |_: &Self| {
+            grenat_otel::SpanStart::new(format!("invoke_workflow {}", run.name), grenat_otel::Kind::Internal)
+                .attr("gen_ai.operation.name", "invoke_workflow")
+                .attr("gen_ai.workflow.name", run.name.as_str())
+                .attr("grenat.workflow.journaled_steps", run.done.len())
+                .attr("grenat.workflow.replayed", run.result.is_some())
+        };
+        let traced = run.clone();
+        self.traced(start, |interp| interp.run_workflow_body(def, traced))
+    }
+
+    fn run_workflow_body(&mut self, def: &'p FnDef, run: Arc<WorkflowRun>) -> R<'p> {
         if let Some(result) = &run.result {
             if self.log {
                 self.write_err(&format!("[workflow] {}: completed earlier, result replayed\n", run.name));
@@ -104,7 +117,27 @@ impl<'p> Interp<'p> {
             *count += 1;
             *count - 1
         };
-        if let Some(json) = run.done.get(&(name.to_string(), n)) {
+        let replayed = run.done.get(&(name.to_string(), n));
+        let start = |_: &Self| {
+            grenat_otel::SpanStart::new(format!("step {name}"), grenat_otel::Kind::Internal)
+                .attr("grenat.workflow.name", run.name.as_str())
+                .attr("grenat.step.name", name)
+                .attr("grenat.step.occurrence", n)
+                .attr("grenat.step.replayed", replayed.is_some())
+        };
+        self.traced(start, |interp| interp.run_step(&run, name, n, replayed, block))
+    }
+
+    /// A step's block run and journaled, or its journaled value replayed.
+    fn run_step(
+        &mut self,
+        run: &WorkflowRun,
+        name: &str,
+        n: usize,
+        replayed: Option<&Json>,
+        block: &Value<'p>,
+    ) -> R<'p> {
+        if let Some(json) = replayed {
             if self.log {
                 self.write_err(&format!("[workflow] {}: step :{name} replayed\n", run.name));
             }

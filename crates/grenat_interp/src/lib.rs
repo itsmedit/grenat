@@ -31,6 +31,7 @@ mod ssh;
 mod stack;
 mod state;
 mod task;
+mod telemetry;
 mod value;
 
 use std::collections::VecDeque;
@@ -119,6 +120,10 @@ pub struct Options {
     /// Where Slack's Web API is (default `https://slack.com/api`): a fake
     /// Slack's address, in tests.
     pub slack_api: Option<String>,
+    /// Where spans go (OpenTelemetry), if anywhere: `grenat run` and
+    /// `grenat serve` read it from the `OTEL_*` environment variables
+    /// (see `grenat_otel::Config`); tests export nothing.
+    pub telemetry: Option<Arc<grenat_otel::Tracer>>,
 }
 
 impl Default for Options {
@@ -139,26 +144,33 @@ impl Default for Options {
             bridges: Vec::new(),
             trusted_certificates: Vec::new(),
             slack_api: None,
+            telemetry: None,
         }
     }
 }
 
-/// Runs the top-level statements, then `main` if it exists.
-/// Waits for every spawned task (`tell`, `race` losers) to finish.
+/// Runs the top-level statements, then `main` if it exists, in the span
+/// `grenat run` (the root of the run's trace).
+/// Waits for every spawned task (`tell`, `race` losers) to finish, then
+/// for the spans to be sent (a few seconds at most).
 pub fn run_main(program: &Program, args: Vec<String>, options: Options) -> Result<Summary, RuntimeError> {
     on_interpreter_thread(|green| {
         let mut interp = Interp::new(program, options, spawner(green))?;
-        let result = interp.run_script().and_then(|()| match interp.fns.get("main").copied() {
-            Some(main) => {
-                let mut call_args = Args::default();
-                if !main.params.is_empty() {
-                    call_args.pos.push(Value::array(args.into_iter().map(Value::str).collect()));
+        let start = |_: &Interp| grenat_otel::SpanStart::new("grenat run", grenat_otel::Kind::Internal);
+        let result = interp.traced(start, |interp| {
+            interp.run_script().and_then(|()| match interp.fns.get("main").copied() {
+                Some(main) => {
+                    let mut call_args = Args::default();
+                    if !main.params.is_empty() {
+                        call_args.pos.push(Value::array(args.into_iter().map(Value::str).collect()));
+                    }
+                    interp.call_fn(main, call_args, None).map(drop)
                 }
-                interp.call_fn(main, call_args, None).map(drop)
-            }
-            None => Ok(()),
+                None => Ok(()),
+            })
         });
         interp.wait_for_tasks();
+        interp.finish_telemetry();
         let exit_code = match result {
             Ok(()) | Err(Ctrl::Return(_)) => 0,
             Err(Ctrl::Exit(code)) => code,
@@ -170,7 +182,7 @@ pub fn run_main(program: &Program, args: Vec<String>, options: Options) -> Resul
 
 /// Runs the script (which registers the `test "…" do … end` blocks), then each test.
 pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>, RuntimeError> {
-    let options = Options { offline: true, ..options };
+    let options = Options { offline: true, telemetry: None, ..options };
     on_interpreter_thread(|green| {
         let mut interp = Interp::new(program, options, spawner(green))?;
         if let Err(ctrl) = interp.run_script() {

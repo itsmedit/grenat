@@ -56,6 +56,14 @@ impl<'p> Interp<'p> {
             let response = self.llm_call(request)?;
             return self.give_whole(&response, on_piece).map(|()| response);
         }
+        self.traced(
+            |interp| crate::telemetry::chat_span(interp, request),
+            |interp| interp.stream_model(request, on_piece),
+        )
+    }
+
+    /// A streamed call, its pieces given to `on_piece` as they come.
+    fn stream_model(&mut self, request: &Request, on_piece: &mut OnPiece<'_, 'p>) -> Result<Response, Ctrl<'p>> {
         self.before_call(request)?;
         let started = Instant::now();
         let provider = self.provider(request.model)?;

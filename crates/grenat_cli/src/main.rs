@@ -161,7 +161,12 @@ fn run(args: &[String]) -> ExitCode {
         },
     };
     let Some(loaded) = load(&path, unchecked) else { return ExitCode::FAILURE };
-    let options = grenat_interp::Options { log, jit, ..grenat_driver::options_for(&path) };
+    let options = grenat_interp::Options {
+        log,
+        jit,
+        telemetry: grenat_driver::telemetry_from_env(),
+        ..grenat_driver::options_for(&path)
+    };
     ExitCode::from(execute(&loaded.sources, &loaded.program, args.to_vec(), options))
 }
 

@@ -2,7 +2,8 @@
 //! database when it has one: each model call and its cost (on behalf of
 //! which agent, workflow and job, and what the prompt cache served), what failed while serving — refusals
 //! included — and eval runs. Recording never fails a program: a write that
-//! fails is reported, and the program goes on.
+//! fails is reported, and the program goes on. Each model call is counted
+//! on its OpenTelemetry span as well (see `crate::telemetry`).
 
 use grenat_ops::calls::Call;
 use grenat_ops::{calls, evals, events};
@@ -23,7 +24,9 @@ impl<'p> Interp<'p> {
     }
 
     /// A model call, on behalf of the running agent, workflow and job.
+    /// Counted on the call's span too (see `crate::telemetry`).
     pub(crate) fn record_call(&mut self, model: &str, usage: &grenat_llm::Usage, cost_usd: f64) {
+        self.span_usage(usage, cost_usd);
         let call = Call {
             at: now(),
             model: model.to_string(),

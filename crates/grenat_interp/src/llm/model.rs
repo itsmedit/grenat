@@ -172,7 +172,12 @@ impl<'p> Interp<'p> {
         Ok(key)
     }
 
+    /// A model call, in its span (`chat <model>`).
     pub(crate) fn llm_call(&mut self, request: &Request) -> Result<Response, Ctrl<'p>> {
+        self.traced(|interp| crate::telemetry::chat_span(interp, request), |interp| interp.call_model(request))
+    }
+
+    fn call_model(&mut self, request: &Request) -> Result<Response, Ctrl<'p>> {
         self.before_call(request)?;
         let started = Instant::now();
         let batched = self.batch.clone();
@@ -251,6 +256,7 @@ impl<'p> Interp<'p> {
             );
             self.write_err(&line);
         }
+        self.span_response(&response);
         match response.stop_reason.as_str() {
             "refusal" => return raise("LlmRefusal", "the model refused the request"),
             "max_tokens" => return raise("LlmError", "truncated response: increase the model's `max_tokens`"),

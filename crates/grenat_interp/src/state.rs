@@ -161,6 +161,8 @@ pub(crate) struct Shared<'p> {
     pub natives: grenat_native::Registry,
     /// The functions of bridge facets (`native def` too), by name.
     pub bridges: grenat_bridge::Registry,
+    /// Where spans go (see [`Options::telemetry`] and `crate::telemetry`).
+    pub tracer: Option<Arc<grenat_otel::Tracer>>,
 }
 
 /// An execution task: its call stack, budgets and capabilities.
@@ -192,6 +194,10 @@ pub(crate) struct Interp<'p> {
     pub approval_rank: std::cell::Cell<usize>,
     /// The batch this task's model calls go to (`batch_map`).
     pub batch: Option<Arc<crate::eval::batch::BatchRun>>,
+    /// The spans this task opened, innermost last, and the span of the
+    /// task that started this one: the parent of its first span.
+    pub spans: Vec<grenat_otel::Span>,
+    pub trace_parent: Option<grenat_otel::SpanContext>,
 }
 
 impl<'p> Deref for Interp<'p> {
@@ -273,6 +279,7 @@ impl<'p> Interp<'p> {
             jit: None,
             natives: grenat_native::Registry::new(&options.natives),
             bridges,
+            tracer: options.telemetry.clone(),
             journal_dir: Mutex::new(options.journal.clone().unwrap_or_else(|| ".grenat/journal".into())),
         };
         let loaded = shared.load();
@@ -303,6 +310,8 @@ impl<'p> Interp<'p> {
             batch: None,
             current_job: None,
             approval_rank: Default::default(),
+            spans: Vec::new(),
+            trace_parent: None,
         };
         loaded.and_then(|()| interp.load_models()).map_err(|ctrl| interp.runtime_error(ctrl))?;
         if let Some(error) = link_error {

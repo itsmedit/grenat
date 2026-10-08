@@ -21,3 +21,10 @@ pub fn native_from_env() -> bool {
 pub fn record_from_env() -> bool {
     env::var_os("GRENAT_RECORD").is_some_and(|v| v != "0")
 }
+
+/// `OTEL_EXPORTER_OTLP_ENDPOINT` and the other `OTEL_*` variables: where
+/// the spans of `grenat run` and `grenat serve` go (see `grenat_otel::Config`);
+/// `None` when nothing is to be exported.
+pub fn telemetry_from_env() -> Option<std::sync::Arc<grenat_otel::Tracer>> {
+    grenat_otel::Tracer::from_env().map(std::sync::Arc::new)
+}
