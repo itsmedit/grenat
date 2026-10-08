@@ -23,6 +23,7 @@
 mod agents;
 mod builtins;
 mod calls;
+mod chat;
 mod checker;
 mod clock;
 mod collect;

@@ -42,7 +42,7 @@ Usage:
                                  serve the program: routes, `expose`d tools and agents,
                                  `on_webhook` handlers (127.0.0.1:3000 by default),
                                  `every` schedules, `on_email` mailboxes, `on_file`
-                                 folders, and job workers
+                                 folders, clicks of `approvals_in_slack`, and job workers
   grenat console [--listen host:port] [--token <token>] [<file.grn>]
                                  the operations console, in a browser: approvals,
                                  jobs, journals, costs, evals, refusals, MCP servers

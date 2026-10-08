@@ -46,6 +46,7 @@ pub fn serve(
         let folders = interp.folders.borrow().len();
         let database = interp.app_db.borrow().is_some();
         let webhooks = !interp.webhooks.borrow().is_empty()
+            || interp.slack_approvals.borrow().is_some()
             || !interp.routes.borrow().is_empty()
             || !interp.exposures.borrow().is_empty();
         if schedules == 0 && mailboxes == 0 && folders == 0 && !webhooks && !database {

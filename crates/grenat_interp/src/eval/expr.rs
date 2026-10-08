@@ -26,6 +26,7 @@ const BUILTIN_TYPES: &[&str] = &[
     "Conversation",
     "Jobs",
     "Approvals",
+    "Slack",
     "Int",
     "Float",
     "String",

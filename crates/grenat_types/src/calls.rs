@@ -359,10 +359,9 @@ impl<'p> Checker<'p> {
                 self.walk_block(cx, block, &[]);
                 V::new(Ty::Nil)
             }
-            "on_webhook" => {
-                self.walk_block(cx, block, &[V::new(Ty::User(builtins::REQUEST.into()))]);
-                V::new(Ty::Nil)
-            }
+            "on_webhook" => self.on_webhook_call(cx, span, argv, block),
+            "approvals_in_slack" => self.approvals_in_slack_call(cx, span, argv),
+            "deliver_slack_click" => self.deliver_slack_click_call(cx, span, argv),
             "on_email" => self.on_email_call(cx, span, argv, block),
             "deliver_email" => self.deliver_email_call(cx, span, argv),
             "on_file" => self.on_file_call(cx, span, argv, block),

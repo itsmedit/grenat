@@ -71,13 +71,20 @@ pub(crate) struct Shared<'p> {
     pub deliveries: Mutex<Vec<crate::mail::Email>>,
     /// Why every email a test sends fails (`mock_mail(raise: "SMTP down")`).
     pub mail_failure: Mutex<Option<String>>,
-    /// Triggers declared by the script (`every`, `on_webhook`, `on_email`, `on_file`).
+    /// Triggers declared by the script (`every`, `on_webhook`, `on_email`, `on_file`;
+    /// `approvals_in_slack` below).
     pub schedules: Mutex<Vec<crate::builtins::Schedule<'p>>>,
     pub webhooks: Mutex<Vec<crate::builtins::Webhook<'p>>>,
     pub mailboxes: Mutex<Vec<crate::builtins::EmailTrigger<'p>>>,
     pub folders: Mutex<Vec<crate::builtins::FileTrigger<'p>>>,
     /// See [`Options::trusted_certificates`].
     pub trusted_certificates: Vec<Vec<u8>>,
+    /// Approvals decided in Slack (`approvals_in_slack`), and where its Web
+    /// API is (see [`Options::slack_api`]).
+    pub slack_approvals: Mutex<Option<crate::slack::SlackApprovals>>,
+    pub slack_api: String,
+    /// The Slack signatures accepted lately: a replay is refused.
+    pub slack_replays: Mutex<grenat_serve::replay::Replays>,
     /// Routes of a web application (`get "/…" do … end`).
     pub routes: Mutex<Vec<crate::builtins::Route<'p>>>,
     /// Tools and agents served to other programs (`expose`).
@@ -228,6 +235,9 @@ impl<'p> Interp<'p> {
             mailboxes: Mutex::new(Vec::new()),
             folders: Mutex::new(Vec::new()),
             trusted_certificates: options.trusted_certificates.clone(),
+            slack_approvals: Mutex::new(None),
+            slack_api: options.slack_api.clone().unwrap_or_else(|| crate::slack::API.to_string()),
+            slack_replays: Mutex::new(Default::default()),
             routes: Mutex::new(Vec::new()),
             exposures: Mutex::new(Vec::new()),
             mcp_servers: Mutex::new(HashMap::new()),

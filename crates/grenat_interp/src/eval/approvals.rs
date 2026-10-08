@@ -16,6 +16,9 @@
 //! steps without running them: it finds the decision where it stopped. A
 //! question is known by its job and its rank among the questions of a run,
 //! so the same question gets the same answer on every run.
+//!
+//! With `approvals_in_slack`, a question stored is also posted to a Slack
+//! channel, with buttons that decide it (see `eval::slack_approvals`).
 
 use grenat_ops::approvals::{self, Decision};
 
@@ -36,10 +39,11 @@ impl<'p> Interp<'p> {
             Some(Decision::Denied) => return Ok(false),
             Some(Decision::Pending) => {}
             None => {
-                self.store("approvals", |db| approvals::ask(db, job, rank, message, now()))?;
+                let id = self.store("approvals", |db| approvals::ask(db, job, rank, message, now()))?;
                 if self.log {
                     self.write_err(&format!("[approval] job {job} waits: {message}\n"));
                 }
+                self.post_approval(id, job, message);
             }
         }
         raise(SUSPENDED, format!("waiting for a human: {message}"))
@@ -74,9 +78,25 @@ impl<'p> Interp<'p> {
             return raise("TaintError", "an untrusted value decides an approval: check it first");
         }
         self.check_effect("human")?;
-        if !self.store("approvals", |db| approvals::decide(db, id, approved, now()))? {
+        if !self.decide_approval(id, approved, None)? {
             return raise("ArgumentError", format!("no pending approval {id}"));
         }
         Ok(Value::Nil)
+    }
+
+    /// Decides pending approval `id` — recording who decided (`slack:U123`;
+    /// `None`: the program) — and queues again the job that waited for it:
+    /// whether it was pending. `Approvals.approve`, `deny` and a click in
+    /// Slack all decide here.
+    pub(crate) fn decide_approval(&mut self, id: i64, approved: bool, by: Option<&str>) -> Result<bool, Ctrl<'p>> {
+        let decided = self.store("approvals", |db| approvals::decide_by(db, id, approved, now(), by))?;
+        if decided && self.log {
+            let decision = if approved { "approved" } else { "denied" };
+            self.write_err(&format!(
+                "[approval] {id} {decision}{}\n",
+                by.map(|b| format!(" by {b}")).unwrap_or_default()
+            ));
+        }
+        Ok(decided)
     }
 }

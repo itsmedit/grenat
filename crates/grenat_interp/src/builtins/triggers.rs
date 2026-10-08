@@ -6,12 +6,24 @@
 //!   req.json["action"]                          # untrusted
 //!   "ok"                                        # the response
 //! end
+//! on_webhook "/slack/events", signature: :slack, secret: Credentials.fetch(:slack, :signing_secret) do |req|
+//!   …                                           # Slack's Events API, a slash command
+//! end
+//! on_webhook "/teams", signature: :teams, secret: Credentials.fetch(:teams, :security_token) do |req|
+//!   {type: "message", text: "On it."}           # a Teams outgoing webhook's reply
+//! end
 //! ```
 //!
 //! A request whose signature (or token) does not match is refused (401)
-//! before the handler runs. What a request carries is untrusted. In tests,
-//! `deliver_webhook "/github", json: {…}` sends a request, signed as it
-//! must be, through the same path.
+//! before the handler runs: GitHub's (`X-Hub-Signature-256`), Slack's
+//! (`X-Slack-Signature` of `v0:<timestamp>:<body>`, the timestamp within
+//! five minutes of now, the same signature accepted once: a replay is
+//! refused), Teams' (`Authorization: HMAC <base64>`, keyed by the security
+//! token base64-decoded). Slack's `url_verification` — the challenge it
+//! sends when the Events API's Request URL is set — is answered once
+//! verified, without the handler. What a request carries is untrusted. In
+//! tests, `deliver_webhook "/github", json: {…}` sends a request, signed as
+//! it must be, through the same path.
 
 use grenat_serve::Cron;
 
@@ -37,6 +49,11 @@ pub(crate) enum Proof {
     None,
     /// `X-Hub-Signature-256`, as GitHub signs.
     Github(String),
+    /// `X-Slack-Signature` and `X-Slack-Request-Timestamp`, as Slack signs.
+    Slack(String),
+    /// `Authorization: HMAC <base64>`, as a Teams outgoing webhook signs:
+    /// the key, decoded.
+    Teams(Vec<u8>),
     /// `Authorization: Bearer <token>`.
     Token(String),
 }
@@ -62,18 +79,48 @@ pub(crate) fn every<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
     Ok(Value::Nil)
 }
 
+/// What proves who calls a webhook.
+const PROOFS: &str = "`secret:` with `signature: :github`, `:slack` or `:teams`, or `token:`";
+
 pub(crate) fn on_webhook<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
     let path = str_arg(args, 0, "on_webhook")?.to_string();
     if !path.starts_with('/') {
         return raise("ArgumentError", format!("a webhook path starts with `/`, got {path:?}"));
     }
     let named = |n: &str| args.named.iter().find(|(k, _)| k == n).map(|(_, v)| v.clone());
-    let proof = match (named("signature"), named("secret"), named("token")) {
-        (Some(Value::Symbol(kind)), Some(secret), None) if &*kind == "github" => Proof::Github(secret.reveal()),
+    if let Some((option, _)) = args.named.iter().find(|(k, _)| !matches!(k.as_str(), "signature" | "secret" | "token"))
+    {
+        return raise("ArgumentError", format!("`on_webhook` has no option `{option}:` ({PROOFS})"));
+    }
+    if args.named.iter().any(|(_, v)| v.contains_taint()) {
+        return raise("TaintError", "an untrusted value proves who calls `on_webhook`: check it first");
+    }
+    let proof = match (named("signature").map(|s| s.untainted().clone()), named("secret"), named("token")) {
+        (Some(Value::Symbol(kind)), Some(secret), None) => match &*kind {
+            "github" => Proof::Github(secret.reveal()),
+            "slack" => Proof::Slack(secret.reveal()),
+            "teams" => match grenat_serve::signature::teams_key(&secret.reveal()) {
+                Some(key) => Proof::Teams(key),
+                // `Credentials.fetch` in a test without credentials: a stand-in, its bytes the key
+                None if interp.offline && matches!(secret.untainted(), Value::Secret(_)) => {
+                    Proof::Teams(secret.reveal().into_bytes())
+                }
+                None => {
+                    return raise(
+                        "ArgumentError",
+                        "`signature: :teams` takes `secret:` the webhook's security token, as Teams shows it (base64)",
+                    );
+                }
+            },
+            other => return raise("ArgumentError", format!("`on_webhook` knows no `signature: :{other}` ({PROOFS})")),
+        },
         (None, None, Some(token)) => Proof::Token(token.reveal()),
         (None, None, None) => Proof::None,
-        _ => return raise("ArgumentError", "`on_webhook` takes `secret:, signature: :github`, or `token:`"),
+        _ => return raise("ArgumentError", format!("`on_webhook` takes {PROOFS}")),
     };
+    if interp.slack_approvals.borrow().as_ref().is_some_and(|s| s.path == path) {
+        return raise("ArgumentError", format!("`{path}` is the route of `approvals_in_slack`"));
+    }
     let block = block(args, "on_webhook")?;
     interp.webhooks.borrow_mut().push(Webhook { path, proof, block });
     Ok(Value::Nil)
@@ -113,6 +160,12 @@ pub(crate) fn deliver_webhook<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R
             let signature = grenat_serve::signature::github(&secret, &raw.body);
             raw.headers.push(("X-Hub-Signature-256".into(), signature));
         }
+        Some(Proof::Slack(secret)) if !given("X-Slack-Signature") => {
+            raw.headers.extend(interp.slack_headers(&secret, &raw.body));
+        }
+        Some(Proof::Teams(key)) if !given("Authorization") => {
+            raw.headers.push(("Authorization".into(), grenat_serve::signature::teams(&key, &raw.body)));
+        }
         Some(Proof::Token(token)) if !given("Authorization") => {
             raw.headers.push(("Authorization".into(), format!("Bearer {token}")))
         }
@@ -134,20 +187,44 @@ impl<'p> Interp<'p> {
         }
         let header =
             |name: &str| raw.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.clone());
+        let signed = |valid: bool, why: &str| if valid { Ok(()) } else { Err(why.to_string()) };
+        let authorization = header("Authorization");
         let proven = match &proof {
-            Proof::None => true,
-            Proof::Github(secret) => header("X-Hub-Signature-256")
-                .is_some_and(|given| grenat_serve::signature::github_valid(secret, &raw.body, &given)),
-            Proof::Token(token) => header("Authorization").is_some_and(|given| given == format!("Bearer {token}")),
+            Proof::None => Ok(()),
+            Proof::Github(secret) => signed(
+                header("X-Hub-Signature-256")
+                    .is_some_and(|given| grenat_serve::signature::github_valid(secret, &raw.body, &given)),
+                "bad signature",
+            ),
+            Proof::Slack(secret) => self.slack_signed(secret, &raw),
+            Proof::Teams(key) => {
+                signed(grenat_serve::signature::teams_valid(key, &raw.body, authorization.as_deref()), "bad signature")
+            }
+            Proof::Token(token) => {
+                signed(grenat_serve::signature::bearer_valid(token, authorization.as_deref()), "bad token")
+            }
         };
-        if !proven {
+        if let Err(why) = proven {
             if self.log {
-                self.write_err(&format!("[webhook] {}: refused (bad signature or token)\n", raw.path));
+                self.write_err(&format!("[webhook] {}: refused ({why})\n", raw.path));
             }
             return Ok(HttpAnswer::text(401, "unauthorized"));
+        }
+        if let (Proof::Slack(_), Some(challenge)) = (&proof, url_verification(&raw.body)) {
+            return Ok(HttpAnswer::text(200, &challenge));
         }
         let request = request_value(&raw, Vec::new());
         let answer = self.call_block(&handler, vec![request])?;
         Ok(answer_of(&answer))
     }
+}
+
+/// The challenge of Slack's `url_verification` (`{"type": "url_verification",
+/// "challenge": "…"}`), answered as plain text.
+fn url_verification(body: &[u8]) -> Option<String> {
+    let json: serde_json::Value = serde_json::from_slice(body).ok()?;
+    if json["type"] != "url_verification" {
+        return None;
+    }
+    json["challenge"].as_str().filter(|c| c.len() <= 512).map(str::to_string)
 }

@@ -244,13 +244,19 @@ impl<'p> Checker<'p> {
             if t == "Time" {
                 self.time_args(span, n, &argv);
             }
+            if t == "Slack" {
+                self.slack_post_args(span, &argv);
+            }
             if builtins::only_in_tests(t, n) {
                 self.only_in_tests(cx, span, &format!("{t}.{n}"), "it reads what a test did");
             }
             let block_v = self.walk_block(cx, block, &[]);
             if let Some(path) = effect {
                 let mut arg = argv.first().and_then(|a| a.lit.clone());
-                if path == "net" && t == "Mail" {
+                if path == "net" && t == "Slack" {
+                    // Slack's Web API, whatever the channel
+                    arg = Some(crate::chat::SLACK_HOST.to_string());
+                } else if path == "net" && t == "Mail" {
                     // a mail server's host: that of a literal `smtp://` URL
                     arg = arg.and_then(|url| crate::effects::server_host(&url).map(str::to_string));
                 } else if path == "net" {

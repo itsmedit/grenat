@@ -17,7 +17,7 @@ pub const REFUSALS: [&str; 4] = ["TaintError", "CapabilityError", "ApprovalDenie
 pub struct Event {
     pub id: i64,
     pub at: f64,
-    /// `request`, `webhook`, `schedule`, `job`, `email` or `file`.
+    /// `request`, `webhook`, `schedule`, `job`, `email`, `file` or `slack`.
     pub source: String,
     /// Which one: `POST /tickets`, `job 12 (triage)`…
     pub subject: String,

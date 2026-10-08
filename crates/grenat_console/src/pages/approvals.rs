@@ -1,4 +1,5 @@
-//! Approvals: the questions jobs wait on, decided here.
+//! Approvals: the questions jobs wait on, decided here (recorded as decided
+//! by `console`), and who decided the others.
 
 use grenat_ops::approvals::{self, Decision};
 
@@ -30,6 +31,7 @@ pub(crate) fn list(ctx: &mut Ctx) -> Result {
                 clip(&a.message, 90),
                 format!("<a href=\"/jobs/{0}\">job {0}</a>", a.job_id),
                 decision(a.decision),
+                escape(a.decided_by.as_deref().unwrap_or("the program")),
                 ago(a.decided_at.unwrap_or(0.0), ctx.now),
             ]
         })
@@ -42,14 +44,14 @@ pub(crate) fn list(ctx: &mut Ctx) -> Result {
             ("stale", "This approval was already decided.")
         ]),
         table(&["Question", "Job", "Asked", ""], &rows, "Nothing waits for a human."),
-        table(&["Question", "Job", "Decision", "When"], &history, "No decision yet."),
+        table(&["Question", "Job", "Decision", "By", "When"], &history, "No decision yet."),
     );
     page("Approvals", "/approvals", body)
 }
 
 pub(crate) fn decide(ctx: &mut Ctx, id_text: &str, approve: bool) -> Result {
     let Some(id) = id(id_text) else { return Ok(Outcome::NotFound) };
-    let done = if approvals::decide(ctx.db, id, approve, ctx.now)? {
+    let done = if approvals::decide_by(ctx.db, id, approve, ctx.now, Some("console"))? {
         if approve { "approved" } else { "denied" }
     } else {
         "stale"

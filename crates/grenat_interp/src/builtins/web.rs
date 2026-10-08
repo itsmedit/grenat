@@ -124,7 +124,7 @@ fn decode(text: &str) -> String {
 }
 
 /// `a=1&b=x%20y` → [(a, 1), (b, x y)].
-fn query_params(query: &str) -> Vec<(String, String)> {
+pub(crate) fn query_params(query: &str) -> Vec<(String, String)> {
     query
         .split('&')
         .filter(|p| !p.is_empty())
@@ -314,14 +314,18 @@ pub(crate) fn answer_value<'p>(answer: HttpAnswer<'p>, events: Option<Vec<(Optio
 }
 
 impl<'p> Interp<'p> {
-    /// Answers a request: exposed tools, else a webhook, else a route, else
-    /// 404 (405 when the path exists for another method).
+    /// Answers a request: exposed tools, else a webhook, else a click in
+    /// Slack, else a route, else 404 (405 when the path exists for another
+    /// method).
     pub(crate) fn handle_request(&mut self, raw: RawRequest) -> Result<HttpAnswer<'p>, Ctrl<'p>> {
         if let Some(answer) = self.handle_exposed(&raw) {
             return answer;
         }
         if self.webhooks.borrow().iter().any(|w| w.path == raw.path) {
             return self.handle_webhook(raw);
+        }
+        if self.is_slack_click(&raw) {
+            return self.handle_slack_click(&raw).map(|(answer, _)| answer);
         }
         let mut other_method = false;
         let found = self.routes.borrow().iter().find_map(|route| {

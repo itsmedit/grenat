@@ -253,6 +253,8 @@ pub fn static_method(module: &str, name: &str) -> Option<(Ty, Option<&'static st
         ("Jobs", "perform") => (Int, Some("db.write")),
         ("Conversation", "load") => (User(CONVERSATION.into()), Some("fs.read")),
         ("Mail", "deliveries") => (Ty::array(Ty::Hash(Box::new(Str), Box::new(Unknown))), None),
+        // the posted message's `ts`; `net("slack.com")` (see `chat`)
+        ("Slack", "post") => (Str, Some("net")),
         ("Mcp", "call") => (Str, Some("mcp")),
         ("Mcp", "tools") => (Ty::array(Str), Some("mcp")),
         _ => return None,
@@ -282,6 +284,7 @@ pub const MODULES: &[&str] = &[
     "Conversation",
     "Jobs",
     "Approvals",
+    "Slack",
 ];
 
 /// What `Conversation.new` returns.
@@ -334,7 +337,7 @@ pub const TRANSCRIPT_SEGMENT: &str = "TranscriptSegment";
 
 /// Built-in functions whose result comes from outside, hence untrusted.
 pub fn untrusted_result(module: &str, name: &str) -> bool {
-    matches!((module, name), ("Mcp", "call"))
+    matches!((module, name), ("Mcp", "call") | ("Slack", "post"))
 }
 
 /// What `Shell.run` returns.
@@ -519,6 +522,8 @@ pub const GLOBALS: &[&str] = &[
     "deliver_email",
     "on_file",
     "deliver_file",
+    "approvals_in_slack",
+    "deliver_slack_click",
     "cassette",
     "fixture",
     "call",

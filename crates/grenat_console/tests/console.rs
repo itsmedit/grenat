@@ -144,7 +144,11 @@ fn an_approval_is_decided_and_its_job_queued_again() {
     let done = s.post(&format!("/approvals/{approval}/approve"), &csrf);
     assert_eq!((done.status, header(&done, "Location")), (303, Some("/approvals?done=approved")));
     assert_eq!(jobs::get(s.db.as_mut(), job).unwrap().unwrap().status, jobs::Status::Queued);
-    assert!(s.get("/approvals?done=approved").body.contains("the job runs again"));
+    let decided = s.get("/approvals?done=approved").body;
+    assert!(decided.contains("the job runs again"));
+    // recorded as decided here
+    assert!(decided.contains("<td>console</td>"), "{decided}");
+    assert_eq!(approvals::find(s.db.as_mut(), approval).unwrap().unwrap().decided_by.as_deref(), Some("console"));
     // decided once
     let again = s.post(&format!("/approvals/{approval}/deny"), &csrf);
     assert_eq!(header(&again, "Location"), Some("/approvals?done=stale"));

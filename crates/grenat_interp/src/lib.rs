@@ -26,6 +26,7 @@ mod prelude;
 mod process;
 mod program;
 mod serve;
+mod slack;
 mod ssh;
 mod stack;
 mod state;
@@ -115,6 +116,9 @@ pub struct Options {
     /// Certificates (DER) trusted beyond Mozilla's roots by the mailboxes
     /// of `on_email`: a test's own authority, a server of the company's.
     pub trusted_certificates: Vec<Vec<u8>>,
+    /// Where Slack's Web API is (default `https://slack.com/api`): a fake
+    /// Slack's address, in tests.
+    pub slack_api: Option<String>,
 }
 
 impl Default for Options {
@@ -134,6 +138,7 @@ impl Default for Options {
             natives: Vec::new(),
             bridges: Vec::new(),
             trusted_certificates: Vec::new(),
+            slack_api: None,
         }
     }
 }
@@ -205,6 +210,7 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
             interp.env_double.borrow_mut().clear();
             interp.credentials_double.borrow_mut().take();
             interp.frozen_clock.borrow_mut().take();
+            *interp.slack_replays.borrow_mut() = Default::default();
             outcomes.push(TestOutcome { name, error });
         }
         Ok(outcomes)

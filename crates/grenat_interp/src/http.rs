@@ -96,9 +96,14 @@ pub(crate) fn with_query(url: &str, params: &[(String, String)]) -> String {
     if params.is_empty() {
         return url.to_string();
     }
-    let query: Vec<String> = params.iter().map(|(k, v)| format!("{}={}", encode(k), encode(v))).collect();
     let separator = if url.contains('?') { '&' } else { '?' };
-    format!("{url}{separator}{}", query.join("&"))
+    format!("{url}{separator}{}", form(params))
+}
+
+/// `params` as a form's body (`application/x-www-form-urlencoded`), percent-encoded.
+pub(crate) fn form(params: &[(String, String)]) -> String {
+    let pairs: Vec<String> = params.iter().map(|(k, v)| format!("{}={}", encode(k), encode(v))).collect();
+    pairs.join("&")
 }
 
 fn encode(text: &str) -> String {

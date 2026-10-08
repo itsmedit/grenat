@@ -88,6 +88,51 @@ fn an_approval_waits_and_its_decision_resumes_the_job() {
 }
 
 #[test]
+fn a_decision_records_who_took_it() {
+    on_every_database(|db| {
+        let job = jobs::enqueue(db, "deploy", "[]", 0.0, 0.0).unwrap();
+        let first = approvals::ask(db, job, 0, "Deploy?", 1.0).unwrap();
+        let second = approvals::ask(db, job, 1, "Migrate?", 1.0).unwrap();
+        assert_ne!(first, second);
+        let asked = approvals::find(db, first).unwrap().unwrap();
+        assert_eq!((asked.message.as_str(), asked.decision, asked.decided_by), ("Deploy?", Decision::Pending, None));
+        assert!(approvals::decide_by(db, first, false, 2.0, Some("slack:U123")).unwrap());
+        assert!(!approvals::decide_by(db, first, true, 3.0, Some("slack:U999")).unwrap(), "decided once");
+        let decided = approvals::find(db, first).unwrap().unwrap();
+        assert_eq!((decided.decision, decided.decided_by.as_deref()), (Decision::Denied, Some("slack:U123")));
+        assert!(approvals::decide(db, second, true, 4.0).unwrap());
+        assert_eq!(approvals::find(db, second).unwrap().unwrap().decided_by, None);
+        assert_eq!(approvals::find(db, 999).unwrap(), None);
+    });
+}
+
+#[test]
+fn approvals_made_by_an_earlier_grenat_get_who_decided() {
+    on_every_database(|db| {
+        // the table as Grenat made it before a decision recorded who took it
+        let key = db.dialect().primary_key();
+        db.batch(&format!(
+            "CREATE TABLE {} (id {key}, job_id INTEGER NOT NULL, rank INTEGER NOT NULL, message TEXT NOT NULL, \
+             status TEXT NOT NULL, created_at FLOAT NOT NULL, decided_at FLOAT)",
+            approvals::TABLE
+        ))
+        .unwrap();
+        db.execute(
+            &format!(
+                "INSERT INTO {} (job_id, rank, message, status, created_at) VALUES (1, 0, 'Old?', 'pending', 1.0)",
+                approvals::TABLE
+            ),
+            &[],
+        )
+        .unwrap();
+        let old = approvals::pending(db).unwrap();
+        assert_eq!((old.len(), old[0].decided_by.as_deref()), (1, None));
+        assert!(approvals::decide_by(db, old[0].id, true, 2.0, Some("console")).unwrap());
+        assert_eq!(approvals::find(db, old[0].id).unwrap().unwrap().decided_by.as_deref(), Some("console"));
+    });
+}
+
+#[test]
 fn model_calls_are_summed_by_agent_workflow_model_and_day() {
     on_every_database(|db| {
         let call = |at: f64, model: &str, agent: Option<&str>, cost: f64| Call {

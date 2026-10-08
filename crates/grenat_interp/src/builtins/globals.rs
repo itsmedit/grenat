@@ -227,6 +227,8 @@ pub(crate) fn call_global<'p>(interp: &mut Interp<'p>, name: &str, args: Args<'p
         "deliver_email" => interp.deliver_email(&args),
         "on_file" => on_file(interp, &args),
         "deliver_file" => interp.deliver_file(&args),
+        "approvals_in_slack" => approvals_in_slack(interp, &args),
+        "deliver_slack_click" => interp.deliver_slack_click(&args),
         "mcp" => interp.declare_mcp(&args),
         "mock_mcp" => interp.mock_mcp(&args),
         "mock_ssh" => interp.mock_ssh(&args),
