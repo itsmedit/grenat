@@ -1294,14 +1294,14 @@ dependencies = [
 
 [[package]]
 name = "grenat_ast"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_lexer",
 ]
 
 [[package]]
 name = "grenat_bridge"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
  "grenat_bridge",
@@ -1315,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_cli"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
  "grenat_bridge",
@@ -1339,7 +1339,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_codegen"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "cranelift-codegen",
  "cranelift-frontend",
@@ -1354,7 +1354,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_config"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "aes-gcm 0.10.3",
  "base64 0.22.1",
@@ -1365,7 +1365,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_console"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "getrandom 0.2.17",
  "grenat_db",
@@ -1376,7 +1376,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_db"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "postgres",
  "rusqlite",
@@ -1384,7 +1384,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_driver"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
  "grenat_interp",
@@ -1398,7 +1398,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_ext"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ext_macros",
  "inventory",
@@ -1408,7 +1408,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_ext_macros"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
  "grenat_lexer",
@@ -1419,7 +1419,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_fmt"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
  "grenat_lexer",
@@ -1428,7 +1428,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_generate"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_config",
  "grenat_package",
@@ -1437,14 +1437,14 @@ dependencies = [
 
 [[package]]
 name = "grenat_green"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "corosensei",
 ]
 
 [[package]]
 name = "grenat_host"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_codegen",
  "grenat_driver",
@@ -1453,7 +1453,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_imap"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_imap",
  "imap",
@@ -1465,7 +1465,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_interp"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
  "grenat_bridge",
@@ -1494,15 +1494,15 @@ dependencies = [
 
 [[package]]
 name = "grenat_lexer"
-version = "0.1.2"
+version = "0.1.3"
 
 [[package]]
 name = "grenat_limits"
-version = "0.1.2"
+version = "0.1.3"
 
 [[package]]
 name = "grenat_llm"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "serde_json",
  "ureq",
@@ -1510,7 +1510,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_lsp"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
  "grenat_fmt",
@@ -1525,7 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_macros"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
  "grenat_parser",
@@ -1534,7 +1534,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_mcp"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_mcp",
  "serde_json",
@@ -1543,7 +1543,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_native"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
  "grenat_ext",
@@ -1556,7 +1556,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_ops"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_db",
  "serde_json",
@@ -1564,7 +1564,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_otel"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_limits",
  "serde_json",
@@ -1573,7 +1573,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_package"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
  "grenat_bridge",
@@ -1586,7 +1586,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_parser"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
  "grenat_lexer",
@@ -1594,22 +1594,22 @@ dependencies = [
 
 [[package]]
 name = "grenat_report"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
 ]
 
 [[package]]
 name = "grenat_runtime"
-version = "0.1.2"
+version = "0.1.3"
 
 [[package]]
 name = "grenat_sandbox"
-version = "0.1.2"
+version = "0.1.3"
 
 [[package]]
 name = "grenat_serve"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "base64 0.22.1",
  "hmac",
@@ -1619,7 +1619,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_setter"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_bridge",
  "grenat_native",
@@ -1628,7 +1628,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_ssh"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ssh",
  "hmac",
@@ -1641,7 +1641,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_standalone"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "grenat_ast",
  "grenat_report",
@@ -1650,7 +1650,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_types"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "base64 0.22.1",
  "grenat_ast",
@@ -1662,7 +1662,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_watch"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "libc",
  "notify",

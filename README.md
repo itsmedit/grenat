@@ -387,7 +387,7 @@ dates, email), Python's familiarity still pays.
 
 ## Status
 
-The latest release, v0.1.2, has phases 0 to 11; phases 12 to 16 are on `main`.
+The latest release, v0.1.3, has phases 0 to 16.
 
 **Phase 16 — OpenTelemetry**: with `OTEL_EXPORTER_OTLP_ENDPOINT` set, `grenat run` and `grenat
 serve` export traces over OTLP/HTTP (JSON) to Datadog, Grafana, Honeycomb or any collector — a span
@@ -517,9 +517,9 @@ grenat new --app hello && cd hello && grenat test
 **apt or dnf**, with the packages of a release:
 
 ```sh
-curl -LO https://github.com/itsmedit/grenat/releases/download/v0.1.2/grenat_0.1.2_amd64.deb
-sudo apt install ./grenat_0.1.2_amd64.deb                  # Ubuntu, Debian (arm64: _arm64.deb)
-sudo dnf install https://github.com/itsmedit/grenat/releases/download/v0.1.2/grenat-0.1.2-1.x86_64.rpm   # Fedora, RHEL, Amazon Linux (aarch64: .aarch64.rpm)
+curl -LO https://github.com/itsmedit/grenat/releases/download/v0.1.3/grenat_0.1.3_amd64.deb
+sudo apt install ./grenat_0.1.3_amd64.deb                  # Ubuntu, Debian (arm64: _arm64.deb)
+sudo dnf install https://github.com/itsmedit/grenat/releases/download/v0.1.3/grenat-0.1.3-1.x86_64.rpm   # Fedora, RHEL, Amazon Linux (aarch64: .aarch64.rpm)
 ```
 
 **Docker** — the official image, for amd64 and arm64, with a C linker for `grenat build`:
@@ -531,7 +531,7 @@ docker run --rm -v "$PWD":/app -p 3000:3000 ghcr.io/itsmedit/grenat serve --list
 
 ```dockerfile
 # your application's image
-FROM ghcr.io/itsmedit/grenat:0.1.2
+FROM ghcr.io/itsmedit/grenat:0.1.3
 COPY . /app
 CMD ["serve", "--listen", "0.0.0.0:3000"]
 ```
