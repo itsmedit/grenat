@@ -42,13 +42,13 @@ fn read<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
     let Some(media_type) = media_type_of_path(&path) else {
         return raise("ArgumentError", format!("`{path}`: audio is {}", extensions()));
     };
-    let size = std::fs::metadata(&path).or_else(|e| io_error(&path, e))?.len();
+    let file = interp.open_for_reading(&path).or_else(|e| io_error(&path, e))?;
+    let size = file.metadata().or_else(|e| io_error(&path, e))?.len();
     if size > MAX_AUDIO_BYTES as u64 {
         return raise("ArgumentError", too_large(&path, Some(size as usize)));
     }
     // a pipe or a device says no size: what is read stops at the limit
     let mut bytes = Vec::new();
-    let file = std::fs::File::open(&path).or_else(|e| io_error(&path, e))?;
     file.take(MAX_AUDIO_BYTES as u64 + 1).read_to_end(&mut bytes).or_else(|e| io_error(&path, e))?;
     if bytes.len() > MAX_AUDIO_BYTES {
         return raise("ArgumentError", too_large(&path, None));

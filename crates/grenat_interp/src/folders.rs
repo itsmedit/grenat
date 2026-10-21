@@ -2,6 +2,9 @@
 //! own: the folder is scanned at the start, whenever the system tells of a
 //! change (inotify on Linux, FSEvents on macOS), and every `every:` (the
 //! fallback when it tells nothing: a network drive, a folder not there yet).
+//! A folder replaced by another under the same name — removed and made
+//! again, renamed over — is watched anew (inotify follows the directory,
+//! not its name).
 //!
 //! A file is handed to the handler once it has stopped changing for
 //! `settle:` — never half-written — and once per content: its SHA-256 is
@@ -12,9 +15,16 @@
 //!
 //! A handler that raises is an event (`grenat console`) and a line on
 //! standard error; the file is tried again after `every:`, [`MAX_ATTEMPTS`]
-//! times in all, then given up until its content changes. A link leading
-//! out of the folder, an unreadable folder or file: each reported once, an
-//! event too. Nothing stops the server. A path is shown escaped (`{:?}`):
+//! times in all, then given up until its content changes.
+//!
+//! What a scan saw may be swapped before it is read (a file for a link
+//! leading out): the content is digested from the file opened by
+//! [`grenat_watch::open_inside`] — a regular file really inside the folder
+//! — and the handler's own reads of a path in the folder are held to the
+//! same (see `crate::builtins::reading`). A link leading out, at the scan
+//! or when opened, is reported once until its path is gone, however often
+//! it flips back and forth; an unreadable folder once until it is read
+//! again; each an event too. Nothing stops the server. A path is shown escaped (`{:?}`):
 //! its name is the dropper's, and never writes a line of the log.
 
 use std::collections::HashSet;
@@ -35,10 +45,12 @@ struct Watch {
     wake: Option<Wake>,
     /// The last error scanning the folder, recorded as an event once.
     last_error: Option<String>,
-    /// The paths refused at the last scan, each reported once.
+    /// The paths refused, each reported once until it is gone.
     refused: HashSet<PathBuf>,
     /// What the log said last of the system's notifications.
     told: Option<Told>,
+    /// Which directory the system watches (see `grenat_watch::Scan::identity`).
+    watched: Option<(u64, u64)>,
 }
 
 #[derive(PartialEq)]
@@ -64,6 +76,7 @@ impl<'p> Interp<'p> {
             last_error: None,
             refused: HashSet::new(),
             told: None,
+            watched: None,
         };
         for (path, digest) in self.files_store(|db| grenat_ops::files::handled(db, &label)).unwrap_or_default() {
             watch.tracker.remember(PathBuf::from(path), digest);
@@ -73,8 +86,15 @@ impl<'p> Interp<'p> {
             match grenat_green::blocking(|| grenat_watch::scan(&glob)) {
                 Ok(scan) => {
                     watch.last_error = None;
+                    if scan.identity != watch.watched {
+                        // another directory under the same name: inotify still
+                        // watches the one gone
+                        watch.wake = None;
+                        watch.told = None;
+                        watch.watched = scan.identity;
+                    }
                     self.follow_wake(&label, &glob, &mut watch, every);
-                    self.report_refused(&label, &mut watch, scan.refused);
+                    self.report_refused(&label, &mut watch, scan.refused, &scan.found);
                     if std::mem::take(&mut first) && !existing {
                         watch.tracker.skip_present(&scan.found, Instant::now());
                     }
@@ -84,13 +104,13 @@ impl<'p> Interp<'p> {
                         self.files_store(|db| grenat_ops::files::forget(db, &label, &path));
                     }
                     for path in observed.ready {
-                        self.hand_over(&label, i, &mut watch, &path);
+                        self.hand_over(&label, i, &mut watch, &path, &scan.inside);
                     }
                 }
                 Err(e) => {
                     let error = file_error("IoError", format!("cannot read {}: {e}", glob.base().display()));
-                    self.write_err(&format!("[file] {label}: {}: {}\n", error.ty, error.message));
                     if watch.last_error.as_ref() != Some(&error.message) {
+                        self.write_err(&format!("[file] {label}: {}: {}\n", error.ty, error.message));
                         self.record_event("file", &label, &error);
                     }
                     watch.last_error = Some(error.message);
@@ -140,12 +160,21 @@ impl<'p> Interp<'p> {
     }
 
     /// A settled file: its content read, and handed over if it is new.
-    fn hand_over(&mut self, label: &str, i: usize, watch: &mut Watch, path: &Path) {
+    fn hand_over(&mut self, label: &str, i: usize, watch: &mut Watch, path: &Path, inside: &Path) {
         let shown = path.to_string_lossy().into_owned();
         let subject = format!("{label} {shown:?}");
-        let digest = match grenat_green::blocking(|| grenat_watch::digest(path)) {
+        let opened = grenat_green::blocking(|| match grenat_watch::open_inside(path, inside) {
+            Ok(file) => grenat_watch::digest(file).map_err(grenat_watch::OpenError::Io),
+            Err(e) => Err(e),
+        });
+        let digest = match opened {
             Ok(digest) => digest,
-            Err(e) => {
+            Err(grenat_watch::OpenError::Refused(why)) => {
+                self.report_refusal(label, watch, path, why);
+                watch.tracker.passed_over(path);
+                return;
+            }
+            Err(grenat_watch::OpenError::Io(e)) => {
                 let error = file_error("IoError", format!("cannot read {shown:?}: {e}"));
                 self.failed_run(label, watch, path, &subject, &error, "");
                 return;
@@ -193,20 +222,34 @@ impl<'p> Interp<'p> {
         self.files_store(|db| grenat_ops::files::record(db, label, &path, digest, now()));
     }
 
-    /// The links leading out, the names not UTF-8: reported once each.
-    fn report_refused(&mut self, label: &str, watch: &mut Watch, refused: Vec<grenat_watch::Refused>) {
-        let mut now_refused = HashSet::new();
-        for refusal in refused {
-            if !watch.refused.contains(&refusal.path) {
-                let shown = refusal.path.to_string_lossy().into_owned();
-                let subject = format!("{label} {shown:?}");
-                let error = file_error("FileError", format!("refused: {}", refusal.why));
-                self.write_err(&format!("[file] {subject}: {}\n", error.message));
-                self.record_event("file", &subject, &error);
-            }
-            now_refused.insert(refusal.path);
+    /// The links leading out, the names not UTF-8: reported once each,
+    /// until their path is gone — one flipping between a file and a link
+    /// is not reported at each flip.
+    fn report_refused(
+        &mut self,
+        label: &str,
+        watch: &mut Watch,
+        refused: Vec<grenat_watch::Refused>,
+        found: &[grenat_watch::Found],
+    ) {
+        let there: HashSet<&Path> =
+            refused.iter().map(|r| r.path.as_path()).chain(found.iter().map(|f| f.path.as_path())).collect();
+        watch.refused.retain(|path| there.contains(path.as_path()));
+        for refusal in &refused {
+            self.report_refusal(label, watch, &refusal.path, &refusal.why);
         }
-        watch.refused = now_refused;
+    }
+
+    /// `path` refused, reported unless it was already.
+    fn report_refusal(&mut self, label: &str, watch: &mut Watch, path: &Path, why: &str) {
+        if !watch.refused.insert(path.to_path_buf()) {
+            return;
+        }
+        let shown = path.to_string_lossy().into_owned();
+        let subject = format!("{label} {shown:?}");
+        let error = file_error("FileError", format!("refused: {why}"));
+        self.write_err(&format!("[file] {subject}: {}\n", error.message));
+        self.record_event("file", &subject, &error);
     }
 
     /// Runs `f` on the application's database, if it has one: the files

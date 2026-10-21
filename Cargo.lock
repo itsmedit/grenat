@@ -1661,6 +1661,7 @@ dependencies = [
 name = "grenat_watch"
 version = "0.1.2"
 dependencies = [
+ "libc",
  "notify",
  "sha2",
 ]

@@ -63,6 +63,41 @@ end
     ));
 }
 
+#[cfg(unix)]
+#[test]
+fn a_read_under_a_watched_folder_never_follows_a_link_leading_out() {
+    let dir = std::fs::canonicalize(temp_dir("deliver-links")).unwrap();
+    std::fs::create_dir_all(dir.join("inbox/sub")).unwrap();
+    std::fs::write(dir.join("secret.pdf"), "secret").unwrap();
+    std::fs::write(dir.join("inbox/a.pdf"), "mine").unwrap();
+    std::os::unix::fs::symlink(dir.join("secret.pdf"), dir.join("inbox/escape.pdf")).unwrap();
+    std::os::unix::fs::symlink(dir.join("inbox/a.pdf"), dir.join("inbox/alias.pdf")).unwrap();
+    std::os::unix::fs::symlink(&dir, dir.join("inbox/up")).unwrap();
+    let d = dir.display();
+    tests_pass(&format!(
+        "on_file \"{d}/inbox/**/*.pdf\" do |path|
+  File.read(path)
+end
+test \"inside\" do
+  assert_equal \"mine\", File.read(\"{d}/inbox/a.pdf\")
+  assert_equal \"mine\", File.read(\"{d}/inbox/alias.pdf\")
+  assert_equal \"handled\", deliver_file(\"{d}/inbox/alias.pdf\")[\"status\"]
+end
+test \"leading out, swapped after the scan\" do
+  r = deliver_file(\"{d}/inbox/escape.pdf\")
+  assert_equal \"failed\", r[\"status\"]
+  assert r[\"error\"].include?(\"refused: a link leading out of the watched directory\")
+  assert_raises(IoError) {{ File.lines(\"{d}/inbox/escape.pdf\") }}
+  assert_raises(IoError) {{ Pdf.read(\"{d}/inbox/up/secret.pdf\") }}
+  assert_raises(IoError) {{ File.read(\"{d}/inbox/sub/../up/secret.pdf\") }}
+end
+test \"outside the folder: read as it is\" do
+  assert_equal \"secret\", File.read(\"{d}/secret.pdf\")
+end
+"
+    ));
+}
+
 #[test]
 fn deliver_file_is_a_test_double_with_checked_arguments() {
     let e = run_err("on_file \"inbox/*\" do |p|\nend\ndeliver_file(\"inbox/a\")\n", Vec::new());
@@ -130,14 +165,19 @@ fn serve(src: &str) -> Arc<Mutex<String>> {
 /// (FSEvents may take a while to register under load).
 fn serve_told(src: &str) -> Arc<Mutex<String>> {
     let output = serve(src);
+    wait_told(&output, 1);
+    output
+}
+
+/// Waits until the system told of changes `times` times (registered anew).
+fn wait_told(output: &Arc<Mutex<String>>, times: usize) {
     let started = Instant::now();
-    while output.lock().unwrap().matches(": told of changes by the system\n").count() < 1 {
+    while output.lock().unwrap().matches(": told of changes by the system\n").count() < times {
         // FSEvents may answer late: its daemon looks at the test's executable,
         // seconds in a crowded `target/debug/deps`, one registration at a time
         assert!(started.elapsed() < Duration::from_secs(180), "never told:\n{}", output.lock().unwrap());
         std::thread::sleep(Duration::from_millis(20));
     }
-    output
 }
 
 /// Waits (20 s at most) until `done` holds.
@@ -283,6 +323,56 @@ fn served_a_link_leading_out_is_refused() {
     assert!(events[0].0.ends_with("/inbox/escape.pdf\"") && events[0].1 == "FileError", "{events:?}");
 }
 
+#[cfg(unix)]
+#[test]
+fn served_a_file_swapped_for_a_link_while_handled_is_never_read_through_it() {
+    let dir = folder("files-swapped");
+    let inbox = dir.join("inbox");
+    std::fs::write(dir.join("secret.pdf"), "secret").unwrap();
+    std::fs::write(inbox.join("a.pdf"), "mine").unwrap();
+    let i = inbox.display();
+    let src = format!(
+        "on_file \"{i}/*.pdf\", every: 0.2, settle: 0.1 do |path|
+  puts \"start\"
+  sleep 0.8
+  puts \"got #{{File.read(path)}}\"
+end
+"
+    );
+    let output = serve(&src);
+    wait_until("the handler started", &output, |out| out.contains("start\n"));
+    // scanned as a file, swapped for a link leading out before it is read
+    std::fs::remove_file(inbox.join("a.pdf")).unwrap();
+    std::os::unix::fs::symlink(dir.join("secret.pdf"), inbox.join("a.pdf")).unwrap();
+    wait_until("the read refused", &output, |out| out.contains("refused: a link leading out"));
+    std::thread::sleep(Duration::from_millis(1000));
+    let out = output.lock().unwrap().clone();
+    assert!(!out.contains("got secret"), "{out}");
+}
+
+#[cfg(unix)]
+#[test]
+fn served_a_path_flipping_between_a_file_and_a_link_leading_out_is_reported_once() {
+    let dir = folder("files-flipping");
+    let inbox = dir.join("inbox");
+    std::fs::write(dir.join("secret.pdf"), "secret").unwrap();
+    let output = serve(&printing(&format!("{}/*.pdf", inbox.display()), ", every: 0.1, settle: 0"));
+    // each swap a rename over the path: never gone in between
+    let (a, swap) = (inbox.join("a.pdf"), inbox.join("swap"));
+    for n in 0..4 {
+        std::os::unix::fs::symlink(dir.join("secret.pdf"), &swap).unwrap();
+        std::fs::rename(&swap, &a).unwrap();
+        std::thread::sleep(Duration::from_millis(400));
+        std::fs::write(&swap, format!("mine {n}")).unwrap();
+        std::fs::rename(&swap, &a).unwrap();
+        std::thread::sleep(Duration::from_millis(400));
+    }
+    let out = output.lock().unwrap().clone();
+    assert!(!out.contains(": secret"), "{out}");
+    assert!(out.contains("a.pdf: mine"), "{out}");
+    assert_eq!(out.matches("refused: a link leading out").count(), 1, "{out}");
+}
+
 #[test]
 fn served_a_raising_handler_is_retried_then_given_up_and_the_server_goes_on() {
     let dir = folder("files-raising");
@@ -331,6 +421,23 @@ fn served_what_was_handled_is_not_handed_again_after_a_restart() {
     assert!(!second.lock().unwrap().contains("a.pdf"), "{}", second.lock().unwrap());
 }
 
+#[cfg(unix)]
+#[test]
+fn served_a_folder_replaced_between_two_scans_is_watched_again() {
+    let dir = folder("files-replaced");
+    let inbox = dir.join("inbox");
+    let output = serve_told(&printing(&format!("{}/*.pdf", inbox.display()), TOLD));
+    // another directory under the same name, at once: no scan sees it missing
+    std::fs::create_dir_all(dir.join("inbox.new")).unwrap();
+    std::fs::rename(dir.join("inbox.new"), &inbox).unwrap();
+    // the new directory watched (inotify stays on the one gone otherwise)
+    wait_told(&output, 2);
+    std::thread::sleep(Duration::from_millis(500));
+    std::fs::write(inbox.join("a.pdf"), "new folder").unwrap();
+    // scanned once a minute only: handed sooner, it was told of
+    wait_until("told of", &output, |out| out.contains("a.pdf: new folder\n"));
+}
+
 #[test]
 fn served_a_missing_folder_is_reported_then_watched_once_there() {
     let dir = std::fs::canonicalize(temp_dir("files-missing")).unwrap();
@@ -338,7 +445,10 @@ fn served_a_missing_folder_is_reported_then_watched_once_there() {
     let (db_path, database) = events_database();
     let src = format!("{database}{}", printing(&format!("{}/*.pdf", inbox.display()), ", every: 0.3, settle: 0.1"));
     let output = serve(&src);
-    wait_until("reported", &output, |out| out.matches("IoError: cannot read").count() >= 2);
+    wait_until("reported", &output, |out| out.contains("IoError: cannot read"));
+    // scanned again and again: reported once
+    std::thread::sleep(Duration::from_millis(1000));
+    assert_eq!(count(&output, "IoError: cannot read"), 1, "{}", output.lock().unwrap());
     std::fs::create_dir_all(&inbox).unwrap();
     std::fs::write(inbox.join("a.pdf"), "late").unwrap();
     wait_until("handled", &output, |out| out.contains("a.pdf: late\n"));

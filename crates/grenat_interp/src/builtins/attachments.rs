@@ -27,7 +27,11 @@ pub(crate) fn call_attachment<'p>(interp: &mut Interp<'p>, module: &str, name: &
         "read" => {
             interp.check_fs("fs.read", &target)?;
             let media_type = media_type(module, &target)?;
-            let bytes = std::fs::read(&target).or_else(|e| raise("IoError", format!("reading `{target}`: {e}")))?;
+            let mut bytes = Vec::new();
+            interp
+                .open_for_reading(&target)
+                .and_then(|mut file| std::io::Read::read_to_end(&mut file, &mut bytes))
+                .or_else(|e| raise("IoError", format!("reading `{target}`: {e}")))?;
             Ok(attachment(kind, &media_type, "base64", base64(&bytes), Some(file_name(&target))))
         }
         "url" if target.starts_with("https://") || target.starts_with("http://") => {

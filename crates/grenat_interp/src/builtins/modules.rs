@@ -57,12 +57,12 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         ("File", "read") => {
             let path = str_arg(&args, 0, name)?;
             interp.check_fs("fs.read", &path)?;
-            std::fs::read_to_string(&*path).map(Value::str).or_else(|e| io_error("reading", &path, e))
+            read_text(interp, &path).map(Value::str)
         }
         ("File", "lines") => {
             let path = str_arg(&args, 0, name)?;
             interp.check_fs("fs.read", &path)?;
-            let text = std::fs::read_to_string(&*path).or_else(|e| io_error("reading", &path, e))?;
+            let text = read_text(interp, &path)?;
             Ok(Value::array(text.lines().map(Value::str).collect()))
         }
         ("File", "directory?" | "exist?") => {
@@ -134,6 +134,17 @@ pub(crate) fn call_static<'p>(interp: &mut Interp<'p>, ty: &str, name: &str, arg
         }
         _ => unknown(),
     }
+}
+
+/// The text of the file at `path` (see `super::reading`).
+fn read_text<'p>(interp: &Interp<'p>, path: &str) -> Result<String, Ctrl<'p>> {
+    use std::io::Read;
+    let mut text = String::new();
+    interp
+        .open_for_reading(path)
+        .and_then(|mut file| file.read_to_string(&mut text))
+        .or_else(|e| io_error("reading", path, e))?;
+    Ok(text)
 }
 
 pub(crate) fn json_to_untyped<'p>(json: &serde_json::Value) -> Value<'p> {

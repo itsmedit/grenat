@@ -14,6 +14,11 @@
 //! system's watch limit reached, a registration still under way — scans
 //! run on a timer only.
 //!
+//! **Opened, then checked** ([`open_inside`]): what a scan saw may be
+//! swapped for a link before it is read, so a file is opened without
+//! following a link and the file opened must be a regular file inside the
+//! base; its content is read from that descriptor.
+//!
 //! **Settled, then once per content** ([`Tracker`]): a file is handed over
 //! once its stamp has stopped changing for the settling time, and only if
 //! its content ([`digest`], SHA-256) is not the one handed over last for its
@@ -21,6 +26,7 @@
 
 mod digest;
 mod glob;
+mod open;
 mod scan;
 mod settle;
 #[cfg(feature = "watch")]
@@ -28,6 +34,7 @@ mod wake;
 
 pub use digest::digest;
 pub use glob::{Glob, MAX_ALTERNATIVES};
+pub use open::{LEADING_OUT, OpenError, open_inside};
 pub use scan::{Found, Refused, Scan, Stamp, scan};
 pub use settle::{MAX_ATTEMPTS, Observed, Tracker};
 #[cfg(feature = "watch")]

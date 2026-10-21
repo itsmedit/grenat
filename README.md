@@ -415,7 +415,7 @@ only — decides it as the console does, recorded with who decided, the message 
 of changes by inotify on Linux and FSEvents on macOS, scanned on a timer too — and hands each file
 once it has stopped changing (never half-written), once per content (SHA-256, kept in the database
 across restarts), the files there at the start included unless `existing: false`; a link leading
-out of the folder is refused, a failing file retried then given up, the path untrusted;
+out of the folder is refused — checked on the file opened, the handler's reads too — a failing file retried then given up, the path untrusted;
 `deliver_file` hands a handler paths in tests.
 
 **Phase 15 — email in**: `on_email` reads a mailbox (Gmail, Microsoft 365, any IMAP server, over
@@ -696,7 +696,7 @@ end })
 | `grenat_imap` | IMAP over TLS (implicit or STARTTLS): password or OAuth (`XOAUTH2`) logins, unseen messages by UID, flags and moves, MIME parsed into what `on_email` gives; a server in process for tests |
 | `grenat_otel` | OpenTelemetry traces: spans and their ids, W3C `traceparent`, OTLP/HTTP JSON encoding, the `OTEL_*` configuration, a batching exporter on its own thread (bounded queue, drops counted, timeouts) |
 | `grenat_limits` | rate limits shared by every task: token buckets (the generic cell rate algorithm), concurrency slots served in order, pauses, `Retry-After` read as seconds or an HTTP date in its three formats |
-| `grenat_watch` | folders watched for `on_file`: glob patterns, scans that keep links inside, files handed once settled and once per content, the system's notifications (inotify, FSEvents) through `notify` |
+| `grenat_watch` | folders watched for `on_file`: glob patterns, scans that keep links inside, files checked once opened, files handed once settled and once per content, the system's notifications (inotify, FSEvents) through `notify` |
 | `grenat_serve` | triggers: cron schedules, calendar arithmetic, webhook signatures (GitHub, Slack, Teams) and replays refused, the HTTP server of `grenat serve`, streamed responses |
 | `grenat_generate` | `grenat new --app` and `grenat generate`: an application's parts, with their tests |
 | `grenat_ops` | the operations store: jobs, approvals, model calls, events, eval runs, handled files, workflow journals |

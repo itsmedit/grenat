@@ -268,7 +268,7 @@ on_file "inbox/**/*.{pdf,PDF}", settle: 5.s do |path|
 end
 ```
 
-`path` is a `String` as the pattern writes it (`inbox/2026/a.pdf`), untrusted: the dropper chose the name, so check it before a command, a request or a written path. Patterns: `*`, `?`, `[a-z]`, `{a,b}`, `**`; hidden names (`.x`) are left out. Options: `settle:` (2 s), `every:` (10 s), `existing: false` (skip the files there at start). Needs `fs.read` on the folder (`fs.read("inbox")`). A link leading out of the folder is refused; a raising handler is retried three times, then given up until the file changes.
+`path` is a `String` as the pattern writes it (`inbox/2026/a.pdf`), untrusted: the dropper chose the name, so check it before a command, a request or a written path. Patterns: `*`, `?`, `[a-z]`, `{a,b}`, `**`; hidden names (`.x`) are left out. Options: `settle:` (2 s), `every:` (10 s), `existing: false` (skip the files there at start). Needs `fs.read` on the folder (`fs.read("inbox")`). A link leading out of the folder is refused, checked on the file opened: `File.read`/`File.lines`/`Pdf.read`/`Image.read`/`Audio.read` of a path under a watched folder raise `IoError` if it was swapped for a link leading out; a raising handler is retried three times, then given up until the file changes.
 
 Slack and Teams: `approvals_in_slack` posts every question `approve!` asks in a job to a channel, with Approve and Deny buttons that decide it in one click; `on_webhook` checks Slack's and Teams' signatures.
 

@@ -158,6 +158,14 @@ impl Tracker {
         true
     }
 
+    /// `path` as it stands is never handed over (refused when opened): its
+    /// state counts as looked at, what was handed over last stays.
+    pub fn passed_over(&mut self, path: &Path) {
+        if let Some(file) = self.files.get_mut(path) {
+            file.checked = Some(file.stamp);
+        }
+    }
+
     /// `path`'s content (`digest`) was handed over, or given up.
     pub fn handled(&mut self, path: &Path, digest: &str) {
         if let Some(file) = self.files.get_mut(path) {
@@ -264,6 +272,22 @@ mod tests {
         // changed: its attempts start again
         assert_eq!(ready(t.observe(&[found("a", 2, 2)], t0 + RETRY * 5)), ["a"]);
         assert!(!t.failed(a, t0 + RETRY * 5));
+    }
+
+    #[test]
+    fn a_file_passed_over_waits_until_it_changes() {
+        let mut t = Tracker::new(Duration::ZERO, RETRY);
+        let t0 = Instant::now();
+        let a = Path::new("a");
+        assert_eq!(ready(t.observe(&[found("a", 1, 1)], t0)), ["a"]);
+        t.handled(a, "d1");
+        assert_eq!(ready(t.observe(&[found("a", 2, 2)], t0)), ["a"]);
+        t.passed_over(a);
+        assert!(ready(t.observe(&[found("a", 2, 2)], t0 + RETRY)).is_empty());
+        assert_eq!(t.next_check(t0), None);
+        // back as it was: the same content as handed, nothing to hand
+        assert_eq!(ready(t.observe(&[found("a", 1, 1)], t0 + RETRY)), ["a"]);
+        assert!(!t.is_new(a, "d1"));
     }
 
     #[test]

@@ -9,6 +9,8 @@ rust-version.workspace = true
 
 [dependencies]
 sha2 = "0.11"
+# `O_NOFOLLOW`, `O_NONBLOCK` and `F_GETPATH`: a file opened is checked, not its name
+libc = "0.2"
 # The operating system's notifications: inotify on Linux, FSEvents on macOS
 # (the default backend), ReadDirectoryChangesW on Windows. Only a wake-up:
 # scanning the folder decides what changed.

@@ -13,7 +13,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::Glob;
+use crate::{Glob, LEADING_OUT};
 
 /// What tells one state of a file from the next without reading it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +44,11 @@ pub struct Refused {
 
 #[derive(Debug, Default)]
 pub struct Scan {
+    /// The base, resolved: what [`open_inside`](crate::open_inside) holds a file to.
+    pub inside: PathBuf,
+    /// Which directory the base is: another one under the same name (removed
+    /// and made again, renamed over) is told apart, and watched anew.
+    pub identity: Option<(u64, u64)>,
     pub found: Vec<Found>,
     pub refused: Vec<Refused>,
 }
@@ -52,14 +57,28 @@ pub struct Scan {
 pub fn scan(glob: &Glob) -> io::Result<Scan> {
     let base = glob.base();
     let inside = fs::canonicalize(base)?;
-    if !inside.is_dir() {
+    let metadata = fs::metadata(&inside)?;
+    if !metadata.is_dir() {
         return Err(io::Error::new(io::ErrorKind::NotADirectory, format!("{} is not a directory", base.display())));
     }
     let mut out = Scan::default();
     let mut names = Vec::new();
     walk(glob, base, &inside, &mut names, &mut out, true)?;
+    out.inside = inside;
+    out.identity = identity(&metadata);
     out.found.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(out)
+}
+
+#[cfg(unix)]
+fn identity(metadata: &fs::Metadata) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    Some((metadata.dev(), metadata.ino()))
+}
+
+#[cfg(not(unix))]
+fn identity(_: &fs::Metadata) -> Option<(u64, u64)> {
+    None
 }
 
 fn walk(glob: &Glob, dir: &Path, inside: &Path, names: &mut Vec<String>, out: &mut Scan, top: bool) -> io::Result<()> {
@@ -89,7 +108,7 @@ fn walk(glob: &Glob, dir: &Path, inside: &Path, names: &mut Vec<String>, out: &m
             if kind.is_symlink() {
                 match fs::canonicalize(&path) {
                     Ok(target) if !target.starts_with(inside) => {
-                        let why = "a link leading out of the watched directory".to_string();
+                        let why = LEADING_OUT.to_string();
                         out.refused.push(Refused { path, why });
                     }
                     Ok(target) => {
@@ -157,6 +176,20 @@ mod tests {
         assert!(scan(&Glob::parse(&format!("{}/nope/*.pdf", dir.display())).unwrap()).is_err());
         fs::write(dir.join("file"), "x").unwrap();
         assert!(scan(&Glob::parse(&format!("{}/file/*.pdf", dir.display())).unwrap()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn another_directory_under_the_same_name_is_told_apart() {
+        let dir = temp("identity");
+        fs::create_dir_all(dir.join("inbox")).unwrap();
+        let glob = Glob::parse(&format!("{}/inbox/*", dir.display())).unwrap();
+        let first = scan(&glob).unwrap().identity;
+        assert!(first.is_some());
+        assert_eq!(scan(&glob).unwrap().identity, first);
+        fs::create_dir_all(dir.join("inbox.new")).unwrap();
+        fs::rename(dir.join("inbox.new"), dir.join("inbox")).unwrap();
+        assert_ne!(scan(&glob).unwrap().identity, first);
     }
 
     #[cfg(unix)]
