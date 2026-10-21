@@ -25,7 +25,7 @@ fn watched(dir: &std::path::Path, recursive: bool) -> (Wake, Waiter) {
         assert!(wake.stopped().is_none(), "{:?}", wake.stopped());
         // FSEvents' daemon may take seconds per registration (it looks at the
         // test's executable, in a crowded `target/debug/deps`)
-        assert!(started.elapsed() < Duration::from_secs(180), "never registered");
+        assert!(started.elapsed() < Duration::from_secs(600), "never registered");
         std::thread::sleep(Duration::from_millis(10));
     }
     let waiter = wake.waiter();

@@ -174,8 +174,9 @@ fn wait_told(output: &Arc<Mutex<String>>, times: usize) {
     let started = Instant::now();
     while output.lock().unwrap().matches(": told of changes by the system\n").count() < times {
         // FSEvents may answer late: its daemon looks at the test's executable,
-        // seconds in a crowded `target/debug/deps`, one registration at a time
-        assert!(started.elapsed() < Duration::from_secs(180), "never told:\n{}", output.lock().unwrap());
+        // seconds in a crowded `target/debug/deps`, one registration at a time;
+        // with the whole suite running beside it, minutes: 180 s was seen exceeded
+        assert!(started.elapsed() < Duration::from_secs(600), "never told:\n{}", output.lock().unwrap());
         std::thread::sleep(Duration::from_millis(20));
     }
 }
