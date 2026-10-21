@@ -24,6 +24,7 @@ mod agents;
 mod builtins;
 mod calls;
 mod chat;
+mod chat_routes;
 mod checker;
 mod clock;
 mod collect;
@@ -90,6 +91,7 @@ pub fn check(program: &Program) -> Vec<Diagnostic> {
             break;
         }
     }
+    checker.chat_routes_claimed();
     let mut diags = checker.diags;
     diags.sort_by_key(|d| (d.span.start, d.span.end));
     diags

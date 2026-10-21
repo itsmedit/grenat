@@ -4,8 +4,14 @@
 //! signing_secret:, allowed:, path:` — `net("slack.com")`), `Slack.post`'s
 //! arguments (`net("slack.com")` and nothing untrusted, see
 //! `methods::static_call`), and `deliver_slack_click`, inside a `test`
-//! block only. Options are refused here as the runtime refuses them; a
-//! token, a secret or a signing secret is a trusted `String` or `Secret`.
+//! block only. Options are refused here as the runtime refuses them, a
+//! literal one too (a blank channel or token, `allowed:` items that are not
+//! Slack user IDs, a Teams secret that is not base64); a token, a secret or
+//! a signing secret is a trusted `String` or `Secret`. The routes these
+//! claim are compared across the program in `chat_routes`.
+
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 
 use grenat_ast::{Block, Span};
 
@@ -40,6 +46,8 @@ impl<'p> Checker<'p> {
                     );
                 } else if path.lit.as_deref().is_some_and(|p| !p.starts_with('/')) {
                     self.error(E_TYPE, path.span, "a webhook path starts with `/`");
+                } else if let Some(literal) = &path.lit {
+                    self.claim_webhook_route(path.span, literal.clone());
                 }
             }
             _ => self.error(E_TYPE, span, format!("`on_webhook` expects a path: {USAGE}")),
@@ -71,6 +79,13 @@ impl<'p> Checker<'p> {
             }
         }
         let (signature, secret, token) = (named("signature"), named("secret"), named("token"));
+        if let (Some(Some("teams")), Some(secret)) = (signature.map(|s| s.symbol.as_deref()), secret)
+            && secret.lit.as_deref().is_some_and(|key| !is_teams_key(key))
+        {
+            let message =
+                "`signature: :teams` takes `secret:` the webhook's security token, as Teams shows it (base64)";
+            self.error(E_TYPE, secret.span, message);
+        }
         if signature.is_some() != secret.is_some() || (token.is_some() && secret.is_some()) {
             let message = "`on_webhook` takes `secret:` with `signature: :github`, `:slack` or `:teams`, or `token:`";
             self.error(E_TYPE, span, message);
@@ -107,7 +122,16 @@ impl<'p> Checker<'p> {
                 continue;
             };
             match name {
-                "token" | "signing_secret" => self.credential_option(OWNER, arg),
+                "token" | "signing_secret" => {
+                    self.credential_option(OWNER, arg);
+                    if arg.lit.as_deref().is_some_and(|text| text.trim().is_empty()) {
+                        self.error(
+                            E_TYPE,
+                            arg.span,
+                            format!("`{OWNER}` expects `{name}:` a credential, not a blank one"),
+                        );
+                    }
+                }
                 "channel" | "path" | "allowed" => {
                     let expected = if name == "allowed" { Ty::array(Ty::Str) } else { Ty::Str };
                     if secrets::is_secret(&arg.v.ty) {
@@ -125,6 +149,12 @@ impl<'p> Checker<'p> {
                             arg.span,
                             "`approvals_in_slack` expects `channel:` a channel, not a blank one",
                         );
+                    } else if name == "allowed" {
+                        for user in arg.items.iter().flatten().flatten().filter(|user| !is_slack_id(user)) {
+                            let message =
+                                format!("`{OWNER}` takes `allowed:` Slack user IDs (\"U0123ABC\"), got {user:?}");
+                            self.error(E_TYPE, arg.span, message);
+                        }
                     }
                 }
                 _ => {
@@ -140,6 +170,11 @@ impl<'p> Checker<'p> {
                 self.error(E_TYPE, span, format!("`{OWNER}` expects `{required}:`"));
             }
         }
+        let path = match argv.iter().find(|a| a.name.as_deref() == Some("path")) {
+            Some(path) => path.lit.clone(),
+            None => Some(crate::chat_routes::CLICKS_PATH.to_string()),
+        };
+        self.claim_slack_route(span, path);
         // posting and updating messages: declaring opens nothing
         cx.require_effect(Eff { path: "net".into(), arg: Some(SLACK_HOST.into()), origin: span });
         V::new(Ty::Nil)
@@ -162,6 +197,8 @@ impl<'p> Checker<'p> {
             } else if !self.compat(&arg.v.ty, &Ty::Str) {
                 let message = format!("`Slack.post` expects a `String` for `{slot}`, got `{}`", arg.v.ty);
                 self.error(E_TYPE, arg.span, message);
+            } else if slot == "channel" && arg.lit.as_deref().is_some_and(|c| c.trim().is_empty()) {
+                self.error(E_TYPE, arg.span, "`Slack.post` expects a channel, not a blank one");
             }
         }
         for arg in argv.iter().filter(|a| a.name.is_some()) {
@@ -217,4 +254,16 @@ impl<'p> Checker<'p> {
         }
         V::new(Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Unknown)))
     }
+}
+
+/// Whether `id` looks like a Slack ID (`U0123ABC`), as the runtime holds
+/// `allowed:` to (mirrors `grenat_interp`'s `slack::is_id`).
+fn is_slack_id(id: &str) -> bool {
+    (1..=32).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+}
+
+/// Whether `token` is a Teams security token: base64, not empty (mirrors
+/// `grenat_serve::signature::teams_key`).
+fn is_teams_key(token: &str) -> bool {
+    BASE64.decode(token.trim()).is_ok_and(|key| !key.is_empty())
 }

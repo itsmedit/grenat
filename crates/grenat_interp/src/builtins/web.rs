@@ -73,9 +73,28 @@ pub(crate) fn declare_route<'p>(interp: &mut Interp<'p>, method: &str, args: &Ar
         return raise("ArgumentError", format!("a route starts with `/`, got {path:?}"));
     }
     let block = block(args, method)?;
-    let pattern = segments(&path).into_iter().map(str::to_string).collect();
+    let pattern: Vec<String> = segments(&path).into_iter().map(str::to_string).collect();
+    if let Some(clicks) = interp.slack_approvals.borrow().as_ref().map(|s| s.path.clone())
+        && matches(&pattern, &clicks).is_some()
+    {
+        return raise("ArgumentError", never_reached(method, &path, &clicks));
+    }
     interp.routes.borrow_mut().push(Route { method: method.to_uppercase(), pattern, block });
     Ok(Value::Nil)
+}
+
+/// A route the clicks in Slack would answer first.
+pub(crate) fn never_reached(method: &str, path: &str, clicks: &str) -> String {
+    format!(
+        "`{method} \"{path}\"` would never be reached: `{clicks}` is the route of `approvals_in_slack` (give it another `path:`)"
+    )
+}
+
+/// The first route that matches `path`: its method and pattern.
+pub(crate) fn route_matching(interp: &Interp<'_>, path: &str) -> Option<(String, String)> {
+    let routes = interp.routes.borrow();
+    let route = routes.iter().find(|route| matches(&route.pattern, path).is_some())?;
+    Some((route.method.to_lowercase(), format!("/{}", route.pattern.join("/"))))
 }
 
 fn segments(path: &str) -> Vec<&str> {

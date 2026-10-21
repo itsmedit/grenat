@@ -123,6 +123,9 @@ pub(crate) struct ArgV {
     pub(crate) number: Option<f64>,
     /// A symbol written as such (`:outlook_token`).
     pub(crate) symbol: Option<String>,
+    /// An array written as such: each item's string, if a literal one
+    /// (`allowed: ["U0123ABC", id]`).
+    pub(crate) items: Option<Vec<Option<String>>>,
 }
 
 pub(crate) type Key = (usize, Vec<bool>, bool);

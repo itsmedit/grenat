@@ -20,7 +20,8 @@ impl<'p> Checker<'p> {
                         _ => None,
                     });
                     let (number, symbol) = (literal_number(e), literal_symbol(e));
-                    out.push(ArgV { name: None, v, span: e.span, lit, flag: None, number, symbol });
+                    let items = literal_items(e);
+                    out.push(ArgV { name: None, v, span: e.span, lit, flag: None, number, symbol, items });
                 }
                 Arg::Named { name, value } => {
                     let (v, span, lit) = match value {
@@ -33,7 +34,8 @@ impl<'p> Checker<'p> {
                     };
                     let number = value.as_ref().and_then(literal_number);
                     let symbol = value.as_ref().and_then(literal_symbol);
-                    out.push(ArgV { name: Some(name.name.clone()), v, span, lit, flag, number, symbol });
+                    let items = value.as_ref().and_then(literal_items);
+                    out.push(ArgV { name: Some(name.name.clone()), v, span, lit, flag, number, symbol, items });
                 }
                 Arg::BlockPass(e) => {
                     self.expr(cx, e);
@@ -380,6 +382,9 @@ impl<'p> Checker<'p> {
             "deliver_file" => self.deliver_file_call(cx, span, argv),
             "deliver_webhook" | "request" => V::new(Ty::Hash(Box::new(Ty::Str), Box::new(Ty::Unknown))),
             "get" | "post" | "put" | "patch" | "delete" if block.is_some() => {
+                if let Some(path) = argv.first().and_then(|a| a.lit.clone()) {
+                    self.claim_web_route(span, name, path);
+                }
                 self.walk_block(cx, block, &[V::new(Ty::User(builtins::REQUEST.into()))]);
                 V::new(Ty::Nil)
             }

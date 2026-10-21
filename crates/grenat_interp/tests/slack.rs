@@ -266,6 +266,18 @@ fn approvals_in_slack_is_declared_once_with_what_it_needs() {
         Vec::new(),
     );
     assert!(!e.message.contains("xoxb-hidden"), "{}", e.message);
+    // a route the clicks would answer first, in either order
+    let route = "post \"/slack/interactivity\" do |req|\n  \"x\"\nend\n";
+    for src in [
+        format!("{once}{route}"),
+        format!("{route}{once}"),
+        format!("get \"/slack/:kind\" do |req|\n  \"x\"\nend\n{once}"),
+    ] {
+        let e = run_err(&src, Vec::new());
+        assert_eq!(e.ty, "ArgumentError");
+        assert!(e.message.contains("would never be reached"), "{}", e.message);
+    }
+    run(&format!("post \"/slack/events\" do |req|\n  \"x\"\nend\n{once}"));
     // `deliver_slack_click` is a test double
     let e = run_err(&format!("{once}deliver_slack_click(1, action: :approve, user: \"U1\")\n"), Vec::new());
     assert!(e.message.contains("only works in a test"), "{}", e.message);

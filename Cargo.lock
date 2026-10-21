@@ -1651,6 +1651,7 @@ dependencies = [
 name = "grenat_types"
 version = "0.1.2"
 dependencies = [
+ "base64 0.22.1",
  "grenat_ast",
  "grenat_llm",
  "grenat_parser",

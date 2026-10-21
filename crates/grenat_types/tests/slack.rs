@@ -46,6 +46,14 @@ fn a_webhooks_proof_is_checked() {
     single("on_webhook \"/x\", signature: :slack, secret: 42 do |r|\nend\n", "E0200", "42");
     single("on_webhook \"/x\", token: \"t\", every: 1 do |r|\nend\n", "E0200", "1");
     single("on_webhook \"x\" do |r|\nend\n", "E0200", "\"x\"");
+    // a Teams security token is base64
+    let d = single(
+        "on_webhook \"/t\", signature: :teams, secret: \"not base64!\" do |r|\nend\n",
+        "E0200",
+        "\"not base64!\"",
+    );
+    assert!(d.message.contains("base64"), "{}", d.message);
+    clean("on_webhook \"/t\", signature: :teams, secret: \"c2VjcmV0\" do |r|\nend\n");
     single(
         &format!("{PRELUDE}on_webhook \"/x\", signature: :slack, secret: summarize(\"x\").title do |r|\nend\n"),
         "E0412",
@@ -79,6 +87,42 @@ fn approvals_in_slack_takes_its_options() {
 }
 
 #[test]
+fn approvals_in_slack_literals_are_refused_as_the_runtime_refuses_them() {
+    let all = "channel: \"#a\", token: \"x\", signing_secret: \"s\"";
+    let d = single(&format!("approvals_in_slack {all}, allowed: [\"U1\", \"u123\"]\n"), "E0200", "[\"U1\", \"u123\"]");
+    assert!(d.message.contains("\"u123\""), "{}", d.message);
+    clean(&format!("id = \"U9\"\napprovals_in_slack {all}, allowed: [\"U1\", id]\n"));
+    single("approvals_in_slack channel: \"#a\", token: \"\", signing_secret: \"s\"\n", "E0200", "\"\"");
+    single("approvals_in_slack channel: \"#a\", token: \"x\", signing_secret: \"  \"\n", "E0200", "\"  \"");
+    // declared once
+    let twice = format!("approvals_in_slack {all}\napprovals_in_slack {all}\n");
+    let d = single(&twice, "E0200", &format!("approvals_in_slack {all}"));
+    assert_eq!(d.span.start as usize, twice.find('\n').unwrap() + 1, "the second one");
+    assert!(d.message.contains("declared once"), "{}", d.message);
+}
+
+#[test]
+fn the_route_of_approvals_in_slack_is_its_own() {
+    let all = "channel: \"#a\", token: \"x\", signing_secret: \"s\"";
+    let webhook = "on_webhook \"/slack/interactivity\", token: \"t\" do |r|\nend\n";
+    // either order: the second one is refused
+    let d = single(&format!("approvals_in_slack {all}\n{webhook}"), "E0200", "\"/slack/interactivity\"");
+    assert!(d.message.contains("is the route of `approvals_in_slack`"), "{}", d.message);
+    let d = single(&format!("{webhook}approvals_in_slack {all}\n"), "E0200", &format!("approvals_in_slack {all}"));
+    assert!(d.message.contains("already a webhook"), "{}", d.message);
+    let custom = format!("approvals_in_slack {all}, path: \"/clicks\"\n");
+    single(&format!("{custom}on_webhook \"/clicks\", token: \"t\" do |r|\nend\n"), "E0200", "\"/clicks\"");
+    clean(&format!("{custom}{webhook}"));
+    // a route the clicks would answer first
+    for route in ["post \"/slack/interactivity\"", "get \"/slack/:kind\""] {
+        let src = format!("{route} do |req|\n  \"x\"\nend\napprovals_in_slack {all}\n");
+        let d = single(&src, "E0200", &format!("{route} do |req|\n  \"x\"\nend"));
+        assert!(d.message.contains("would never be reached"), "{}", d.message);
+    }
+    clean(&format!("post \"/slack/events\" do |req|\n  \"x\"\nend\napprovals_in_slack {all}\n"));
+}
+
+#[test]
 fn slack_is_net_on_slack_com() {
     let approvals = format!("def setup uses net(\"api.github.com\")\n  {LITERAL}end\n");
     let d = single(&approvals, "E0300", LITERAL.trim_end());
@@ -101,6 +145,7 @@ fn slack_post_posts_nothing_untrusted_and_its_answer_is_untrusted() {
     single("Slack.post(\"#ops\", Credentials.fetch(:a, :b))\n", "E0414", "Credentials.fetch(:a, :b)");
     single("Slack.post(\"#ops\")\n", "E0200", "Slack.post(\"#ops\")");
     single("Slack.post(\"#ops\", 42)\n", "E0200", "42");
+    single("Slack.post(\"   \", \"x\")\n", "E0200", "\"   \"");
     single("Slack.post(\"#ops\", \"x\", thread: \"1.2\")\n", "E0200", "\"1.2\"");
     clean("Slack.post(\"#ops\", \"x\", token: Credentials.fetch(:slack, :ops_token))\n");
     let src = "ts = Slack.post(\"#ops\", \"x\")\nShell.run([\"echo\", ts])\n";

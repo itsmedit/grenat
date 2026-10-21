@@ -122,6 +122,14 @@ pub(crate) fn literal_string(e: &Expr) -> Option<String> {
     }
 }
 
+/// An array written as such: each item's string, if a literal one.
+pub(crate) fn literal_items(e: &Expr) -> Option<Vec<Option<String>>> {
+    match &e.kind {
+        ExprKind::Array(items) => Some(items.iter().map(literal_string).collect()),
+        _ => None,
+    }
+}
+
 impl<'p> Checker<'p> {
     /// In a workflow, a non-deterministic effect outside a `step` would
     /// happen again, differently, when the workflow resumes.

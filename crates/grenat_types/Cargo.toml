@@ -8,6 +8,8 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# A Teams secret written out is base64, as the runtime decodes it.
+base64 = "0.22"
 grenat_ast.workspace = true
 grenat_llm.workspace = true
 # Patterns only (`on_file`): parsed as the runtime parses them.

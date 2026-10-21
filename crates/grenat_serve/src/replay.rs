@@ -19,7 +19,7 @@ impl Replays {
     /// first time; it is remembered. `now` forgets the signatures whose
     /// timestamp could no longer pass.
     pub fn first(&mut self, signature: &str, timestamp: i64, now: i64) -> bool {
-        self.seen.retain(|_, sent| (now - *sent).abs() <= SLACK_TOLERANCE);
+        self.seen.retain(|_, sent| now.abs_diff(*sent) <= SLACK_TOLERANCE.unsigned_abs());
         if self.seen.contains_key(signature) {
             return false;
         }
@@ -67,5 +67,14 @@ mod tests {
         assert!(!replays.seen("v0=a"));
         assert!(!replays.first("v0=b", 1200, 1301));
         assert_eq!(replays.len(), 2);
+    }
+
+    #[test]
+    fn the_farthest_timestamps_never_overflow() {
+        let mut replays = Replays::default();
+        assert!(replays.first("v0=a", i64::MIN, i64::MIN));
+        assert!(replays.first("v0=b", i64::MAX, i64::MAX));
+        assert!(replays.first("v0=c", 0, i64::MAX));
+        assert!(!replays.seen("v0=a"));
     }
 }

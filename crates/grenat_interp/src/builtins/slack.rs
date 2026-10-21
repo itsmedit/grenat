@@ -93,6 +93,9 @@ pub(crate) fn approvals_in_slack<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -
         let message = format!("`{}` is already a webhook: give `approvals_in_slack` another `path:`", slack.path);
         return raise("ArgumentError", message);
     }
+    if let Some((method, route)) = super::route_matching(interp, &slack.path) {
+        return raise("ArgumentError", super::never_reached(&method, &route, &slack.path));
+    }
     *interp.slack_approvals.borrow_mut() = Some(slack);
     Ok(Value::Nil)
 }

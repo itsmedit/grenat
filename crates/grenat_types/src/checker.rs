@@ -78,6 +78,8 @@ pub(crate) struct Checker<'p> {
     /// Array and hash literals holding a secret among other values (the
     /// join of their elements' types loses it).
     pub(crate) secret_literals: HashSet<Span>,
+    /// The routes claimed for chat, compared once all is checked.
+    pub(crate) chat_routes: crate::chat_routes::ChatRoutes,
 }
 
 impl<'p> Checker<'p> {
@@ -99,6 +101,7 @@ impl<'p> Checker<'p> {
             ivar_taint: HashMap::new(),
             ivar_types: HashMap::new(),
             secret_literals: HashSet::new(),
+            chat_routes: Default::default(),
         }
     }
 

@@ -77,7 +77,7 @@ pub fn slack_check(
 ) -> Result<(), SlackRefusal> {
     let (Some(timestamp), Some(signature)) = (timestamp, signature) else { return Err(SlackRefusal::Unsigned) };
     let Ok(sent) = timestamp.trim().parse::<i64>() else { return Err(SlackRefusal::Unsigned) };
-    if (now - sent).abs() > SLACK_TOLERANCE {
+    if now.abs_diff(sent) > SLACK_TOLERANCE.unsigned_abs() {
         return Err(SlackRefusal::Stale);
     }
     if !same(&slack(secret, timestamp.trim(), body), signature.trim()) {
@@ -156,6 +156,10 @@ mod tests {
         assert_eq!(check(SLACK_SECRET, None, Some(SLACK_SIGNATURE), SLACK_BODY, now), unsigned);
         assert_eq!(check(SLACK_SECRET, Some(SLACK_TIME), None, SLACK_BODY, now), unsigned);
         assert_eq!(check(SLACK_SECRET, Some("soon"), Some(SLACK_SIGNATURE), SLACK_BODY, now), unsigned);
+        // the farthest timestamps are stale, never an overflow
+        for time in [i64::MIN.to_string(), i64::MAX.to_string()] {
+            assert_eq!(check(SLACK_SECRET, Some(&time), Some(SLACK_SIGNATURE), SLACK_BODY, now), stale);
+        }
     }
 
     #[test]
