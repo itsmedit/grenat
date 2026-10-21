@@ -52,7 +52,7 @@ mod tests {
 
     fn reply(status: u16, retry_after: Option<&str>) -> HttpReply {
         let headers = retry_after.map(|v| ("Retry-After".to_string(), v.to_string())).into_iter().collect();
-        HttpReply { status, headers, body: String::new() }
+        HttpReply { status, headers, body: String::new(), answered_by: None }
     }
 
     #[test]

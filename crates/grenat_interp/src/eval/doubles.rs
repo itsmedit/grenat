@@ -57,7 +57,7 @@ impl<'p> Interp<'p> {
             Some((m, u)) if m.chars().all(|c| c.is_ascii_uppercase()) => (Some(m.to_string()), u.trim().to_string()),
             _ => (None, target.to_string()),
         };
-        let mut reply = HttpReply { status: 200, headers: Vec::new(), body: String::new() };
+        let mut reply = HttpReply { status: 200, headers: Vec::new(), body: String::new(), answered_by: None };
         let mut left = None;
         for (option, value) in &args.named {
             match (option.as_str(), value.untainted()) {

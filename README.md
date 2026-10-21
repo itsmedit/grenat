@@ -398,11 +398,11 @@ secret or a URL, and prompts and answers only with `OTEL_INSTRUMENTATION_GENAI_C
 batched on a thread of its own, a collector down or slow never holding the program.
 
 **Phase 16 — rate limits**: `limit net("api.hubspot.com"), 10.per_second` (or `5000.per_hour,
-concurrent: 4`) declares a host's quota once; a token bucket shared by every task, agent and job of
+concurrent: 4`) declares a host's quota once, at the top level (or of a test); a token bucket shared by every task, agent and job of
 the process makes a call over the limit wait its turn — a green sleep, cancellable, counted in a
 budget's time — for `Http`, Slack, mail and model calls (`limit net("api.anthropic.com"),
-50.per_minute`); a `429` with `Retry-After` (seconds or an HTTP date) pauses the host and is sent
-again, at most three times, for idempotent methods or `retry: true`.
+50.per_minute`); a `429` with `Retry-After` (seconds or an HTTP date) pauses the host that answered
+and is sent again, at most three times, for idempotent methods or `retry: true`.
 
 **Phase 16 — Slack and Teams**: `on_webhook` checks Slack's signatures (`v0` HMAC-SHA256 of the
 timestamp and body, five minutes, replays refused, `url_verification` answered) and Teams' (HMAC

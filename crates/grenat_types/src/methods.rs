@@ -247,6 +247,9 @@ impl<'p> Checker<'p> {
             if t == "Slack" {
                 self.slack_post_args(span, &argv);
             }
+            if t == "Http" {
+                self.http_options(&argv);
+            }
             if builtins::only_in_tests(t, n) {
                 self.only_in_tests(cx, span, &format!("{t}.{n}"), "it reads what a test did");
             }

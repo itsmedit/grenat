@@ -78,3 +78,19 @@ fn env_key_is_an_env_effect() {
     let d = single("def f -> Bool uses time = Env.key?(\"A\")\n", "E0300", "Env.key?(\"A\")");
     assert!(d.message.contains("uses effect `env(\"A\")`"), "{}", d.message);
 }
+
+#[test]
+fn mock_http_times_and_http_retry_are_checked_as_the_runtime_checks_them() {
+    for times in ["0", "-1", "\"2\"", "1.5"] {
+        let src = format!("test \"t\" do\n  mock_http \"GET https://a.io/*\", status: 429, times: {times}\nend\n");
+        let d = single(&src, "E0200", times);
+        assert!(d.message.contains("positive count"), "{}", d.message);
+    }
+    clean(
+        "test \"t\" do\n  n = 2\n  mock_http \"GET https://a.io/*\", times: 1\n  mock_http \"GET https://a.io/*\", times: n\nend\n",
+    );
+    let d = single("Http.get(\"https://a.io/x\", retry: 3)\n", "E0200", "3");
+    assert!(d.message.contains("true or false"), "{}", d.message);
+    single("Http.post(\"https://a.io/x\", retry: \"yes\")\n", "E0200", "\"yes\"");
+    clean("Http.post(\"https://a.io/x\", retry: true)\nHttp.put(\"https://a.io/x\", retry: false)\n");
+}

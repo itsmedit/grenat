@@ -66,6 +66,55 @@ fn a_cancelled_wait_gives_its_turn_back() {
 }
 
 #[test]
+fn a_cancelled_turn_booked_before_others_is_never_given_to_two_calls() {
+    let clock = Clock::new();
+    let limiter = limiter(1, 1.0, None);
+    limiter.acquire(|| clock.now(), |d| clock.wait(d)).unwrap();
+    // B waits for its turn (1 s); meanwhile C books the next one (2 s) and
+    // goes; then B is cancelled
+    let mut c_waited = None;
+    let cancelled = limiter.acquire(
+        || clock.now(),
+        |_| {
+            c_waited = Some(limiter.acquire(|| clock.now(), |d| clock.wait(d)).unwrap().waited);
+            Err("cancelled")
+        },
+    );
+    assert_eq!(cancelled.unwrap_err(), "cancelled");
+    assert_eq!(c_waited, Some(Duration::from_secs(2)));
+    // B's turn is not the last booked: D still waits for the turn after C's
+    let d = limiter.acquire(|| clock.now(), |d| clock.wait(d)).unwrap();
+    assert_eq!(d.waited, Duration::from_secs(1), "C and D would share one turn");
+}
+
+#[test]
+fn a_call_cancelled_during_a_pause_gives_its_turn_back() {
+    let clock = Clock::new();
+    let limiter = limiter(1, 1.0, None);
+    limiter.acquire(|| clock.now(), |d| clock.wait(d)).unwrap();
+    let start = clock.now();
+    let mut waits = 0;
+    let cancelled = limiter.acquire(
+        || clock.now(),
+        |d| {
+            waits += 1;
+            if waits == 1 {
+                // its turn comes, and with it a pause of half a second
+                clock.wait(d)?;
+                limiter.pause_until(start + Duration::from_millis(1500));
+                return Ok(());
+            }
+            clock.wait(Duration::from_millis(200))?;
+            Err(())
+        },
+    );
+    assert!(cancelled.is_err());
+    // the turn given back: the next call goes when the pause ends
+    let d = limiter.acquire(|| clock.now(), |d| clock.wait(d)).unwrap();
+    assert_eq!(d.waited, Duration::from_millis(300));
+}
+
+#[test]
 fn a_pause_holds_every_call_back() {
     let clock = Clock::new();
     let limiter = limiter(100, 1.0, None);

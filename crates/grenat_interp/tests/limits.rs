@@ -338,6 +338,58 @@ end
     assert!((0.9..10.0).contains(&seconds(&out)), "{out}");
 }
 
+/// A local server whose `/moved` sends to `/busy` on another of its names
+/// (`localhost`), which answers `429` with `Retry-After: 120`.
+fn redirecting_server() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut first = String::new();
+            reader.read_line(&mut first).unwrap();
+            let path = first.split_whitespace().nth(1).unwrap_or("").to_string();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line.trim_end().is_empty() {
+                    break;
+                }
+            }
+            let (status, extra) = match path.as_str() {
+                "/moved" => ("302 Found", format!("Location: http://localhost:{port}/busy\r\n")),
+                "/busy" => ("429 Too Many Requests", "Retry-After: 120\r\n".to_string()),
+                _ => ("200 OK", String::new()),
+            };
+            let mut stream = stream;
+            let _ = write!(stream, "HTTP/1.1 {status}\r\n{extra}Content-Length: 2\r\nConnection: close\r\n\r\nok");
+        }
+    });
+    port
+}
+
+#[test]
+fn a_429_after_a_redirect_pauses_the_host_that_answered() {
+    let port = redirecting_server();
+    let out = run(&format!(
+        "limit net(\"127.0.0.1\"), 100.per_second
+limit net(\"localhost\"), 100.per_second
+def paused?(url: String) -> Bool
+  within budget(time: 1.s) do
+    Http.get(url)
+    false
+  rescue BudgetExceeded => e
+    true
+  end
+end
+puts Http.get(\"http://127.0.0.1:{port}/moved\").status
+puts paused?(\"http://127.0.0.1:{port}/fine\")
+puts paused?(\"http://localhost:{port}/fine\")
+"
+    ));
+    assert_eq!(out, "429\nfalse\ntrue\n");
+}
+
 // ── Declarations ─────────────────────────────────────────────────────
 
 #[test]

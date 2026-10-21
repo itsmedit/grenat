@@ -22,14 +22,18 @@ pub(crate) struct HttpReply {
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: String,
+    /// The host that answered, redirects followed (`None`: a test's stub,
+    /// the request's own).
+    pub answered_by: Option<String>,
 }
 
 /// Sends `request`; an error is a failure to get any answer (a status
 /// such as 404 is an answer, an unreachable proxy is not).
 pub(crate) fn send(request: &HttpRequest) -> Result<HttpReply, String> {
     let (status, headers, mut response) = run(request)?;
+    let answered_by = ureq::ResponseExt::get_uri(&response).host().map(str::to_string);
     let body = response.body_mut().read_to_string().map_err(|e| format!("unreadable body: {e}"))?;
-    Ok(HttpReply { status, headers, body })
+    Ok(HttpReply { status, headers, body, answered_by })
 }
 
 /// The bytes `request` gets, `max_bytes` at most: a larger body (by its

@@ -20,7 +20,8 @@
 //! batch is one request, not held.
 //!
 //! A `429` answered with `Retry-After` to a call of `Http` pauses the
-//! host's limiter until then (an hour at most): no task calls it before.
+//! limiter of the host that answered — a redirect's target, not the host
+//! first asked — until then (an hour at most): no task calls it before.
 //! A limit declared in a test ends with it; the others start each test
 //! with a full bucket.
 

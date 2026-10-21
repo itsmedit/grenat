@@ -12,6 +12,8 @@ rust-version.workspace = true
 base64 = "0.22"
 grenat_ast.workspace = true
 grenat_llm.workspace = true
+# Rates written out, held to what the runtime allows.
+grenat_limits.workspace = true
 # Patterns only (`on_file`): parsed as the runtime parses them.
 grenat_watch.workspace = true
 

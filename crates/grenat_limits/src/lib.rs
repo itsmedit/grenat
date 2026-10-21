@@ -28,7 +28,7 @@ mod rate;
 pub mod retry_after;
 mod slots;
 
-pub use bucket::Bucket;
+pub use bucket::{Bucket, Turn};
 pub use limiter::{Limiter, Permit, SLOT_POLL};
 pub use rate::Rate;
 pub use slots::Slots;

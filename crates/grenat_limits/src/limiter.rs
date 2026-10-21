@@ -75,23 +75,25 @@ impl Limiter {
             let from = state.paused.map_or(at, |p| p.max(at));
             state.bucket.as_mut().map(|b| b.reserve(from))
         };
+        // cancelled before calling: the turn is given back, if it still can be
+        let give_back = |e: E| {
+            if let (Some(turn), Some(bucket)) = (turn, self.state().bucket.as_mut()) {
+                bucket.refund(turn);
+            }
+            e
+        };
         if let Some(turn) = turn {
             loop {
                 let now = now();
-                if now >= turn {
+                if now >= turn.at {
                     break;
                 }
-                if let Err(e) = wait(turn - now) {
-                    if let Some(bucket) = self.state().bucket.as_mut() {
-                        bucket.refund();
-                    }
-                    return Err(e);
-                }
+                wait(turn.at - now).map_err(give_back)?;
             }
         }
         // a pause that began while this call waited
         while let Some(left) = self.paused_for(now()) {
-            wait(left)?;
+            wait(left).map_err(give_back)?;
         }
         permit.waited = now().saturating_duration_since(started);
         Ok(permit)

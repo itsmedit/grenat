@@ -69,6 +69,11 @@ impl<'p> Checker<'p> {
         {
             return self.limit_call(cx, span, host, &args[1..]);
         }
+        if let Some(recv) = recv
+            && limits::RATE_METHODS.contains(&name.name.as_str())
+        {
+            self.rate_literal(span, recv, &name.name, args);
+        }
         let receiver = recv.map(|r| self.expr(cx, r));
         let argv = self.args(cx, args);
         // `xs.push(v)`: the array becomes tainted if `v` is
@@ -347,8 +352,12 @@ impl<'p> Checker<'p> {
             }
             "deny_all" | "approve_all" => V::new(Ty::Sym),
             // test doubles and evals
-            "mock" | "mock_http" | "mock_shell" | "mcp" | "mock_mcp" | "mock_ssh" | "mock_credentials"
-            | "mock_embed" | "mock_transcribe" => V::new(Ty::Nil),
+            "mock_http" => {
+                self.mock_http_options(argv);
+                V::new(Ty::Nil)
+            }
+            "mock" | "mock_shell" | "mcp" | "mock_mcp" | "mock_ssh" | "mock_credentials" | "mock_embed"
+            | "mock_transcribe" => V::new(Ty::Nil),
             "database" | "expose" => V::new(Ty::Nil),
             // a job: its arguments are written to the database
             "enqueue" => {

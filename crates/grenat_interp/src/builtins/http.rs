@@ -118,8 +118,9 @@ fn send_retrying<'p>(
         let Some(wait) = retry::asked_wait(&reply) else {
             return Ok(answered(interp, reply, retried));
         };
-        // nobody calls the host before then
-        interp.pause_host(host, wait);
+        // nobody calls the host that answered before then: a redirect's
+        // target, not the host first asked
+        interp.pause_host(reply.answered_by.as_deref().unwrap_or(host), wait);
         if !may_retry || retried == retry::MAX_RETRIES || wait > retry::MAX_WAIT {
             return Ok(answered(interp, reply, retried));
         }

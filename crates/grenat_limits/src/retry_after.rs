@@ -2,9 +2,10 @@
 //! alone, as seconds (`120`) or as an HTTP date. A date is read in each of
 //! the three formats §5.6.7 says a recipient must accept: the IMF-fixdate
 //! (`Sun, 06 Nov 1994 08:49:37 GMT`), RFC 850's (`Sunday, 06-Nov-94
-//! 08:49:37 GMT`, a two-digit year more than 50 years ahead taken as the
-//! latest past year ending with those digits) and asctime's (`Sun Nov  6
-//! 08:49:37 1994`). Anything else is no answer.
+//! 08:49:37 GMT`: a two-digit year in this century, unless the timestamp
+//! would then be more than 50 years in the future — then the century
+//! before) and asctime's (`Sun Nov  6 08:49:37 1994`). Anything else is no
+//! answer.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -23,10 +24,14 @@ pub fn parse(value: &str, now: SystemTime) -> Option<Duration> {
     Some(Duration::from_secs(at.saturating_sub(now_secs).max(0) as u64))
 }
 
+/// Fifty years of 365.2425 days (the Gregorian average), in seconds.
+const FIFTY_YEARS: i64 = 50 * 31_556_952;
+
 /// Seconds since the epoch of an HTTP date; `now` (seconds too) settles a
 /// two-digit year.
 pub fn http_date(value: &str, now: i64) -> Option<i64> {
     let words: Vec<&str> = value.split_ascii_whitespace().collect();
+    let mut two_digits = false;
     let (day, month, year, time) = match words.as_slice() {
         // IMF-fixdate
         [name, day, month, year, time, "GMT"] if name.ends_with(',') && day.len() == 2 && year.len() == 4 => {
@@ -39,7 +44,8 @@ pub fn http_date(value: &str, now: i64) -> Option<i64> {
             if parts.next().is_some() || day.len() != 2 || year.len() != 2 {
                 return None;
             }
-            (day.parse().ok()?, month_number(month)?, two_digit_year(year.parse().ok()?, now), *time)
+            two_digits = true;
+            (day.parse().ok()?, month_number(month)?, this_century(now) + year.parse::<i64>().ok()?, *time)
         }
         // asctime
         [_, month, day, time, year] if (1..=2).contains(&day.len()) && year.len() == 4 => {
@@ -54,23 +60,34 @@ pub fn http_date(value: &str, now: i64) -> Option<i64> {
     }
     let (h, m, s): (i64, i64, i64) = (h.parse().ok()?, m.parse().ok()?, s.parse().ok()?);
     // 60: a leap second
-    if day < 1 || day > days_in_month(year, month) || h > 23 || m > 59 || s > 60 {
+    if h > 23 || m > 59 || s > 60 {
         return None;
     }
-    Some(days_from_civil(year, month, day) * 86_400 + h * 3600 + m * 60 + s)
+    let at = timestamp(year, month, day, h * 3600 + m * 60 + s)?;
+    // RFC 9110: a timestamp more than 50 years in the future is of the century before
+    if two_digits && at > now.saturating_add(FIFTY_YEARS) {
+        return timestamp(year - 100, month, day, h * 3600 + m * 60 + s);
+    }
+    Some(at)
+}
+
+/// Seconds since the epoch of `day`/`month`/`year` at `seconds` past
+/// midnight, if that day exists.
+fn timestamp(year: i64, month: i64, day: i64, seconds: i64) -> Option<i64> {
+    if day < 1 || day > days_in_month(year, month) {
+        return None;
+    }
+    Some(days_from_civil(year, month, day) * 86_400 + seconds)
 }
 
 fn month_number(name: &str) -> Option<i64> {
     MONTHS.iter().position(|m| *m == name).map(|i| i as i64 + 1)
 }
 
-/// RFC 9110: a two-digit year that would be more than 50 years ahead is
-/// the latest past year with those last digits.
-fn two_digit_year(yy: i64, now: i64) -> i64 {
+/// The first year of `now`'s century (2000 in 2026).
+fn this_century(now: i64) -> i64 {
     let this_year = 1970 + now.div_euclid(86_400 * 36_525 / 100);
-    let century = this_year - this_year.rem_euclid(100);
-    let year = century + yy;
-    if year > this_year + 50 { year - 100 } else { year }
+    this_year - this_year.rem_euclid(100)
 }
 
 fn days_in_month(year: i64, month: i64) -> i64 {
@@ -134,6 +151,19 @@ mod tests {
         assert_eq!(year("76"), http_date("Fri, 01 Jan 2076 00:00:00 GMT", 0).unwrap());
         assert_eq!(year("77"), http_date("Sat, 01 Jan 1977 00:00:00 GMT", 0).unwrap());
         assert_eq!(year("26"), http_date("Thu, 01 Jan 2026 00:00:00 GMT", 0).unwrap());
+    }
+
+    #[test]
+    fn fifty_years_ahead_is_decided_by_the_whole_timestamp() {
+        // on 2026-10-08, 2076-10-01 is less than 50 years ahead, 2076-12-31 more
+        let now = http_date("Thu, 08 Oct 2026 00:00:00 GMT", 0).unwrap();
+        let date = |text: &str| http_date(text, now).unwrap();
+        assert_eq!(date("Thursday, 01-Oct-76 00:00:00 GMT"), date("Thu, 01 Oct 2076 00:00:00 GMT"));
+        assert_eq!(date("Friday, 31-Dec-76 00:00:00 GMT"), date("Fri, 31 Dec 1976 00:00:00 GMT"));
+        // the day must exist in the year taken: 1900 had no 29 February
+        let in_1950 = http_date("Sun, 01 Jan 1950 00:00:00 GMT", 0).unwrap();
+        assert_eq!(http_date("Thursday, 29-Feb-00 00:00:00 GMT", in_1950), None);
+        assert!(http_date("Tuesday, 29-Feb-00 00:00:00 GMT", now).is_some());
     }
 
     #[test]

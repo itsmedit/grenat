@@ -51,7 +51,7 @@ mod tests {
     use serde_json::json;
 
     fn answer(status: u16, body: &str) -> HttpReply {
-        HttpReply { status, headers: vec![("Retry-After".into(), "30".into())], body: body.into() }
+        HttpReply { status, headers: vec![("Retry-After".into(), "30".into())], body: body.into(), answered_by: None }
     }
 
     #[test]

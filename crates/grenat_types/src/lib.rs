@@ -40,6 +40,7 @@ mod file_trigger;
 mod folds;
 mod formatting;
 mod functions;
+mod http_options;
 mod limits;
 mod methods;
 mod model_options;

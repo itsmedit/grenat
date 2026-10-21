@@ -80,6 +80,8 @@ pub(crate) struct Checker<'p> {
     pub(crate) secret_literals: HashSet<Span>,
     /// The routes claimed for chat, compared once all is checked.
     pub(crate) chat_routes: crate::chat_routes::ChatRoutes,
+    /// Where a `limit` may be: the top level, the top of a test (spans).
+    pub(crate) limit_places: HashSet<(u32, u32)>,
 }
 
 impl<'p> Checker<'p> {
@@ -102,6 +104,7 @@ impl<'p> Checker<'p> {
             ivar_types: HashMap::new(),
             secret_literals: HashSet::new(),
             chat_routes: Default::default(),
+            limit_places: HashSet::new(),
         }
     }
 

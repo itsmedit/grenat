@@ -24,7 +24,10 @@ limit net(\"api.x.io\"), r
 host = \"api.y.io\"
 limit net(host), 3.per_second
 test \"a test's own limit\" do
-  limit net(\"api.hubspot.com\"), 1.per_second
+  limit net(\"api.z.io\"), 1.per_second
+end
+test \"the same host in another test\" do
+  limit net(\"api.z.io\"), 2.per_second
 end
 ",
     );
@@ -61,6 +64,48 @@ fn a_rate_or_a_concurrency_limit() {
     assert!(d.message.contains("no option `burst:`"), "{}", d.message);
     // `per` takes a duration
     single("r = 10.per(3)\n", "E0200", "per");
+}
+
+#[test]
+fn a_rate_written_out_is_one_the_runtime_allows() {
+    for (rate, why) in [
+        ("10.per(0.s)", "positive"),
+        ("10.per(400.days)", "a year at most"),
+        ("5_000_000_000.per_second", "at most"),
+        ("0.per_minute", "at least one call"),
+    ] {
+        // in a declaration, and wherever it is written
+        for src in [format!("limit net(\"a.io\"), {rate}\n"), format!("r = {rate}\n")] {
+            let d = single(&src, "E0200", rate);
+            assert!(d.message.contains(why), "{rate}: {}", d.message);
+        }
+    }
+    clean("limit net(\"a.io\"), 4_000_000_000.per(366.days)\nr = 1.per(2.s)\n");
+}
+
+#[test]
+fn limit_is_declared_at_the_top_level_or_of_a_test() {
+    for src in [
+        "def setup\n  limit net(\"a.io\"), 1.per_second\nend\nsetup\nsetup\n",
+        "[1, 2].each do |i|\n  limit net(\"a.io\"), 1.per_second\nend\n",
+        "if true\n  limit net(\"a.io\"), 1.per_second\nend\n",
+        "test \"t\" do\n  [1].each { |i| limit net(\"a.io\"), 1.per_second }\nend\n",
+    ] {
+        let d = single(src, "E0500", "limit net(\"a.io\"), 1.per_second");
+        assert!(d.message.contains("top level"), "{}", d.message);
+    }
+    // a test limiting again a host limited at the top level, or earlier in it
+    let d = single(
+        "limit net(\"a.io\"), 1.per_second\ntest \"t\" do\n  limit net(\"A.io\"), 2.per_second\nend\n",
+        "E0200",
+        "\"A.io\"",
+    );
+    assert!(d.message.contains("already limited"), "{}", d.message);
+    single(
+        "test \"t\" do\n  limit net(\"a.io\"), 1.per_second\n  limit net(\"a.io\"), 2.per_second\nend\n",
+        "E0200",
+        "\"a.io\"",
+    );
 }
 
 #[test]
