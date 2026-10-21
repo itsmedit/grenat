@@ -74,6 +74,11 @@ fn unhex(text: &str) -> Option<Vec<u8>> {
     (0..text.len()).step_by(2).map(|i| u8::from_str_radix(&text[i..i + 2], 16).ok()).collect()
 }
 
+/// A number in `[0, 1)` from the same sequence: what spreads retries.
+pub(crate) fn jitter() -> f64 {
+    (next() >> 11) as f64 / (1u64 << 53) as f64
+}
+
 /// The next number of the process's sequence.
 fn next() -> u64 {
     static SEED: OnceLock<u64> = OnceLock::new();

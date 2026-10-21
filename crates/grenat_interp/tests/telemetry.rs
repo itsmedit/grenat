@@ -457,6 +457,9 @@ get \"/tickets/:id\" do |req|
   enqueue(:digest, 3)
   \"ticket\"
 end
+get \"/quiet\" do |req|
+  \"not sampled\"
+end
 get \"/crash\" do |req|
   enqueue(:broken, 1)
   raise \"crashed on customer data\"
@@ -468,6 +471,9 @@ end
         database.display()
     );
     let address = serve(&src, tracer(&collector.url, |_| {}));
+    // a caller that does not sample its trace: nothing of it is exported
+    let unsampled = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
+    assert_eq!(request(&address, "GET", "/quiet", &[("traceparent", unsampled)]), 200);
     let caller = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
     assert_eq!(request(&address, "GET", "/tickets/4242?secret=alice", &[("traceparent", caller)]), 200);
     assert_eq!(request(&address, "GET", "/crash", &[]), 500);
@@ -477,6 +483,8 @@ end
             .all(|name| spans.iter().any(|s| s["name"] == *name))
     });
 
+    assert!(named(&spans, "GET /quiet").is_empty(), "an unsampled trace was exported");
+    assert!(!collector.everything().contains("0af7651916cd43dd8448eb211c80319c"));
     let ticket = &named(&spans, "GET /tickets/:id")[0];
     assert_eq!(ticket["kind"], 2);
     assert_eq!(ticket["traceId"], "4bf92f3577b34da6a3ce929d0e0e4736");

@@ -1,13 +1,17 @@
 //! The exporter against a fake OTLP/HTTP collector: spans arrive as OTLP
 //! JSON with the configured headers; a collector down or slow never makes
-//! the program wait; a full queue drops spans and counts them.
+//! the program wait; a full queue drops spans and counts them; a redirect
+//! is never followed (the API keys stay home); `429`, `503` and a
+//! collector unreachable are sent again, after `Retry-After` if given,
+//! other answers not; a partial success counts its rejected spans; an
+//! unsampled parent's spans are not exported; an idle exporter sleeps.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use grenat_otel::{Batching, Config, Exporter, Kind, SpanStart, Tracer, Transport};
+use grenat_otel::{Batching, Config, Export, Exporter, Kind, SpanContext, SpanStart, Tracer, Transport};
 
 /// What the fake collector received: (headers, JSON body).
 type Received = Arc<Mutex<Vec<(Vec<(String, String)>, serde_json::Value)>>>;
@@ -122,6 +126,8 @@ fn a_collector_down_costs_the_program_nothing_and_is_counted() {
     assert!(tracer.flush(Duration::from_secs(10)));
     let stats = tracer.stats();
     assert_eq!((stats.exported, stats.failed, stats.dropped), (0, 1000, 0));
+    // two batches, each sent four times
+    assert_eq!(stats.retries, 6);
     assert!(stats.last_error.unwrap().contains("unreachable"));
 }
 
@@ -162,10 +168,10 @@ fn an_export_that_times_out_is_counted_as_failed() {
 struct Counting(Arc<Mutex<usize>>);
 
 impl Transport for Counting {
-    fn send(&self, body: Vec<u8>) -> Result<(), String> {
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    fn send(&self, body: &[u8]) -> Export {
+        let json: serde_json::Value = serde_json::from_slice(body).unwrap();
         *self.0.lock().unwrap() += json["resourceSpans"][0]["scopeSpans"][0]["spans"].as_array().unwrap().len();
-        Ok(())
+        Export::Accepted { rejected: 0, message: None }
     }
 }
 
@@ -187,4 +193,139 @@ fn a_full_queue_drops_spans_and_counts_them() {
     // once shut down, nothing more is queued
     exporter.push(tracer.start(SpanStart::new("late", Kind::Internal), None));
     assert_eq!(exporter.stats().dropped, 91);
+}
+
+/// A collector answering each request with the next of `answers` (status
+/// line, extra headers, body), then `200`: how many requests it got.
+fn scripted(answers: Vec<(&'static str, String, &'static str)>) -> (String, Arc<Mutex<usize>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let count = Arc::new(Mutex::new(0));
+    let counted = count.clone();
+    std::thread::spawn(move || {
+        let mut answers = answers.into_iter();
+        for stream in listener.incoming().flatten() {
+            let (status, headers, body) = answers.next().unwrap_or(("200 OK", String::new(), "{}"));
+            *counted.lock().unwrap() += 1;
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut length = 0;
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 || line.trim_end().is_empty() {
+                    break;
+                }
+                if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    length = value.trim().parse().unwrap_or(0);
+                }
+            }
+            let mut request_body = vec![0; length];
+            let _ = reader.read_exact(&mut request_body);
+            let mut stream = stream;
+            let _ = write!(
+                stream,
+                "HTTP/1.1 {status}\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+        }
+    });
+    (format!("http://{address}/v1/traces"), count)
+}
+
+#[test]
+fn a_redirect_is_never_followed_with_the_api_keys() {
+    let (elsewhere, received) = collector(Duration::ZERO);
+    let (endpoint, asked) = scripted(vec![("302 Found", format!("Location: {elsewhere}\r\n"), "")]);
+    let config = Config { headers: vec![("x-honeycomb-team".into(), "key".into())], ..config(&endpoint) };
+    let tracer = Tracer::new(&config).unwrap();
+    tracer.end(tracer.start(SpanStart::new("moved", Kind::Internal), None));
+    assert!(tracer.flush(Duration::from_secs(5)));
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(received.lock().unwrap().is_empty(), "the redirect was followed");
+    assert_eq!(*asked.lock().unwrap(), 1, "a redirect is not sent again");
+    let stats = tracer.stats();
+    assert_eq!((stats.exported, stats.failed, stats.retries), (0, 1, 0));
+    assert!(stats.last_error.unwrap().contains("302"));
+}
+
+#[test]
+fn a_busy_collector_is_sent_the_batch_again_after_its_retry_after() {
+    let (endpoint, asked) = scripted(vec![
+        ("503 Service Unavailable", "Retry-After: 1\r\n".into(), ""),
+        ("429 Too Many Requests", String::new(), ""),
+    ]);
+    let tracer = Tracer::new(&config(&endpoint)).unwrap();
+    let started = Instant::now();
+    tracer.end(tracer.start(SpanStart::new("again", Kind::Internal), None));
+    assert!(tracer.flush(Duration::from_secs(10)));
+    // a second waited, then a short backoff
+    assert!(started.elapsed() >= Duration::from_secs(1), "{:?}", started.elapsed());
+    assert_eq!(*asked.lock().unwrap(), 3);
+    let stats = tracer.stats();
+    assert_eq!((stats.exported, stats.failed, stats.retries), (1, 0, 2));
+}
+
+#[test]
+fn other_answers_and_long_retry_afters_are_not_sent_again() {
+    for (status, headers) in
+        [("400 Bad Request", ""), ("401 Unauthorized", ""), ("503 Service Unavailable", "Retry-After: 3600\r\n")]
+    {
+        let (endpoint, asked) = scripted(vec![(status, headers.to_string(), "")]);
+        let tracer = Tracer::new(&config(&endpoint)).unwrap();
+        tracer.end(tracer.start(SpanStart::new("once", Kind::Internal), None));
+        assert!(tracer.flush(Duration::from_secs(5)));
+        assert_eq!(*asked.lock().unwrap(), 1, "{status}");
+        assert_eq!(tracer.stats().failed, 1, "{status}");
+    }
+}
+
+#[test]
+fn spans_rejected_in_a_partial_success_are_counted_as_dropped() {
+    let partial = r#"{"partialSuccess": {"rejectedSpans": "1", "errorMessage": "span too old"}}"#;
+    let (endpoint, _) = scripted(vec![("200 OK", "Content-Type: application/json\r\n".into(), partial)]);
+    let tracer = Tracer::new(&config(&endpoint)).unwrap();
+    tracer.end(tracer.start(SpanStart::new("a", Kind::Internal), None));
+    tracer.end(tracer.start(SpanStart::new("b", Kind::Internal), None));
+    assert!(tracer.flush(Duration::from_secs(5)));
+    let stats = tracer.stats();
+    assert_eq!((stats.exported, stats.dropped, stats.rejected, stats.failed), (1, 1, 1, 0));
+    assert_eq!(stats.rejection.as_deref(), Some("span too old"));
+}
+
+#[test]
+fn the_spans_of_an_unsampled_parent_are_not_exported_but_the_trace_goes_on() {
+    let sent = Arc::new(Mutex::new(0));
+    let tracer = Tracer::with_transport(&config("http://unused"), Box::new(Counting(sent.clone()))).unwrap();
+    let caller = SpanContext::from_traceparent("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00").unwrap();
+    let request = tracer.start(SpanStart::new("GET /x", Kind::Server).remote_parent(Some(caller)), None);
+    let child = tracer.start(SpanStart::new("chat", Kind::Client), Some(request.context));
+    assert!(!request.context.sampled && !child.context.sampled);
+    assert_eq!(child.context.trace_id, caller.trace_id);
+    assert!(child.context.traceparent().ends_with("-00"), "{}", child.context.traceparent());
+    tracer.end(child);
+    tracer.end(request);
+    // a sampled caller, or none: exported
+    let sampled = SpanContext { sampled: true, ..caller };
+    let other = tracer.start(SpanStart::new("GET /y", Kind::Server).remote_parent(Some(sampled)), None);
+    assert!(other.context.sampled && other.context.traceparent().ends_with("-01"));
+    tracer.end(other);
+    let root = tracer.start(SpanStart::new("job", Kind::Consumer), None);
+    assert!(root.context.sampled);
+    tracer.end(root);
+    assert!(tracer.flush(Duration::from_secs(5)));
+    assert_eq!(*sent.lock().unwrap(), 2);
+}
+
+#[test]
+fn an_idle_exporter_sleeps_even_with_no_delay() {
+    let sent = Arc::new(Mutex::new(0));
+    let batching = Batching { max_queue: 100, max_batch: 10, delay: Duration::ZERO };
+    let exporter = Exporter::start(Vec::new(), Box::new(Counting(sent.clone())), batching).unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(exporter.stats().rounds <= 2, "spinning: {} rounds", exporter.stats().rounds);
+    let tracer = Tracer::with_transport(&config("http://unused"), Box::new(Counting(Arc::default()))).unwrap();
+    exporter.push(tracer.start(SpanStart::new("one", Kind::Internal), None));
+    assert!(exporter.flush(Duration::from_secs(5)));
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(*sent.lock().unwrap(), 1);
+    assert!(exporter.stats().rounds <= 6, "spinning: {} rounds", exporter.stats().rounds);
 }

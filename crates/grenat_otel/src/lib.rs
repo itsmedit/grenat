@@ -15,20 +15,25 @@
 //! own, through a bounded queue — a span that finds it full is dropped and
 //! counted ([`Stats`]) — and never makes the program wait, whatever the
 //! collector does. Batches are encoded as OTLP JSON ([`encode`]) and sent
-//! by a [`Transport`] (OTLP/HTTP, or a test's own).
+//! by a [`Transport`] (OTLP/HTTP, never following a redirect, or a test's
+//! own); what the collector answered ([`Export`], [`classify`]) decides
+//! whether a batch is sent again ([`retry`]).
 
+mod answer;
 mod config;
 mod context;
 pub mod encode;
 mod exporter;
 mod ids;
+pub mod retry;
 mod span;
 mod tracer;
 mod transport;
 
+pub use answer::{Export, classify};
 pub use config::Config;
 pub use context::SpanContext;
-pub use exporter::{Batching, Exporter, Stats};
+pub use exporter::{Batching, Exporter, MIN_DELAY, Stats};
 pub use ids::{SpanId, TraceId};
 pub use span::{Attributes, Event, Kind, MAX_TEXT, Span, SpanStart, Status, Value};
 pub use tracer::Tracer;

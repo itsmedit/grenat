@@ -395,7 +395,9 @@ for each request (continuing a received `traceparent`), trigger run, job, workfl
 `ask`, model call (GenAI conventions: provider, models, tokens, plus `grenat.usage.cost_usd`), tool
 call, `Http` request (which sends its `traceparent` on) and SSH call; errors by their type; never a
 secret or a URL, and prompts and answers only with `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`;
-batched on a thread of its own, a collector down or slow never holding the program.
+sampled as the caller's `traceparent` says; batched on a thread of its own, sent again after a
+`429` or `503` (its `Retry-After`, else a backoff), never through a redirect (the API keys stay home),
+a collector down or slow never holding the program.
 
 **Phase 16 — rate limits**: `limit net("api.hubspot.com"), 10.per_second` (or `5000.per_hour,
 concurrent: 4`) declares a host's quota once, at the top level (or of a test); a token bucket shared by every task, agent and job of
@@ -694,7 +696,7 @@ end })
 | `grenat_mcp` | the Model Context Protocol: a client (stdio and HTTP), and the server side of `expose` |
 | `grenat_ssh` | SSH and SFTP: host keys verified, commands quoted, SOCKS5 proxies, a blocking API; a real server in process for tests |
 | `grenat_imap` | IMAP over TLS (implicit or STARTTLS): password or OAuth (`XOAUTH2`) logins, unseen messages by UID, flags and moves, MIME parsed into what `on_email` gives; a server in process for tests |
-| `grenat_otel` | OpenTelemetry traces: spans and their ids, W3C `traceparent`, OTLP/HTTP JSON encoding, the `OTEL_*` configuration, a batching exporter on its own thread (bounded queue, drops counted, timeouts) |
+| `grenat_otel` | OpenTelemetry traces: spans and their ids, W3C `traceparent`, OTLP/HTTP JSON encoding, the `OTEL_*` configuration, a batching exporter on its own thread (bounded queue, drops counted, timeouts, retries with backoff, redirects never followed), parent-based sampling |
 | `grenat_limits` | rate limits shared by every task: token buckets (the generic cell rate algorithm), concurrency slots served in order, pauses, `Retry-After` read as seconds or an HTTP date in its three formats |
 | `grenat_watch` | folders watched for `on_file`: glob patterns, scans that keep links inside, files checked once opened, files handed once settled and once per content, the system's notifications (inotify, FSEvents) through `notify` |
 | `grenat_serve` | triggers: cron schedules, calendar arithmetic, webhook signatures (GitHub, Slack, Teams) and replays refused, the HTTP server of `grenat serve`, streamed responses |

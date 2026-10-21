@@ -112,8 +112,13 @@ impl<'p> Interp<'p> {
         let flushed = tracer.shutdown(FLUSH_AT_EXIT);
         let stats = tracer.stats();
         let mut lost = Vec::new();
-        if stats.dropped > 0 {
-            lost.push(format!("{} dropped (the queue was full)", stats.dropped));
+        let full = stats.dropped - stats.rejected;
+        if full > 0 {
+            lost.push(format!("{full} dropped (the queue was full)"));
+        }
+        if stats.rejected > 0 {
+            let why = stats.rejection.as_deref().unwrap_or("no reason given");
+            lost.push(format!("{} rejected by the collector ({why})", stats.rejected));
         }
         if stats.failed > 0 {
             let why = stats.last_error.as_deref().unwrap_or("unknown error");

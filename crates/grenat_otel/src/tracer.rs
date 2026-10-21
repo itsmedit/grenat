@@ -1,5 +1,12 @@
 //! The tracer: starts spans (children of a parent, or roots of new
 //! traces) and hands those ended to the exporter.
+//!
+//! **Sampling follows the parent** (the specification's `parentbased`
+//! sampler, its root always on): a new trace is sampled; a child is
+//! sampled if its parent is — a caller that sent `traceparent` with the
+//! flags `00` decided not to record the trace, so its spans here are not
+//! exported either, while the trace id still goes on (`00` again in the
+//! `traceparent` sent further).
 
 use std::time::Duration;
 
@@ -57,13 +64,16 @@ impl Tracer {
         let context = SpanContext {
             trace_id: parent.map_or_else(TraceId::random, |p| p.trace_id),
             span_id: SpanId::random(),
-            sampled: true,
+            sampled: parent.is_none_or(|p| p.sampled),
         };
         Span::open(start, context, parent.map(|p| p.span_id))
     }
 
-    /// Ends `span` now, and queues it for export.
+    /// Ends `span` now, and queues it for export if it is sampled.
     pub fn end(&self, mut span: Span) {
+        if !span.context.sampled {
+            return;
+        }
         span.close();
         self.exporter.push(span);
     }

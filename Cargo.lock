@@ -1566,6 +1566,7 @@ dependencies = [
 name = "grenat_otel"
 version = "0.1.2"
 dependencies = [
+ "grenat_limits",
  "serde_json",
  "ureq",
 ]

@@ -14,8 +14,9 @@
 //! - `OTEL_SDK_DISABLED=true`, `OTEL_TRACES_EXPORTER=none`: nothing exported;
 //! - `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL`, else `OTEL_EXPORTER_OTLP_PROTOCOL`:
 //!   spans always go as `http/json`; `grpc` is refused;
-//! - `OTEL_BSP_MAX_QUEUE_SIZE`, `OTEL_BSP_SCHEDULE_DELAY`,
-//!   `OTEL_BSP_MAX_EXPORT_BATCH_SIZE`: the batching;
+//! - `OTEL_BSP_MAX_QUEUE_SIZE`, `OTEL_BSP_SCHEDULE_DELAY` (a millisecond
+//!   at least: `0` is taken as `1`), `OTEL_BSP_MAX_EXPORT_BATCH_SIZE`: the
+//!   batching;
 //! - `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`: prompts,
 //!   answers and error messages are exported too (off by default).
 
@@ -122,7 +123,7 @@ impl Config {
             resource: resource(&service, &given),
             max_queue,
             max_batch: count("OTEL_BSP_MAX_EXPORT_BATCH_SIZE", defaults.max_batch)?.min(max_queue),
-            delay: millis("OTEL_BSP_SCHEDULE_DELAY")?.unwrap_or(defaults.delay),
+            delay: millis("OTEL_BSP_SCHEDULE_DELAY")?.unwrap_or(defaults.delay).max(crate::exporter::MIN_DELAY),
             capture_content: var("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT")
                 .is_some_and(|v| v.eq_ignore_ascii_case("true")),
             ..defaults
@@ -250,5 +251,14 @@ mod tests {
         assert!(
             from(&[("OTEL_EXPORTER_OTLP_ENDPOINT", "http://c:4318"), ("OTEL_EXPORTER_OTLP_TIMEOUT", "soon")]).is_err()
         );
+    }
+
+    #[test]
+    fn a_delay_of_zero_is_a_millisecond() {
+        let endpoint = ("OTEL_EXPORTER_OTLP_ENDPOINT", "http://c:4318");
+        let zero = from(&[endpoint, ("OTEL_BSP_SCHEDULE_DELAY", "0")]).unwrap().unwrap();
+        assert_eq!(zero.delay, Duration::from_millis(1));
+        let given = from(&[endpoint, ("OTEL_BSP_SCHEDULE_DELAY", "250")]).unwrap().unwrap();
+        assert_eq!(given.delay, Duration::from_millis(250));
     }
 }
