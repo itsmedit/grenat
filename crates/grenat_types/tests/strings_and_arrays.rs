@@ -230,3 +230,60 @@ fn what_comes_from_untrusted_text_is_untrusted() {
     let src = format!("{PRELUDE}s = summarize(\"x\")\nsend(\"a@b.c\", s.title.trust![0, 4].to_s)\n");
     clean(&src);
 }
+
+#[test]
+fn arrays_are_sets_of_the_same_items() {
+    clean(
+        "\
+def both(a: Array(Int), b: Array(Int)) -> Array(Int) = a & b
+def either(a: Array(String), b: Array(String)) -> Array(String) = a | b
+def only(a: Array(Int), b: Array(Int)) -> Array(Int) = a - b
+def mixed(a: Array(Int), b: Array(Float)) -> Array(Float) = a | b
+def empty(a: Array(Int)) -> Array(Int) = a & []
+def named(a: Array(Int), b: Array(Int)) -> Array(Int) = a.intersection(b).union(a, b).difference(b)
+def alone(a: Array(Int)) -> Array(Int) = a.union
+def shared?(a: Array(Int), b: Array(Int)) -> Bool = a.intersect?(b)
+",
+    );
+    for (src, at) in [
+        ("def f(a: Array(Int), b: Array(String)) = a & b\n", "a & b"),
+        ("def f(a: Array(Int), b: Array(String)) = a | b\n", "a | b"),
+        ("def f(a: Array(Int), b: Array(String)) = a - b\n", "a - b"),
+        ("def f(a: Array(Int)) = a | 1\n", "a | 1"),
+        ("def f(a: Array(Int)) = 1 & a\n", "1 & a"),
+        ("def f(a: Array(Int), b: Array(String)) = a.union(b)\n", "b"),
+        ("def f(a: Array(Int)) = a.intersection([1], 2)\n", "2"),
+        ("def f(a: Array(Int), b: Array(String)) = a.intersect?(b)\n", "b"),
+        ("def f(a: Array(Int)) = a.intersect?\n", "intersect?"),
+    ] {
+        let d = single(src, "E0200", at);
+        assert!(d.message.contains('`'), "{}", d.message);
+    }
+    let d = single("def f(a: Array(Int), b: Array(String)) -> Array(Int) = a & b\n", "E0200", "a & b");
+    assert_eq!(
+        d.message,
+        "operator `&` is not defined between `Array(Int)` and `Array(String)`: arrays of the same items"
+    );
+}
+
+#[test]
+fn a_set_made_of_untrusted_items_is_untrusted() {
+    for derived in [
+        "(s.bullets & [\"a\"]).join",
+        "([\"a\"] | s.bullets).join",
+        "([\"a\"] - s.bullets).join",
+        "[\"a\"].union(s.bullets).join",
+        "[\"a\"].intersection([\"b\"], s.bullets).join",
+        "[\"a\"].difference(s.bullets).join",
+        "[\"a\"].intersect?(s.bullets).to_s",
+    ] {
+        let src = format!("{PRELUDE}s = summarize(\"x\")\nsend(\"a@b.c\", {derived})\n");
+        let d = diags(&src);
+        assert!(
+            d.iter().any(|d| d.code == Some("E0412") && &src[d.span.range()] == derived),
+            "{derived}:\n{}",
+            render(&src, &d)
+        );
+    }
+    clean(&format!("{PRELUDE}send(\"a@b.c\", ([\"a\"] | [\"b\"]).join)\n"));
+}

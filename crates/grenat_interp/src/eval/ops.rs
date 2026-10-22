@@ -87,14 +87,18 @@ impl<'p> Interp<'p> {
                 builtins::format::format_values(self, &l, &items)
             }
             (BinOp::Rem, Str(_), _) => builtins::format::format_values(self, &l, std::slice::from_ref(&r)),
-            // copy first: `xs + xs` would lock the same array twice
             (BinOp::Add, Array(a), Array(b)) => {
-                let (a, b) = (a.borrow().clone(), b.borrow().clone());
+                let (a, b) = copies(a, b);
                 Ok(Value::array(a.into_iter().chain(b).collect()))
             }
-            (BinOp::Sub, Array(a), Array(b)) => {
-                let (a, b) = (a.borrow().clone(), b.borrow().clone());
-                Ok(Value::array(a.into_iter().filter(|x| !b.iter().any(|y| equal(x, y))).collect()))
+            // arrays as sets (`builtins::sets`)
+            (BinOp::Sub | BinOp::BitAnd | BinOp::BitOr, Array(a), Array(b)) => {
+                let (a, b) = copies(a, b);
+                Ok(Value::array(match op {
+                    BinOp::BitAnd => builtins::intersection(&a, &b),
+                    BinOp::BitOr => builtins::union(&a, &b),
+                    _ => builtins::difference(&a, &b),
+                }))
             }
             (op, Int(a), Int(b)) => int_op(op, *a, *b).unwrap_or_else(|| type_error(&l, &r)),
             (op, Int(_) | Float(_), Int(_) | Float(_)) => {
@@ -129,6 +133,17 @@ impl<'p> Interp<'p> {
             _ => type_error(&l, &r),
         }
     }
+}
+
+type Items<'p> = Arc<Mutex<Vec<Value<'p>>>>;
+
+/// Copies of both arrays, one lock at a time: `xs + xs` locks the same
+/// array twice (a tuple of two `borrow()` would hold the first lock
+/// while taking the second, and wait forever).
+fn copies<'p>(a: &Items<'p>, b: &Items<'p>) -> (Vec<Value<'p>>, Vec<Value<'p>>) {
+    let a_items = a.borrow().clone();
+    let b_items = b.borrow().clone();
+    (a_items, b_items)
 }
 
 fn int_op<'p>(op: BinOp, a: i64, b: i64) -> Option<R<'p>> {

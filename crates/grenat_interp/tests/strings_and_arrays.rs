@@ -325,3 +325,74 @@ fn a_number_directive_never_shows_a_secret_it_cannot_read() {
     let pin = "mock_credentials({\"api\" => {\"pin\" => \"42\"}})\npin = Credentials.fetch(:api, :pin)\n";
     assert_eq!(run(&format!("{pin}p format(\"%04d\", pin), \"%04d\" % pin == \"0042\"\n")), "[secret]\ntrue\n");
 }
+
+#[test]
+fn arrays_are_sets_as_in_ruby() {
+    let out = lines(
+        "\
+a = [1, 2, 2, 3, 1]
+b = [3, 1, 4, 3]
+p a & b, a | b, a - b, b - a
+p a.intersection(b), a.union(b), a.difference(b), a.intersect?(b), a.intersect?([9])
+p a.intersection(b, [3]), a.union(b, [5, 1]), a.difference([1], [3]), a.union, a.intersection, a.difference
+p [1, 2.0] & [1.0, 2], [[1], {x: 1}, nil] & [nil, [1], {x: 1}], [:a, \"a\"] | [\"a\", :b], [] & a, a | []
+c = [1, 2]
+d = c | c
+d << 3
+p c, (1..4).to_a & (3..6).to_a, (1..3).union([5])
+",
+    );
+    assert_eq!(
+        out,
+        [
+            "[1, 3]",
+            "[1, 2, 3, 4]",
+            "[2, 2]",
+            "[4]",
+            "[1, 3]",
+            "[1, 2, 3, 4]",
+            "[2, 2]",
+            "true",
+            "false",
+            "[3]",
+            "[1, 2, 3, 4, 5]",
+            "[2, 2]",
+            "[1, 2, 3]",
+            "[1, 2, 2, 3, 1]",
+            "[1, 2, 2, 3, 1]",
+            "[1, 2.0]",
+            "[[1], {x: 1}, nil]",
+            "[:a, \"a\", :b]",
+            "[]",
+            "[1, 2, 3]",
+            "[1, 2]",
+            "[3, 4]",
+            "[1, 2, 3, 5]",
+        ]
+    );
+    // an array with itself
+    assert_eq!(
+        lines("xs = [1, 1, 2]\np xs + xs, xs - xs, xs & xs, xs | xs, xs.union(xs)\n"),
+        ["[1, 1, 2, 1, 1, 2]", "[]", "[1, 2]", "[1, 2]", "[1, 2]"]
+    );
+    assert_eq!(error_of("p [1] & 2"), "TypeError: operator `&` is not defined between Array and Int");
+    assert_eq!(error_of("p [1].union(2)"), "TypeError: operator `|` is not defined between Array and Int");
+}
+
+#[test]
+fn a_set_of_untrusted_items_is_untrusted_and_a_secret_stays_one() {
+    let src = format!(
+        "{UNTRUSTED}s = say(\"x\").split(\",\")
+p [(s & [\"a\"]).tainted?, ([\"a\"] | s).tainted?, ([\"a\"] - s).tainted?, [\"a\"].union(s).tainted?]
+p [[\"a\"].intersection(s).tainted?, [\"a\"].difference(s).tainted?, [\"a\"].intersect?(s).tainted?, s.intersect?([\"a\"])]
+p [([\"a\"] & [\"a\"]).tainted?, [\"a\"].intersect?([\"a\"]).tainted?]
+"
+    );
+    let out = run_with(&src, vec![Response::text_reply("a,b")], &[]).ok();
+    assert_eq!(out, "[true, true, true, true]\n[true, true, true, ~true]\n[false, false]\n");
+    let out = run(&format!(
+        "{CREDENTIALS}t = Credentials.fetch(:api, :token)\np [t] | [\"x\"], [t] & [\"sk-12345678\"], [\"sk-12345678\", \"y\"] - [t], [t].intersect?([\"nope\"])\n"
+    ));
+    assert!(!out.contains("sk-1234"), "{out}");
+    assert_eq!(out, "[[secret], \"x\"]\n[[secret]]\n[\"y\"]\nfalse\n");
+}

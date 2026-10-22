@@ -614,6 +614,23 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 17 status: array set operators
+
+Ruby's set operators on arrays, which programs (and the models writing them) reach for: `a & b` keeps the items of `a` also in `b`, `a | b` the items of both, `a - b` those of `a` not in `b`. The order is that of `a`, then of `b`; `&` and `|` keep each item once, `-` keeps the duplicates of `a`; items are compared with `==` (`1 == 1.0`, arrays and records by their contents). Their methods take several arrays: `intersection`, `union`, `difference`, and `intersect?` says whether two arrays share an item.
+
+```ruby
+def common_tags(a: Array(String), b: Array(String)) -> Array(String) = a & b
+
+seen = [3, 1, 3]
+fresh = [1, 4]
+p seen & fresh, seen | fresh, seen - fresh  # [1], [3, 1, 4], [3, 3]
+p seen.union(fresh, [9]), seen.intersect?(fresh)
+```
+
+- **Types.** Both sides are arrays of the same items: `Array(T) & Array(T)` is an `Array(T)` (`Int` and `Float` mix into `Float`); anything else is refused (E0200).
+- **Taint.** An untrusted operand makes the whole result untrusted, even `intersect?`'s; a secret in an array stays a secret, compared in constant time.
+- **Native code.** Compiled functions do not use them: a function that does stays interpreted, and says so.
+
 ### Phase 16 status: OpenTelemetry
 
 A team running agents in production follows their latency, their errors and what they cost in Datadog, Grafana or Honeycomb, next to the rest of its services — not only in `grenat console`. `grenat run` and `grenat serve` now export traces over OTLP/HTTP when the standard `OTEL_*` variables say where: a span for each request, trigger run, job, workflow and step, agent `ask`, model call, tool call, `Http` request and SSH call, model calls described by the OpenTelemetry GenAI conventions, with their tokens and their cost. Nothing changes in the program.

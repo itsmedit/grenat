@@ -97,6 +97,20 @@ fn arguments_must_match_the_signature_exactly() {
     assert_eq!(jit.call(half, &[Data::Float(3.0)], 100, &|| false), Some(Ok(returned)));
 }
 
+#[test]
+fn array_set_operators_stay_interpreted() {
+    for (op, name) in [("&", "both"), ("|", "either"), ("-", "only")] {
+        let src = format!("def {name}(a: Array(Int), b: Array(Int)) -> Array(Int) = a {op} b\n");
+        assert_eq!(reason(&src, name), "applies an operator to `Array(Int)` and `Array(Int)`");
+    }
+    for method in ["intersection", "union", "difference"] {
+        let src = format!("def f(a: Array(Int), b: Array(Int)) -> Array(Int) = a.{method}(b)\n");
+        assert_eq!(reason(&src, "f"), format!("calls `Array(Int).{method}` with an argument"));
+    }
+    let src = "def f(a: Array(Int), b: Array(Int)) -> Bool = a.intersect?(b)\n";
+    assert_eq!(reason(src, "f"), "calls `Array(Int).intersect?` with an argument");
+}
+
 fn compile_ok(src: &str, name: &str) {
     let (_, jit) = compile(src);
     assert!(jit.report().compiled.contains(&name.to_string()), "{:?}", jit.report());

@@ -74,6 +74,10 @@ impl<'p> Checker<'p> {
             }
             Ty::Type(t) => self.static_call(cx, span, &t, name, argv, block),
             Ty::User(t) => self.user_type_method(cx, span, recv, &t, name, argv, block),
+            Ty::Array(_) if crate::sets::is_set_method(n) && self.method_def(&recv.ty, n).is_none() => {
+                self.walk_block(cx, block, &[]);
+                self.set_method(&recv, n, name.span, &argv)
+            }
             base => {
                 let arg0 = argv.first().map(|a| a.v.ty.clone());
                 let params: Vec<V> =

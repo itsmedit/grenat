@@ -22,6 +22,9 @@ pub(crate) fn array_method<'p>(
         }
         Ok(())
     };
+    if let Some(result) = set_method(interp, items, name, args) {
+        return Some(result);
+    }
     Some(match name {
         "size" | "length" if args.block.is_none() => Ok(Value::Int(items.borrow().len() as i64)),
         "count" => match &args.block {

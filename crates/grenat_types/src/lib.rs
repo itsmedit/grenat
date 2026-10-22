@@ -50,6 +50,7 @@ mod ops;
 mod pattern;
 mod resolve;
 mod secrets;
+mod sets;
 mod slices;
 mod ssh;
 mod streams;

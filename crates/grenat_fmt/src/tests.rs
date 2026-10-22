@@ -107,6 +107,20 @@ e = \"%.2f\" % x
 }
 
 #[test]
+fn array_set_operators_are_kept() {
+    let src = "\
+a = xs & ys
+b = xs | ys
+c = xs - ys
+d = (xs | ys) & zs
+e = xs | ys & zs
+f = xs.union(ys, zs).intersect?(ws)
+";
+    assert_eq!(fmt(src), src);
+    assert_eq!(fmt("g = (xs & ys) | zs\n"), "g = xs & ys | zs\n");
+}
+
+#[test]
 fn comments_stay_where_they_were() {
     let src = "\
 # leading

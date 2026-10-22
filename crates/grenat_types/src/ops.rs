@@ -63,7 +63,21 @@ impl<'p> Checker<'p> {
             BinOp::Mul if lt == Str && rt == Int => Str,
             // `"%.2f" % x`, `"%s-%s" % [a, b]`: `format`
             BinOp::Rem if lt == Str => crate::formatting::formatted(crate::secrets::type_holds_secret(&r.ty)),
-            BinOp::Add | BinOp::Sub if matches!(lt, Array(_)) && matches!(rt, Array(_)) => join(&lt, &rt),
+            BinOp::Add if matches!(lt, Array(_)) && matches!(rt, Array(_)) => join(&lt, &rt),
+            // arrays as sets (`sets`)
+            BinOp::Sub | BinOp::BitAnd | BinOp::BitOr if matches!(lt, Array(_)) && matches!(rt, Array(_)) => {
+                crate::sets::combined(&lt, &rt).unwrap_or_else(|| {
+                    self.error(
+                        E_TYPE,
+                        span,
+                        format!(
+                            "operator `{}` is not defined between `{lt}` and `{rt}`: arrays of the same items",
+                            op_str(op)
+                        ),
+                    );
+                    Unknown
+                })
+            }
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem | BinOp::Pow if lt == Int && rt == Int => {
                 Int
             }
