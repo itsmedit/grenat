@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use grenat_ast::{Arg, ArmTest, BinOp, Block, Body, Diagnostic, Expr, ExprKind, Ident, Span, StrSeg, TypeKind, UnOp};
 
-use crate::ty::{Ty, V, join, join_v};
+use crate::ty::{Ty, V, join_items, join_v};
 use crate::*;
 
 impl<'p> Checker<'p> {
@@ -102,7 +102,7 @@ impl<'p> Checker<'p> {
                     secret |= self.holds_secret(&v.ty, item.span);
                     elem = Some(match elem {
                         None => v.ty,
-                        Some(t) => join(&t, &v.ty),
+                        Some(t) => join_items(&t, &v.ty),
                     });
                 }
                 self.note_secret_literal(e.span, secret);
@@ -115,8 +115,8 @@ impl<'p> Checker<'p> {
                     let (kv, vv) = (self.expr(cx, key), self.expr(cx, value));
                     taint = taint.or(kv.taint).or(vv.taint);
                     secret |= self.holds_secret(&kv.ty, key.span) || self.holds_secret(&vv.ty, value.span);
-                    k = Some(k.map_or(kv.ty.clone(), |t| join(&t, &kv.ty)));
-                    val = Some(val.map_or(vv.ty.clone(), |t| join(&t, &vv.ty)));
+                    k = Some(k.map_or(kv.ty.clone(), |t| join_items(&t, &kv.ty)));
+                    val = Some(val.map_or(vv.ty.clone(), |t| join_items(&t, &vv.ty)));
                 }
                 self.note_secret_literal(e.span, secret);
                 V { ty: Ty::Hash(Box::new(k.unwrap_or(Ty::Unknown)), Box::new(val.unwrap_or(Ty::Unknown))), taint }
@@ -130,7 +130,10 @@ impl<'p> Checker<'p> {
                 }
                 V::new(Ty::Range)
             }
-            ExprKind::Var(name) => self.var(cx, name, e.span),
+            ExprKind::Var(name) => {
+                self.note_secret_literal(e.span, cx.secret_names.contains(name));
+                self.var(cx, name, e.span)
+            }
             ExprKind::It => cx.lookup("it").unwrap_or_else(V::unknown),
             ExprKind::Const(path) => self.constant(cx, path, e.span),
             ExprKind::IVar(name) => self.ivar(cx, name, e.span),
@@ -169,6 +172,11 @@ impl<'p> Checker<'p> {
             }
             ExprKind::Assign { target, value } => {
                 let v = self.expr(cx, value);
+                if let ExprKind::Var(name) = &target.kind
+                    && self.holds_secret(&v.ty, value.span)
+                {
+                    cx.secret_names.insert(name.clone());
+                }
                 self.assign(cx, target, v.clone());
                 v
             }

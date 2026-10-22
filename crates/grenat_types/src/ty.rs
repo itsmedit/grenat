@@ -134,6 +134,13 @@ pub fn join(a: &Ty, b: &Ty) -> Ty {
     }
 }
 
+/// Common type of a literal's items: a secret among strings leaves it
+/// unknown (`{"Authorization" => "Bearer #{token}"}` is a `Hash(String,
+/// String)` of headers), the literal itself noted as holding one.
+pub fn join_items(a: &Ty, b: &Ty) -> Ty {
+    if may_be_secret(a, b) { Ty::Unknown } else { join(a, b) }
+}
+
 /// One of `a` and `b` a secret, the other a secret or a string (maybe nil).
 fn may_be_secret(a: &Ty, b: &Ty) -> bool {
     let (a, b) = (a.base(), b.base());

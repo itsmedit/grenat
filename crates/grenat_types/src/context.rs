@@ -1,6 +1,6 @@
 //! Checking context of a function: scopes, `self`, collected effects and returns.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use grenat_ast::{Field, FnDef, Handler, Param, Span, Type};
 
@@ -54,6 +54,9 @@ pub(crate) struct Ctx<'p> {
     pub(crate) tests: usize,
     /// Non-deterministic effects used outside any `step` (an error in a workflow).
     pub(crate) unstepped: Vec<Eff>,
+    /// Variables once given a literal that holds a secret (`xs = ["a", token]`):
+    /// their type may not say so, they still hold one.
+    pub(crate) secret_names: HashSet<String>,
 }
 
 impl<'p> Ctx<'p> {
@@ -69,6 +72,7 @@ impl<'p> Ctx<'p> {
             steps: 0,
             tests: 0,
             unstepped: Vec::new(),
+            secret_names: HashSet::new(),
         }
     }
 
