@@ -28,6 +28,7 @@ grenat_package = { path = "crates/grenat_package" }
 grenat_lsp = { path = "crates/grenat_lsp" }
 grenat_macros = { path = "crates/grenat_macros" }
 grenat_db = { path = "crates/grenat_db" }
+grenat_db_url = { path = "crates/grenat_db_url" }
 grenat_mcp = { path = "crates/grenat_mcp" }
 grenat_serve = { path = "crates/grenat_serve" }
 grenat_setter = { path = "crates/grenat_setter" }

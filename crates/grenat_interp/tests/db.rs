@@ -122,6 +122,60 @@ fn sql_is_never_untrusted_and_untrusted_values_are_never_written() {
 }
 
 #[test]
+fn a_remote_postgres_server_is_net_on_its_host() {
+    let open =
+        |uses: &str, url: &str| run_err(&format!("def open uses {uses}\n  Db.connect({url})\nend\nopen\n"), Vec::new());
+    let e = open("db.read", "\"postgres://app:s3cr3t@db.invalid:5432/app\"");
+    assert_eq!(e.ty, "CapabilityError");
+    assert_eq!(e.message, "`net` to `postgres://db.invalid` is not allowed by `open` (uses db.read)");
+    let e = open("db.read, net(\"db.acme.io\")", "\"postgres://u@db.invalid/app\"");
+    assert_eq!(e.ty, "CapabilityError");
+    // granted: the check passes, and the connection is tried
+    for uses in ["db.read, net(\"db.invalid\")", "db.read, net"] {
+        let e = open(uses, "\"postgres://u@db.invalid/app\"");
+        assert_eq!(e.ty, "DbError", "{uses}: {}", e.message);
+    }
+    // every host of the URL
+    let e = open("net(\"a.invalid\")", "\"postgres://u@a.invalid,b.invalid/app\"");
+    assert!(e.message.starts_with("`net` to `postgres://b.invalid`"), "{}", e.message);
+    let e = open("db.read", "\"postgres://u@[2001:db8::1]/app\"");
+    assert!(e.message.starts_with("`net` to `postgres://[2001:db8::1]`"), "{}", e.message);
+}
+
+#[test]
+fn a_configured_url_is_checked_when_connecting_its_credentials_never_shown() {
+    let src = "\
+mock_credentials({\"db\" => {\"url\" => \"postgres://app:s3cr3t@db.invalid/app\"}})
+def open uses env, db.read
+  Db.connect(Credentials.fetch(:db, :url))
+end
+open
+";
+    let e = run_err(src, Vec::new());
+    assert_eq!(e.ty, "CapabilityError");
+    assert_eq!(e.message, "`net` to `postgres://db.invalid` is not allowed by `open` (uses env, db.read)");
+    assert!(!e.message.contains("s3cr3t") && !e.message.contains("app:"));
+}
+
+#[test]
+fn local_databases_and_the_top_level_need_no_net() {
+    // a local server: no `net`, the connection is tried
+    for url in ["postgres://nobody@127.0.0.1:1/x", "postgres://nobody@localhost:1/x", "postgres://nobody@[::1]:1/x"] {
+        let e = run_err(&format!("def open uses db.read\n  Db.connect(\"{url}\")\nend\nopen\n"), Vec::new());
+        assert_eq!(e.ty, "DbError", "{url}: {}", e.message);
+    }
+    assert_eq!(run("def open uses db.read\n  Db.connect(\"sqlite::memory:\")\nend\nopen\nputs 1\n"), "1\n");
+    // the top level declares no `uses`: it connects where it says
+    let e = run_err("Db.connect(\"postgres://u@db.invalid/app\")\n", Vec::new());
+    assert_eq!(e.ty, "DbError", "{}", e.message);
+    // `database` is held to the code around it, as `Db.connect`
+    let e = run_err("def setup uses db.read\n  database \"postgres://u@db.invalid/app\"\nend\nsetup\n", Vec::new());
+    assert_eq!(e.message, "`net` to `postgres://db.invalid` is not allowed by `setup` (uses db.read)");
+    let e = run_err("database \"postgres://u@db.invalid/app\"\n", Vec::new());
+    assert_eq!(e.ty, "DbError", "{}", e.message);
+}
+
+#[test]
 fn postgres() {
     let Ok(url) = std::env::var("GRENAT_TEST_POSTGRES") else {
         eprintln!("GRENAT_TEST_POSTGRES not set: PostgreSQL not tested");

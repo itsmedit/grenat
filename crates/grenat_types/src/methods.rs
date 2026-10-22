@@ -250,6 +250,9 @@ impl<'p> Checker<'p> {
             if t == "Http" {
                 self.http_options(&argv);
             }
+            if (t, n) == ("Db", "connect") {
+                self.database_url(cx, span, &argv);
+            }
             if builtins::only_in_tests(t, n) {
                 self.only_in_tests(cx, span, &format!("{t}.{n}"), "it reads what a test did");
             }

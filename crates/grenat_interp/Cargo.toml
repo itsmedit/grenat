@@ -16,6 +16,7 @@ grenat_green.workspace = true
 serde_json.workspace = true
 ureq.workspace = true
 grenat_db.workspace = true
+grenat_db_url.workspace = true
 grenat_ops.workspace = true
 grenat_console.workspace = true
 grenat_config.workspace = true

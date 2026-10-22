@@ -11,7 +11,9 @@
 //! ```
 //!
 //! Reads are `db.read` effects, writes `db.write`, checked against the
-//! capabilities at run time. SQL text is never untrusted (a `TaintError`
+//! capabilities at run time. Connecting to a PostgreSQL server that is not
+//! on this machine is `net` on its host (`grenat_db_url`), checked before
+//! connecting — the host shown, never the URL's credentials. SQL text is never untrusted (a `TaintError`
 //! otherwise): values go in parameters. Untrusted values may filter a read,
 //! never be written.
 
@@ -26,6 +28,10 @@ pub(crate) const DATABASE: &str = "Database";
 
 pub(crate) fn connect<'p>(interp: &mut Interp<'p>, args: &Args<'p>) -> R<'p> {
     let url = text_arg(args, 0, "connect")?;
+    for host in grenat_db_url::remote_hosts(&url) {
+        let shown = if host.contains(':') { format!("[{host}]") } else { host.clone() };
+        interp.check_net(&host, &format!("postgres://{shown}"))?;
+    }
     let connection = grenat_green::blocking(|| grenat_db::connect(&url)).or_else(db_error)?;
     Ok(interp.register_database(connection))
 }
