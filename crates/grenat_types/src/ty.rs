@@ -113,17 +113,32 @@ impl V {
     }
 }
 
-/// Common type of two branches.
+/// Common type of two branches. A secret and a string make a secret: a
+/// value that may be one is kept from where a secret never goes.
 pub fn join(a: &Ty, b: &Ty) -> Ty {
     match (a, b) {
         (a, b) if a == b => a.clone(),
         (Ty::Unknown, _) | (_, Ty::Unknown) => Ty::Unknown,
         (Ty::Nil, t) | (t, Ty::Nil) => Ty::opt(t.base().clone()),
+        (x, y) if may_be_secret(x, y) => {
+            if matches!(x, Ty::Opt(_)) || matches!(y, Ty::Opt(_)) {
+                Ty::opt(Ty::Secret)
+            } else {
+                Ty::Secret
+            }
+        }
         (Ty::Opt(x), y) | (y, Ty::Opt(x)) if x.as_ref() == y => Ty::Opt(x.clone()),
         (Ty::Int, Ty::Float) | (Ty::Float, Ty::Int) => Ty::Float,
         (Ty::Array(x), Ty::Array(y)) => Ty::array(join(x, y)),
         _ => Ty::Unknown,
     }
+}
+
+/// One of `a` and `b` a secret, the other a secret or a string (maybe nil).
+fn may_be_secret(a: &Ty, b: &Ty) -> bool {
+    let (a, b) = (a.base(), b.base());
+    let text = |t: &Ty| matches!(t, Ty::Str | Ty::Secret);
+    (*a == Ty::Secret || *b == Ty::Secret) && text(a) && text(b)
 }
 
 pub fn join_v(a: &V, b: &V) -> V {

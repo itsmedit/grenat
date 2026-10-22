@@ -98,3 +98,43 @@ fn no_secret_reaches_native_code() {
         render(&src, &d)
     );
 }
+
+#[test]
+fn no_secret_reaches_native_code_however_it_is_wrapped() {
+    let natives = with(
+        "native def label(tags: Hash(String, String)) -> Int pure\nnative def longest(cells: Array(Cell)) -> Cell? pure\n",
+    );
+    let leaks = [
+        ("shout(\"Bearer #{t}\")", "\"Bearer #{t}\""),
+        ("h = \"Bearer #{t}\"\n  shout(h)", "h"),
+        ("shout(\"x\" + t)", "\"x\" + t"),
+        ("shout(t.to_s)", "t.to_s"),
+        ("shout(format(\"%s\", t))", "format(\"%s\", t)"),
+        ("find([t], \"x\")", "[t]"),
+        // a variable keeps what its literal held
+        ("xs = [\"a\", t]\n  find(xs, \"x\")", "xs"),
+        ("cells([[\"a\", t]])", "[[\"a\", t]]"),
+        ("label({\"k\" => t})", "{\"k\" => t}"),
+        ("h = {\"k\" => \"x #{t}\"}\n  label(h)", "h"),
+        // a value that may be a secret is kept as one
+        ("shout(Credentials.dig(:a, :c) || \"x\")", "Credentials.dig(:a, :c) || \"x\""),
+        ("shout(true ? t : \"none\")", "true ? t : \"none\""),
+    ];
+    for (code, at) in leaks {
+        let src = format!("{natives}def main uses env\n  t = Credentials.fetch(:a, :b)\n  {code}\nend\n");
+        let d = diags(&src);
+        let refused = d.iter().any(|d| {
+            d.code == Some("E0414")
+                && d.message.starts_with("a secret reaches native code through")
+                && &src[d.span.range()] == at
+        });
+        assert!(refused, "{code}:\n{}", render(&src, &d));
+    }
+    // a record cannot hold one: refused where it is built
+    let src =
+        format!("{natives}def main uses env\n  longest([Cell.new(row: 1, text: Credentials.fetch(:a, :b))])\nend\n");
+    single(&src, "E0414", "Credentials.fetch(:a, :b)");
+    // a parameter declared `Secret`: refused as well
+    let src = format!("{natives}def pass(s: Secret) = shout(\"Bearer #{{s}}\")\n");
+    assert!(diags(&src).iter().any(|d| d.message == "a secret reaches native code through `shout`"));
+}

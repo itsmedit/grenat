@@ -128,6 +128,25 @@ fn no_secret_is_handed_to_native_code() {
 }
 
 #[test]
+fn no_secret_is_handed_to_native_code_however_it_is_wrapped() {
+    for call in [
+        "shout(\"Bearer #{t}\")",
+        "shout(\"x\" + t)",
+        "xs = [\"a\", t]\nfind(xs, \"a\")",
+        "find([\"a\"], t.to_s)",
+        "cells([[\"a\"], [\"b\", t]])",
+        "longest([Cell.new(row: 1, col: 0, text: t)])",
+    ] {
+        let e = error(&format!(
+            "mock_credentials({{\"api\" => {{\"key\" => \"s3cr3t\"}}}})\nt = Credentials.fetch(:api, :key)\n{call}\n"
+        ));
+        assert_eq!(e.ty, "SecretError", "{call}: {}", e.message);
+        assert!(e.message.starts_with("a secret is never handed to native code"), "{call}: {}", e.message);
+        assert!(!e.message.contains("s3cr3t"), "{}", e.message);
+    }
+}
+
+#[test]
 fn a_declaration_without_its_library_fails_when_called() {
     let (_, installed) = fixture::installed();
     let decl = "native def add(a: Int, b: Int) -> Int pure";

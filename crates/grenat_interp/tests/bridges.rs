@@ -243,6 +243,27 @@ fn no_secret_is_handed_to_a_bridge() {
 }
 
 #[test]
+fn no_secret_is_handed_to_a_bridge_however_it_is_wrapped() {
+    let word = "Word.new(text: \"w\", position: 0)";
+    for call in [
+        "shout(\"Bearer #{t}\")".to_string(),
+        format!("xs = [\"a\", t]\ngather(xs, {{}}, {word})"),
+        format!("gather([], {{\"auth\" => \"Bearer #{{t}}\"}}, {word})"),
+        "gather([], {}, Word.new(text: t, position: 0))".to_string(),
+    ] {
+        let code = format!(
+            "mock_credentials({{\"api\" => {{\"key\" => \"s3cr3t\"}}}})\nt = Credentials.fetch(:api, :key)\n{call}\n"
+        );
+        let Some(e) = error(RUBY, &code) else { return };
+        assert_eq!(e.ty, "SecretError", "{call}: {}", e.message);
+        assert!(e.message.starts_with("a secret is never handed to bridge code: `"), "{call}: {}", e.message);
+        assert!(!e.message.contains("s3cr3t"));
+    }
+    // the same values without the secret cross
+    assert_eq!(ok(RUBY, &format!("p gather([\"a\"], {{\"k\" => \"v\"}}, {word})\n")), Some("3\n".into()));
+}
+
+#[test]
 fn the_log_shows_calls_and_what_servers_write_on_standard_error() {
     let Some(run) = run_with(RUBY, "puts chatter(\"x\").trust!\n", |_| {}, true) else { return };
     run.result.unwrap();
