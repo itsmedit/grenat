@@ -137,10 +137,8 @@ impl<'p> Interp<'p> {
                     self.serve_events(&block, events, &label);
                 }
             }
-            // written off the green workers: a client that does not read holds no one
-            None => grenat_green::blocking(move || {
-                incoming.respond(answer.status, &answer.content_type, &answer.headers, answer.body)
-            }),
+            // written by the connection's thread: a client that does not read holds no worker
+            None => incoming.respond(answer.status, &answer.content_type, &answer.headers, answer.body),
         }
     }
 

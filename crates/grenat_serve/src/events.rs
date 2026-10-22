@@ -36,7 +36,7 @@ pub fn valid_name(name: &str) -> bool {
 
 /// A response being streamed: its head is written, its body goes out
 /// event by event. Chunked over HTTP/1.1; over HTTP/1.0, the end of the
-/// connection ends it.
+/// connection ends it. Either way, the connection ends with the stream.
 pub struct EventStream {
     outbox: Outbox,
     chunked: bool,
@@ -52,7 +52,7 @@ impl EventStream {
         http11: bool,
         limits: Limits,
     ) -> std::io::Result<EventStream> {
-        let mut head = format!("HTTP/1.{} {status} {}\r\n", u8::from(http11), reason(status));
+        let mut head = format!("HTTP/1.{} {status} {}\r\n", u8::from(http11), crate::status::reason(status));
         head.push_str("Content-Type: text/event-stream; charset=utf-8\r\nCache-Control: no-cache\r\n");
         // proxies that buffer (nginx) pass the events on at once
         head.push_str("X-Accel-Buffering: no\r\n");
@@ -63,7 +63,12 @@ impl EventStream {
             }
             head.push_str(&format!("{name}: {value}\r\n"));
         }
-        head.push_str(if http11 { "Transfer-Encoding: chunked\r\n" } else { "Connection: close\r\n" });
+        // the stream ends the connection
+        head.push_str(if http11 {
+            "Transfer-Encoding: chunked\r\nConnection: close\r\n"
+        } else {
+            "Connection: close\r\n"
+        });
         head.push_str("\r\n");
         let outbox = Outbox::new(writer, limits)?;
         outbox.send(head.into_bytes())?;
@@ -119,22 +124,6 @@ fn header_safe(text: &str) -> bool {
     !text.contains(['\r', '\n'])
 }
 
-fn reason(status: u16) -> &'static str {
-    match status {
-        200 => "OK",
-        201 => "Created",
-        202 => "Accepted",
-        400 => "Bad Request",
-        401 => "Unauthorized",
-        403 => "Forbidden",
-        404 => "Not Found",
-        429 => "Too Many Requests",
-        500 => "Internal Server Error",
-        503 => "Service Unavailable",
-        _ => "Status",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,7 +164,7 @@ mod tests {
         let text = String::from_utf8(out.0.lock().unwrap().clone()).unwrap();
         assert_eq!(
             text,
-            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nCache-Control: no-cache\r\nX-Accel-Buffering: no\r\nX-Trace: 7\r\nTransfer-Encoding: chunked\r\n\r\n\
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nCache-Control: no-cache\r\nX-Accel-Buffering: no\r\nX-Trace: 7\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n\
              a\r\ndata: é\n\n\r\n0\r\n\r\n"
         );
 

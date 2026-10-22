@@ -8,7 +8,6 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-tiny_http = "0.12"
 hmac = "0.13"
 sha2 = "0.11"
 base64 = "0.22"

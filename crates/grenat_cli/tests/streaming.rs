@@ -171,12 +171,8 @@ end
     assert_eq!(dechunk(body.as_bytes()), "data: start\n\nevent: error\ndata: error\n\n");
 }
 
-/// Clients that ask for an endless stream and never read it, more of them
-/// than the server has workers: another request is answered all the same,
-/// and each stalled stream ends (`StreamClosed`, logged).
-#[test]
-fn clients_that_stop_reading_hold_no_worker() {
-    let src = "get \"/big\" do |req|
+/// A program with an endless stream (`/big`) and a plain route (`/plain`).
+const STALL: &str = "get \"/big\" do |req|
   stream do |out|
     chunk = \"x\" * 100000
     while true
@@ -188,11 +184,24 @@ get \"/plain\" do |req|
   \"plain\"
 end
 ";
-    let dir = std::env::temp_dir().join(format!("grenat-cli-stall-{}", std::process::id()));
+
+/// `grenat serve` of [`STALL`], logging, with at most `descriptors` open
+/// files if given: the server, its address, its log lines as they come.
+fn serve_stall(name: &str, descriptors: Option<u32>) -> (std::process::Child, String, mpsc::Receiver<String>) {
+    let dir = std::env::temp_dir().join(format!("grenat-cli-{name}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("stall.grn");
-    std::fs::write(&path, src).unwrap();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_grenat"))
+    std::fs::write(&path, STALL).unwrap();
+    let grenat = env!("CARGO_BIN_EXE_grenat");
+    let mut command = match descriptors {
+        Some(n) => {
+            let mut sh = Command::new("sh");
+            sh.args(["-c", &format!("ulimit -n {n} && exec \"$0\" \"$@\""), grenat]);
+            sh
+        }
+        None => Command::new(grenat),
+    };
+    let mut child = command
         .args(["serve", "--listen", "127.0.0.1:0", path.to_str().unwrap()])
         .env("GRENAT_LOG", "1")
         .env("NO_COLOR", "1")
@@ -209,7 +218,26 @@ end
     let address = line.trim().strip_prefix("listening on http://").unwrap_or_else(|| panic!("{line}")).to_string();
     let (lines, logged) = mpsc::channel();
     std::thread::spawn(move || log.lines().map_while(Result::ok).try_for_each(|l| lines.send(l)));
+    (child, address, logged)
+}
 
+/// `GET /plain`, answered within `within` or an error.
+fn plain(address: &str, within: Duration) -> std::io::Result<String> {
+    let mut plain = TcpStream::connect(address)?;
+    plain.set_read_timeout(Some(within))?;
+    write!(plain, "GET /plain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")?;
+    let mut answer = String::new();
+    plain.read_to_string(&mut answer)?;
+    Ok(answer)
+}
+
+/// Clients that ask for an endless stream and never read it, a burst of
+/// them all at once, more than the server has threads of any kind: another
+/// request is answered all the same, and each stalled stream starts, then
+/// ends (`StreamClosed`, logged).
+#[test]
+fn clients_that_stop_reading_hold_no_worker() {
+    let (mut child, address, logged) = serve_stall("stall", None);
     let mut log = Vec::new();
     let wait_until = |log: &mut Vec<String>, done: &dyn Fn(&[String]) -> bool| {
         while !done(log) {
@@ -222,29 +250,45 @@ end
     let started = |log: &[String]| log.iter().filter(|l| l.contains("GET /big → 200")).count();
     let closed = |log: &[String]| log.iter().filter(|l| l.contains("GET /big: the client closed the stream")).count();
 
-    // one connection at a time: tiny_http's connection pool can leave a
-    // burst of connections queued behind threads that never free up
-    // (each one holds a stalled client), which is not what this test is about
-    let workers = std::thread::available_parallelism().map_or(4, |n| n.get());
-    let mut stalled = Vec::new();
-    for n in 1..=workers + 2 {
-        let mut client = TcpStream::connect(&address).unwrap();
+    let burst = 4 * std::thread::available_parallelism().map_or(4, |n| n.get()) + 2;
+    // all connected first, so that the server finds them all waiting at once
+    let mut stalled: Vec<TcpStream> = (0..burst).map(|_| TcpStream::connect(&address).unwrap()).collect();
+    for client in &mut stalled {
         write!(client, "GET /big HTTP/1.1\r\nHost: x\r\n\r\n").unwrap();
-        stalled.push(client);
-        wait_until(&mut log, &|log| started(log) >= n);
     }
-    let mut plain = TcpStream::connect(&address).unwrap();
-    plain.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
-    write!(plain, "GET /plain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").unwrap();
-    let mut answer = String::new();
-    let read = plain.read_to_string(&mut answer);
+    let asked = std::time::Instant::now();
+    let answer = plain(&address, Duration::from_secs(10));
+    let answered_in = asked.elapsed();
+    wait_until(&mut log, &|log| started(log) >= burst);
+    let all_started_in = asked.elapsed();
     // each stalled stream ends, the clients still connected
-    wait_until(&mut log, &|log| closed(log) >= workers + 2);
+    wait_until(&mut log, &|log| closed(log) >= burst);
     child.kill().unwrap();
     child.wait().unwrap();
     drop(stalled);
-    let _ = std::fs::remove_dir_all(&dir);
-    read.unwrap_or_else(|e| panic!("/plain was not answered: {e}"));
+    let answer = answer.unwrap_or_else(|e| panic!("/plain was not answered: {e}"));
     assert!(answer.starts_with("HTTP/1.1 200") && answer.ends_with("plain"), "{answer}");
-    assert_eq!(closed(&log), workers + 2, "{log:#?}");
+    assert!(answered_in < Duration::from_secs(5), "/plain answered after {answered_in:?}");
+    assert!(all_started_in < Duration::from_secs(5), "the streams started within {all_started_in:?}");
+    assert_eq!(started(&log), burst, "{log:#?}");
+    assert_eq!(closed(&log), burst, "{log:#?}");
+}
+
+/// A burst of clients beyond the server's file descriptors: those it
+/// cannot take wait, and once the burst has gone, the server serves again.
+#[test]
+fn a_burst_beyond_the_descriptors_leaves_the_server_serving() {
+    let (mut child, address, _log) = serve_stall("descriptors", Some(64));
+    // a connection the system refuses is part of the burst all the same
+    let mut stalled: Vec<TcpStream> = (0..100).filter_map(|_| TcpStream::connect(&address).ok()).collect();
+    for client in &mut stalled {
+        let _ = write!(client, "GET /big HTTP/1.1\r\nHost: x\r\n\r\n");
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    drop(stalled);
+    let answer = plain(&address, Duration::from_secs(10));
+    child.kill().unwrap();
+    child.wait().unwrap();
+    let answer = answer.unwrap_or_else(|e| panic!("/plain was not answered: {e}"));
+    assert!(answer.starts_with("HTTP/1.1 200") && answer.ends_with("plain"), "{answer}");
 }

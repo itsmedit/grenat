@@ -5,8 +5,9 @@
 //! likes.
 //!
 //! A client is stalled when the bytes waiting for it pass a limit, or when
-//! one write has not ended for a while. Its writing thread stays blocked
-//! until the client reads or closes its connection, but nothing waits on it.
+//! one write has not ended for a while. Nothing waits on its writing
+//! thread, which ends once its write fails: the server's sockets have a
+//! write timeout (see `crate::connection`).
 
 use std::collections::VecDeque;
 use std::io::{ErrorKind, Write};
