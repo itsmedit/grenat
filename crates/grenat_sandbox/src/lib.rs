@@ -5,13 +5,18 @@
 //! clean environment (only `PATH`, `HOME` and `LANG` are kept, plus the
 //! variables given), in a working directory, and — unless it may use the
 //! network — inside a sandbox that cuts the network off: `sandbox-exec` on
-//! macOS, `unshare` on Linux ([`isolation`]).
+//! macOS, `unshare` on Linux ([`isolation`]). Where that sandbox is
+//! missing or refused, the program is not started: the error says which
+//! sandbox, on which system, and what to do.
 //!
 //! What is done with the process (its pipes, its timeout) is the caller's.
 
+mod isolation;
+
 use std::path::Path;
-use std::process::{Command, Stdio};
-use std::sync::OnceLock;
+use std::process::Command;
+
+pub use isolation::{Missing, Probe, UNAVAILABLE, isolation, isolation_works};
 
 /// The variables of Grenat's own environment a program keeps.
 pub const KEPT: [&str; 3] = ["PATH", "HOME", "LANG"];
@@ -30,8 +35,17 @@ pub struct Sandboxed<'a> {
 impl Sandboxed<'_> {
     /// The command that starts the program: its pipes are left to the caller.
     pub fn command(&self) -> Result<Command, String> {
+        self.command_probed(isolation_works)
+    }
+
+    /// [`Sandboxed::command`], `probe` telling whether isolation works here
+    /// (asked only when the network is to be cut off).
+    pub fn command_probed(&self, probe: Probe) -> Result<Command, String> {
         if self.argv.is_empty() {
             return Err("no program to run".into());
+        }
+        if !self.network {
+            probe()?;
         }
         let mut argv = isolation(self.network)?;
         argv.extend(self.argv.iter().cloned());
@@ -50,55 +64,10 @@ impl Sandboxed<'_> {
     }
 }
 
-/// The prefix that cuts the network off, if asked: `sandbox-exec` on macOS,
-/// `unshare` on Linux. Never runs without isolation when it was asked for:
-/// an error says it is not available here.
-pub fn isolation(network: bool) -> Result<Vec<String>, String> {
-    if network {
-        return Ok(Vec::new());
-    }
-    let found = |program: &str| {
-        std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|d| d.join(program).is_file()))
-    };
-    if cfg!(target_os = "macos") && found("sandbox-exec") {
-        return Ok(["sandbox-exec", "-p", "(version 1)(allow default)(deny network*)"].map(String::from).to_vec());
-    }
-    if cfg!(target_os = "linux") && found("unshare") {
-        return Ok(["unshare", "--map-root-user", "--net", "--"].map(String::from).to_vec());
-    }
-    Err("network isolation is not available here (it needs sandbox-exec or unshare): use `network: true`".into())
-}
-
-/// Whether isolation works here, tried once per process: the tool may be
-/// installed and still refused (user namespaces disabled, a container's
-/// seccomp profile). The error says why it does not.
-pub fn isolation_works() -> Result<(), String> {
-    static WORKS: OnceLock<Result<(), String>> = OnceLock::new();
-    WORKS.get_or_init(probe).clone()
-}
-
-fn probe() -> Result<(), String> {
-    let argv = ["true".to_string()];
-    let mut command = Sandboxed { argv: &argv, cwd: None, env: &[], network: false }
-        .command()
-        .map_err(|e| e.trim_end_matches(": use `network: true`").to_string())?;
-    let out = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("the sandbox cannot start: {e}"))?;
-    if out.status.success() {
-        Ok(())
-    } else {
-        let why = String::from_utf8_lossy(&out.stderr).lines().next().unwrap_or_default().trim().to_string();
-        Err(format!("the sandbox is refused here ({why})"))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Stdio;
 
     fn output(sandboxed: Sandboxed) -> String {
         let out = sandboxed.command().unwrap().stdin(Stdio::null()).output().unwrap();
@@ -124,18 +93,15 @@ mod tests {
     }
 
     #[test]
-    fn the_network_is_cut_off_by_a_prefix() {
-        assert!(isolation(true).unwrap().is_empty());
-        match isolation(false) {
-            Ok(prefix) if cfg!(target_os = "macos") => assert_eq!(prefix[0], "sandbox-exec"),
-            Ok(prefix) => assert_eq!(prefix[..3], ["unshare", "--map-root-user", "--net"]),
-            Err(e) => assert!(e.starts_with("network isolation is not available here"), "{e}"),
+    fn no_program_starts_without_the_sandbox_it_asked_for() {
+        fn missing() -> Result<(), String> {
+            Err(Missing::NotFound.message())
         }
-        // tried once: the answer is the same every time
-        let first = isolation_works();
-        assert_eq!(first, isolation_works());
-        if let Err(e) = first {
-            eprintln!("note: network isolation does not work here: {e}");
-        }
+        let argv = ["true".to_string()];
+        let cut = Sandboxed { argv: &argv, cwd: None, env: &[], network: false };
+        let e = cut.command_probed(missing).unwrap_err();
+        assert!(e.starts_with(UNAVAILABLE), "{e}");
+        // with the network, there is nothing to cut off: the sandbox is not asked
+        assert!(Sandboxed { network: true, ..cut }.command_probed(missing).is_ok());
     }
 }
