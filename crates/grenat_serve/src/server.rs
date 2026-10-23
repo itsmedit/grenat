@@ -39,7 +39,7 @@ pub struct Incoming {
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
     http11: bool,
-    socket: TcpStream,
+    socket: Arc<TcpStream>,
     reply: mpsc::Sender<Reply>,
     /// When a stream's client is stalled.
     stalled: crate::outbox::Limits,
@@ -59,7 +59,8 @@ impl Incoming {
     /// Starts a response of Server-Sent Events: its head is sent now, its
     /// events as they are written. The stream ends the connection.
     pub fn respond_events(self, status: u16, headers: &[(String, String)]) -> std::io::Result<EventStream> {
-        let events = EventStream::start(Box::new(self.socket), status, headers, self.http11, self.stalled)?;
+        let events =
+            EventStream::start(Box::new(connection::Shared(self.socket)), status, headers, self.http11, self.stalled)?;
         let _ = self.reply.send(Reply::Streamed);
         Ok(events)
     }
@@ -138,7 +139,7 @@ fn accept(listener: &TcpListener, settings: Settings, program: &mpsc::Sender<Exc
         if stopped.load(Ordering::Acquire) {
             return;
         }
-        let mut socket = match socket {
+        let socket = match socket {
             Ok(socket) => socket,
             Err(_) => {
                 std::thread::sleep(Duration::from_millis(10));
@@ -148,7 +149,7 @@ fn accept(listener: &TcpListener, settings: Settings, program: &mpsc::Sender<Exc
         if live.fetch_add(1, Ordering::AcqRel) >= settings.connections {
             live.fetch_sub(1, Ordering::AcqRel);
             let _ = socket.set_write_timeout(Some(Duration::from_secs(1)));
-            connection::refuse(&mut socket, 503);
+            connection::refuse(&socket, 503);
             continue;
         }
         let slot = Slot(live.clone());

@@ -5,10 +5,14 @@
 //! No client holds the thread for as long as it likes: it has a while to
 //! start a request, a while to send its head, a while for each read of its
 //! body, and each write to it must end within a while too.
+//!
+//! The socket is shared (never duplicated) by the reading, the writing and
+//! the stream it may be handed to: a connection accepted needs no other
+//! file descriptor to be served, however many a burst of clients holds.
 
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::TcpStream;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use crate::request::{self, Failure, Request, Sizes};
@@ -36,7 +40,7 @@ impl Default for Timeouts {
 pub(crate) struct Exchange {
     pub request: Request,
     /// The client's socket, for a stream to write to.
-    pub socket: TcpStream,
+    pub socket: Arc<TcpStream>,
     pub reply: mpsc::Sender<Reply>,
 }
 
@@ -59,9 +63,9 @@ pub(crate) fn serve(socket: TcpStream, timeouts: Timeouts, sizes: Sizes, program
     if socket.set_write_timeout(Some(timeouts.write)).is_err() {
         return;
     }
-    let Ok(reading) = socket.try_clone() else { return };
-    let mut reader = BufReader::new(Deadline { socket: reading, until: None });
-    let mut writer = socket;
+    let socket = Arc::new(socket);
+    let mut reader = BufReader::new(Deadline { socket: socket.clone(), until: None });
+    let mut writer = &*socket;
     loop {
         // the first byte of the next request, within `idle`
         reader.get_mut().until = Some(Instant::now() + timeouts.idle);
@@ -80,17 +84,16 @@ pub(crate) fn serve(socket: TcpStream, timeouts: Timeouts, sizes: Sizes, program
         let request = match read {
             Ok(request) => request,
             Err(Failure::Gone) => return,
-            Err(Failure::Refused(status)) => return refuse(&mut writer, status),
+            Err(Failure::Refused(status)) => return refuse(&socket, status),
         };
         let to = Answering {
             http11: request.http11,
             keep_alive: request.keep_alive(),
             head_only: request.method.eq_ignore_ascii_case("HEAD"),
         };
-        let Ok(socket) = writer.try_clone() else { return };
         let (reply, answer) = mpsc::channel();
-        if program.send(Exchange { request, socket, reply }).is_err() {
-            return refuse(&mut writer, 503);
+        if program.send(Exchange { request, socket: socket.clone(), reply }).is_err() {
+            return refuse(&socket, 503);
         }
         // an exchange dropped unanswered: the connection is closed
         let Ok(Reply::Whole { status, content_type, headers, body }) = answer.recv() else { return };
@@ -102,7 +105,7 @@ pub(crate) fn serve(socket: TcpStream, timeouts: Timeouts, sizes: Sizes, program
 }
 
 /// Answers a request refused before the program saw it, and closes.
-pub(crate) fn refuse(writer: &mut TcpStream, status: u16) {
+pub(crate) fn refuse(mut writer: &TcpStream, status: u16) {
     let to = Answering { http11: true, keep_alive: false, head_only: false };
     let body = crate::status::reason(status);
     let _ = writer.write_all(&response::whole(status, "text/plain; charset=utf-8", &[], body.as_bytes(), to, now()));
@@ -113,10 +116,23 @@ fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
 }
 
+/// A socket shared with its connection, written through: what a stream writes to.
+pub(crate) struct Shared(pub Arc<TcpStream>);
+
+impl Write for Shared {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        (&*self.0).write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        (&*self.0).flush()
+    }
+}
+
 /// The socket, read until a deadline: each read waits only for what is
 /// left of it (a client sending a byte now and then gains nothing).
 struct Deadline {
-    socket: TcpStream,
+    socket: Arc<TcpStream>,
     until: Option<Instant>,
 }
 
@@ -129,6 +145,6 @@ impl Read for Deadline {
             }
             self.socket.set_read_timeout(Some(left))?;
         }
-        self.socket.read(buf)
+        (&*self.socket).read(buf)
     }
 }

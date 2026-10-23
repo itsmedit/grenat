@@ -278,7 +278,7 @@ fn clients_that_stop_reading_hold_no_worker() {
 /// cannot take wait, and once the burst has gone, the server serves again.
 #[test]
 fn a_burst_beyond_the_descriptors_leaves_the_server_serving() {
-    let (mut child, address, _log) = serve_stall("descriptors", Some(64));
+    let (mut child, address, log) = serve_stall("descriptors", Some(64));
     // a connection the system refuses is part of the burst all the same
     let mut stalled: Vec<TcpStream> = (0..100).filter_map(|_| TcpStream::connect(&address).ok()).collect();
     for client in &mut stalled {
@@ -289,6 +289,7 @@ fn a_burst_beyond_the_descriptors_leaves_the_server_serving() {
     let answer = plain(&address, Duration::from_secs(10));
     child.kill().unwrap();
     child.wait().unwrap();
-    let answer = answer.unwrap_or_else(|e| panic!("/plain was not answered: {e}"));
-    assert!(answer.starts_with("HTTP/1.1 200") && answer.ends_with("plain"), "{answer}");
+    let log: Vec<String> = log.try_iter().collect();
+    let answer = answer.unwrap_or_else(|e| panic!("/plain was not answered: {e}\n{log:#?}"));
+    assert!(answer.starts_with("HTTP/1.1 200") && answer.ends_with("plain"), "{answer:?}\n{log:#?}");
 }
