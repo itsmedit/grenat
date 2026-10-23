@@ -155,7 +155,11 @@ impl<'p> Interp<'p> {
             watch.told = Some(told);
         }
         if !watch.wake.as_ref().is_some_and(Wake::is_watching) {
-            watch.wake = Some(Wake::watch(glob.base(), glob.depth() != Some(1)));
+            let (base, recursive) = (glob.base(), glob.depth() != Some(1));
+            watch.wake = Some(match &self.notifier {
+                Some(fake) => fake.watch(base, recursive),
+                None => Wake::watch(base, recursive),
+            });
         }
     }
 

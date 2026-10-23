@@ -3,10 +3,10 @@
 //! — a file created, rewritten, renamed in, written slowly, there at the
 //! start, matched or not by its pattern, a link leading out, a raising
 //! handler retried then given up while the server goes on, and what was
-//! handled kept across a restart. One test proves the system wakes the
-//! watch (inotify on Linux, FSEvents on macOS): it scans on a timer once a
-//! minute, so a file handed within seconds was told of; the others scan
-//! often, so they do not wait for the system's registration.
+//! handled kept across a restart. The system's notifications are a test's
+//! own here ([`FakeNotifier`]): the watches scan on a timer once a minute,
+//! so a file handed within seconds was told of; `files_watched.rs` proves
+//! the system's own (inotify on Linux, FSEvents on macOS).
 
 mod common;
 
@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use common::*;
 use grenat_interp::{Options, Output};
+use grenat_watch::FakeNotifier;
 
 // ── In tests: deliver_file ─────────────────────────────────────────────
 
@@ -149,36 +150,41 @@ fn the_declaration_checks_its_pattern_its_folder_and_its_options() {
 
 // ── Served, on real folders ───────────────────────────────────────────
 
-/// Serves `src` on a thread of its own (it never returns): what it prints and logs.
-fn serve(src: &str) -> Arc<Mutex<String>> {
+/// Serves `src` on a thread of its own (it never returns), told of changes
+/// by `notifier`: what it prints and logs.
+fn serve_with(src: &str, notifier: &FakeNotifier) -> Arc<Mutex<String>> {
     let parsed = grenat_parser::parse(src);
     assert!(parsed.diagnostics.is_empty(), "{:#?}", parsed.diagnostics);
     let program: &'static grenat_ast::Program = Box::leak(Box::new(parsed.program));
     let buffer = Arc::new(Mutex::new(String::new()));
-    let options =
-        Options { output: Output::Capture(buffer.clone()), journal: Some(temp_dir("journal")), ..Options::default() };
+    let options = Options {
+        output: Output::Capture(buffer.clone()),
+        journal: Some(temp_dir("journal")),
+        notifier: Some(notifier.clone()),
+        ..Options::default()
+    };
     std::thread::spawn(move || grenat_interp::serve(program, options, "127.0.0.1:0", |_| {}));
     buffer
 }
 
-/// Serves `src`, once the system tells of the changes of its one folder
-/// (FSEvents may take a while to register under load).
-fn serve_told(src: &str) -> Arc<Mutex<String>> {
-    let output = serve(src);
-    wait_told(&output, 1);
-    output
+/// Serves `src`, told of no change: its scans on a timer find them.
+fn serve(src: &str) -> Arc<Mutex<String>> {
+    serve_with(src, &FakeNotifier::default())
 }
 
-/// Waits until the system told of changes `times` times (registered anew).
-fn wait_told(output: &Arc<Mutex<String>>, times: usize) {
-    let started = Instant::now();
-    while output.lock().unwrap().matches(": told of changes by the system\n").count() < times {
-        // FSEvents may answer late: its daemon looks at the test's executable,
-        // seconds in a crowded `target/debug/deps`, one registration at a time;
-        // with the whole suite running beside it, minutes: 180 s was seen exceeded
-        assert!(started.elapsed() < Duration::from_secs(600), "never told:\n{}", output.lock().unwrap());
-        std::thread::sleep(Duration::from_millis(20));
-    }
+/// Serves `src`, once told of the changes of its one folder: what it
+/// prints, and what tells it.
+fn serve_told(src: &str) -> (Arc<Mutex<String>>, FakeNotifier) {
+    let notifier = FakeNotifier::default();
+    let output = serve_with(src, &notifier);
+    wait_until("told of changes", &output, |out| out.contains(": told of changes by the system\n"));
+    (output, notifier)
+}
+
+/// Writes `content` to `path`, and tells of it.
+fn write_told(notifier: &FakeNotifier, path: &Path, content: &str) {
+    std::fs::write(path, content).unwrap();
+    assert_eq!(notifier.change(path), 1, "{} is not watched", path.display());
 }
 
 /// Waits (20 s at most) until `done` holds.
@@ -217,17 +223,17 @@ const OFTEN: &str = ", every: 0.2, settle: 0.2";
 fn served_a_file_created_then_rewritten_is_told_of_and_handed_once_per_content() {
     let dir = folder("files-created");
     let inbox = dir.join("inbox");
-    let output = serve_told(&printing(&format!("{}/*.pdf", inbox.display()), TOLD));
-    std::fs::write(inbox.join("a.pdf"), "first").unwrap();
-    std::fs::write(inbox.join("a.txt"), "not a pdf").unwrap();
+    let (output, notifier) = serve_told(&printing(&format!("{}/*.pdf", inbox.display()), TOLD));
+    write_told(&notifier, &inbox.join("a.pdf"), "first");
+    write_told(&notifier, &inbox.join("a.txt"), "not a pdf");
     let got = format!("got {}/a.pdf: first\n", inbox.display());
     wait_until("the first content", &output, |out| out.contains(&got));
     // touched, the same content: nothing
-    std::fs::write(inbox.join("a.pdf"), "first").unwrap();
+    write_told(&notifier, &inbox.join("a.pdf"), "first");
     std::thread::sleep(Duration::from_millis(800));
     assert_eq!(count(&output, &got), 1);
     // new content: handed
-    std::fs::write(inbox.join("a.pdf"), "second").unwrap();
+    write_told(&notifier, &inbox.join("a.pdf"), "second");
     let second = format!("got {}/a.pdf: second\n", inbox.display());
     wait_until("the second content", &output, |out| out.contains(&second));
     std::thread::sleep(Duration::from_millis(500));
@@ -427,14 +433,15 @@ fn served_what_was_handled_is_not_handed_again_after_a_restart() {
 fn served_a_folder_replaced_between_two_scans_is_watched_again() {
     let dir = folder("files-replaced");
     let inbox = dir.join("inbox");
-    let output = serve_told(&printing(&format!("{}/*.pdf", inbox.display()), TOLD));
+    let (output, notifier) = serve_told(&printing(&format!("{}/*.pdf", inbox.display()), TOLD));
     // another directory under the same name, at once: no scan sees it missing
     std::fs::create_dir_all(dir.join("inbox.new")).unwrap();
     std::fs::rename(dir.join("inbox.new"), &inbox).unwrap();
+    assert_eq!(notifier.change(&inbox), 1);
     // the new directory watched (inotify stays on the one gone otherwise)
-    wait_told(&output, 2);
-    std::thread::sleep(Duration::from_millis(500));
-    std::fs::write(inbox.join("a.pdf"), "new folder").unwrap();
+    wait_until("watched anew", &output, |out| out.matches(": told of changes by the system\n").count() == 2);
+    assert_eq!(notifier.registrations(), 2);
+    write_told(&notifier, &inbox.join("a.pdf"), "new folder");
     // scanned once a minute only: handed sooner, it was told of
     wait_until("told of", &output, |out| out.contains("a.pdf: new folder\n"));
 }

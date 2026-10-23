@@ -77,6 +77,8 @@ pub(crate) struct Shared<'p> {
     pub webhooks: Mutex<Vec<crate::builtins::Webhook<'p>>>,
     pub mailboxes: Mutex<Vec<crate::builtins::EmailTrigger<'p>>>,
     pub folders: Mutex<Vec<crate::builtins::FileTrigger<'p>>>,
+    /// Tells the folders of changes in place of the system, in tests.
+    pub notifier: Option<grenat_watch::FakeNotifier>,
     /// See [`Options::trusted_certificates`].
     pub trusted_certificates: Vec<Vec<u8>>,
     /// Approvals decided in Slack (`approvals_in_slack`), and where its Web
@@ -242,6 +244,7 @@ impl<'p> Interp<'p> {
             webhooks: Mutex::new(Vec::new()),
             mailboxes: Mutex::new(Vec::new()),
             folders: Mutex::new(Vec::new()),
+            notifier: options.notifier.clone(),
             trusted_certificates: options.trusted_certificates.clone(),
             slack_approvals: Mutex::new(None),
             slack_api: options.slack_api.clone().unwrap_or_else(|| crate::slack::API.to_string()),

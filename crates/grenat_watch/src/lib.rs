@@ -12,7 +12,8 @@
 //! a change (inotify on Linux, FSEvents on macOS) and a scan follows at
 //! once; without it — a directory not there yet, a network drive, the
 //! system's watch limit reached, a registration still under way — scans
-//! run on a timer only.
+//! run on a timer only. Tests may tell of changes themselves
+//! ([`FakeNotifier`]).
 //!
 //! **Opened, then checked** ([`open_inside`]): what a scan saw may be
 //! swapped for a link before it is read, so a file is opened without
@@ -25,6 +26,8 @@
 //! path; a failed run is tried again a few times, then given up.
 
 mod digest;
+#[cfg(feature = "watch")]
+mod fake;
 mod glob;
 mod open;
 mod scan;
@@ -33,6 +36,8 @@ mod settle;
 mod wake;
 
 pub use digest::digest;
+#[cfg(feature = "watch")]
+pub use fake::FakeNotifier;
 pub use glob::{Glob, MAX_ALTERNATIVES};
 pub use open::{LEADING_OUT, OpenError, open_inside};
 pub use scan::{Found, Refused, Scan, Stamp, scan};

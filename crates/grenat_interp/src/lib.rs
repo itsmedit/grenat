@@ -124,6 +124,10 @@ pub struct Options {
     /// `grenat serve` read it from the `OTEL_*` environment variables
     /// (see `grenat_otel::Config`); tests export nothing.
     pub telemetry: Option<Arc<grenat_otel::Tracer>>,
+    /// Tells the folders of `on_file` of changes in place of the operating
+    /// system (inotify, FSEvents), in tests: what a wake-up does is tested
+    /// without waiting for the system to register a watch.
+    pub notifier: Option<grenat_watch::FakeNotifier>,
 }
 
 impl Default for Options {
@@ -145,6 +149,7 @@ impl Default for Options {
             trusted_certificates: Vec::new(),
             slack_api: None,
             telemetry: None,
+            notifier: None,
         }
     }
 }
