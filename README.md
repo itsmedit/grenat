@@ -393,7 +393,13 @@ dates, email), Python's familiarity still pays.
 
 ## Status
 
-The latest release, v0.1.3, has phases 0 to 16.
+The latest release, v0.1.3, has phases 0 to 16; phase 17 is on `main`.
+
+**Phase 17 — hardening**: an HTTP server of Grenat's own in place of `tiny_http`, which a burst of
+clients could starve (a thread per connection, every client timed, size limits, no request
+smuggling); bridge facets refused where the sandbox cannot cut their network off; secrets kept
+from native and bridge code, decided and checked everywhere; a remote database is `net` on its
+host, as HTTP, mail and IMAP are; and Ruby's array set operators, `a & b`, `a | b`, `a - b`.
 
 **Phase 16 — OpenTelemetry**: with `OTEL_EXPORTER_OTLP_ENDPOINT` set, `grenat run` and `grenat
 serve` export traces over OTLP/HTTP (JSON) to Datadog, Grafana, Honeycomb or any collector — a span
