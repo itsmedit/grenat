@@ -28,7 +28,11 @@ docker run --rm $platform \
         [ -f .git ] && rm .git
         # linking every test program at once exhausts a small Docker VM
         export CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
-        cargo test -q --no-fail-fast 2>&1 | grep "test result" | awk "{p+=\$4; f+=\$6} END {print \"tests:\", p+0, \"passed,\", f+0, \"failed\"; exit (f > 0 || p == 0)}"
+        # the failed tests are named, with what they said: never anonymous
+        cargo test --no-fail-fast >/tmp/tests.log 2>&1 || true
+        awk "/^ *(Running|Doc-tests) / {target=\$2} /^test .* FAILED\$/ {print \"failed:\", target, \$2}" /tmp/tests.log
+        awk "/^---- .* stdout ----\$/ {n=40} /^failures:\$/ {n=0} n > 0 {print; n--}" /tmp/tests.log
+        grep "test result" /tmp/tests.log | awk "{p+=\$4; f+=\$6} END {print \"tests:\", p+0, \"passed,\", f+0, \"failed\"; exit (f > 0 || p == 0)}"
         cargo build -q --release -p grenat_cli -p grenat_host -p grenat_standalone
         ./target/release/grenat build examples/objects.grn -o /tmp/hosted
         ./target/release/grenat build --native examples/objects.grn -o /tmp/native
