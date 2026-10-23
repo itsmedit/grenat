@@ -47,11 +47,23 @@ fn connect(address: &str) -> TcpStream {
 
 /// Reads one response whose length is given, or until the connection ends.
 fn response(client: &mut TcpStream) -> String {
+    read_response(client, true)
+}
+
+/// Reads the head of a response to `HEAD`: its length is given, but no body follows.
+fn head_response(client: &mut TcpStream) -> String {
+    read_response(client, false)
+}
+
+fn read_response(client: &mut TcpStream, with_body: bool) -> String {
     let mut bytes = Vec::new();
     let mut buffer = [0; 4096];
     loop {
         let text = String::from_utf8_lossy(&bytes).into_owned();
         if let Some((head, body)) = text.split_once("\r\n\r\n") {
+            if !with_body {
+                return text;
+            }
             let length = head.lines().find_map(|l| l.strip_prefix("Content-Length: ")).map(|l| l.parse().unwrap());
             if length.is_some_and(|n: usize| body.len() >= n) {
                 return text;
@@ -80,11 +92,13 @@ fn requests_on_a_kept_alive_connection_are_answered_in_order() {
     assert!(first.contains("X-Seen: 1\r\n") && first.contains("Date: "), "{first}");
     assert!(response(&mut client).ends_with("GET /b  "));
     write!(client, "HEAD /c HTTP/1.1\r\nHost: h\r\n\r\n").unwrap();
-    let head = response(&mut client);
+    let head = head_response(&mut client);
     assert!(head.contains("Content-Length: 9\r\n") && head.ends_with("\r\n\r\n"), "{head}");
     write!(client, "POST /d HTTP/1.1\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n2\r\nok\r\n0\r\n\r\n")
         .unwrap();
+    // no body after the head of `HEAD`: the next response starts at once
     let last = response(&mut client);
+    assert!(last.starts_with("HTTP/1.1 200 OK\r\n"), "{last}");
     assert!(last.contains("Connection: close\r\n") && last.ends_with("POST /d  ok"), "{last}");
     assert!(closed(&mut client));
 

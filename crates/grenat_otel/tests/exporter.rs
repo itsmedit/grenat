@@ -16,15 +16,17 @@ use grenat_otel::{Batching, Config, Export, Exporter, Kind, SpanContext, SpanSta
 /// What the fake collector received: (headers, JSON body).
 type Received = Arc<Mutex<Vec<(Vec<(String, String)>, serde_json::Value)>>>;
 
-/// A collector on a free port, answering `200` after `delay`.
+/// A collector on a free port, answering `200`: the first request after
+/// `delay`, the next ones at once.
 fn collector(delay: Duration) -> (String, Received) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     let received: Received = Arc::default();
     let kept = received.clone();
     std::thread::spawn(move || {
-        for stream in listener.incoming().flatten() {
+        for (n, stream) in listener.incoming().flatten().enumerate() {
             let kept = kept.clone();
+            let delay = if n == 0 { delay } else { Duration::ZERO };
             std::thread::spawn(move || answer(stream, delay, &kept));
         }
     });
