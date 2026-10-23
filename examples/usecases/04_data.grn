@@ -32,9 +32,9 @@ def answer(db: Database, schema: String, question: String) -> ~String uses llm, 
   explain(question, Json.dump(rows.first(50)))
 end
 
-# DATABASE_URL: SQLite (sqlite://shop.db) or a PostgreSQL server on this
-# machine; a server elsewhere is `net` too: `uses …, net("db.acme.io")`.
-def main(args: Array(String)) uses llm, db.read, env, fs.read
+# DATABASE_URL: SQLite (sqlite://shop.db), or PostgreSQL here or elsewhere:
+# a remote server is `net` on its host, granted by `net` (checked when connecting)
+def main(args: Array(String)) uses llm, db.read, env, fs.read, net
   db = Db.connect(Env.fetch("DATABASE_URL"))
   puts answer(db, File.read("schema.sql"), args.join(" "))
 end
