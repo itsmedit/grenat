@@ -1,7 +1,8 @@
 //! Installing a facet's bridge: the helper libraries written into the
-//! facet, its server started once (without the network) to `describe`
-//! itself, and what it answers — the manifest of a native library — kept
-//! next to the `native def` declarations it stands for.
+//! facet, its server started once — in the sandbox, without the network,
+//! and so never where there is no sandbox — to `describe` itself, and what
+//! it answers — the manifest of a native library — kept next to the
+//! `native def` declarations it stands for.
 
 use std::path::{Path, PathBuf};
 

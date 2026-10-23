@@ -13,14 +13,16 @@
 //!   if the function is `pure` — a call with effects is never run twice —
 //!   else the call raises, with the last lines of its standard error.
 //! - **The network** is cut off (`grenat_sandbox`) unless one of the facet's
-//!   functions declares `net`. Where the sandbox is refused (user namespaces
-//!   disabled, a container), the server runs without it — a bridge facet is
-//!   trusted code, as native code is — and the log says so.
+//!   functions declares `net`. Where the sandbox is missing or refused (no
+//!   `sandbox-exec`, user namespaces disabled, a container), the server is
+//!   not started — there is no running it unsandboxed — and the call
+//!   raises: which sandbox, on which system, and what to do.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use grenat_native::{Manifest, Outcome};
+use grenat_sandbox::Probe;
 use serde_json::Value as Json;
 
 use crate::helpers;
@@ -36,6 +38,8 @@ pub struct Bridge {
     /// Whether the server may use the network.
     pub network: bool,
     log: Option<Log>,
+    /// Whether the sandbox works here (`grenat_sandbox::isolation_works`).
+    probe: Probe,
     process: Mutex<Option<Process>>,
 }
 
@@ -63,8 +67,15 @@ impl Bridge {
             spec: spec.clone(),
             network,
             log,
+            probe: grenat_sandbox::isolation_works,
             process: Mutex::new(None),
         }
+    }
+
+    /// The same bridge, `probe` telling whether the sandbox works here (a
+    /// stand-in, for tests).
+    pub fn probed(self, probe: Probe) -> Bridge {
+        Bridge { probe, ..self }
     }
 
     /// The server's manifest, as it describes itself.
@@ -130,22 +141,20 @@ impl Bridge {
                 env.push((name.clone(), value));
             }
         }
-        let mut network = self.network;
-        if !network && let Err(why) = grenat_sandbox::isolation_works() {
-            if let Some(log) = &self.log {
-                log(&format!(
-                    "[bridge] {}: no network isolation here ({why}): its process runs without it\n",
-                    self.facet
-                ));
-            }
-            network = true;
+        if !self.network
+            && let Err(why) = (self.probe)()
+        {
+            return Err(format!(
+                "the process of facet `{}` is not started: {why} (a bridge facet never runs without the sandbox)",
+                self.facet
+            ));
         }
         Process::start(Launch {
             facet: &self.facet,
             dir: &self.dir,
             argv: &self.spec.command,
             env,
-            network,
+            network: self.network,
             log: self.log.clone(),
         })
     }
@@ -183,11 +192,42 @@ mod tests {
         }
     }
 
-    /// A bridge served by `command`, in a directory of its own.
-    fn bridge(command: &[&str]) -> Bridge {
+    fn unit_dir() -> PathBuf {
         let dir = std::env::temp_dir().join(format!("grenat-bridge-unit-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        Bridge::new("t", &dir, &Spec::new(command), true, None)
+        dir
+    }
+
+    /// A bridge served by `command`, in a directory of its own.
+    fn bridge(command: &[&str]) -> Bridge {
+        Bridge::new("t", &unit_dir(), &Spec::new(command), true, None)
+    }
+
+    fn no_sandbox() -> Result<(), String> {
+        Err(grenat_sandbox::Missing::NotFound.message())
+    }
+
+    #[test]
+    fn a_server_is_never_started_without_its_sandbox() {
+        let dir = unit_dir().join("unsandboxed");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let started = dir.join("started");
+        let script = format!("touch {}; exit 3", started.display());
+        let spec = Spec::new(&["sh", "-c", &script]);
+        let cut = Bridge::new("t", &dir, &spec, false, None).probed(no_sandbox);
+        for e in [cut.call("f", b"[]", true).unwrap_err(), cut.describe().unwrap_err()] {
+            assert!(
+                e.starts_with("the process of facet `t` is not started: network isolation is not available here (")
+            );
+            assert!(e.contains("is not found on PATH") || e.contains("only"), "{e}");
+            assert!(e.ends_with("(a bridge facet never runs without the sandbox)"), "{e}");
+        }
+        assert!(!started.exists(), "the server ran unsandboxed");
+        // a facet that declares `net` has nothing cut off: it needs no sandbox
+        let open = Bridge::new("t", &dir, &spec, true, None).probed(no_sandbox);
+        assert!(open.call("f", b"[]", true).unwrap_err().contains("exited with status 3"));
+        assert!(started.exists());
     }
 
     #[test]

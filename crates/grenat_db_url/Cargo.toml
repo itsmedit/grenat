@@ -1,0 +1,10 @@
+[package]
+name = "grenat_db_url"
+description = "Where a database URL connects: the network hosts a PostgreSQL URL reaches, local ones aside (shared by the checker and the runtime)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]

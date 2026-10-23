@@ -224,6 +224,12 @@ def search(question: String) -> Array(Passage) uses llm, db.read
 end
 ```
 
+A database on another machine is the network: `Db.connect("postgres://app:…@db.acme.io/app")`
+in a function needs `uses net("db.acme.io")` (or `net`) as `Http` does — checked by `grenat check`
+for a literal URL, when connecting otherwise (`CapabilityError`, the host shown, never the
+credentials). SQLite and PostgreSQL on the machine itself (`localhost`, `127.0.0.1`, `::1`, a Unix
+socket) need no `net`, and `database url`, declared at the top level, needs no `uses`.
+
 ### SSH and SFTP
 
 ```ruby
@@ -665,6 +671,18 @@ function declares `net`; a relative path it is given resolves there, so pass it 
 one per facet, kept alive, each call within a timeout; types, effects, taint and secrets are
 checked as for native code (see `SPEC.md`, phase 12).
 
+No sandbox, no bridge: where the machine cannot cut a process's network off — no `sandbox-exec`
+on macOS, no usable `unshare` on Linux (user namespaces disabled, a container's seccomp profile),
+any other system — the server is not started, at `setter install` as at its first call, and the
+error names the missing sandbox, the system and what to do. There is no flag to run it
+unsandboxed; `Shell.run` refuses `network: false` the same way.
+
+Secrets never reach native or bridge code, by design: a `Secret` (`Credentials.fetch`) given to a
+`native def` — alone, interpolated (`"Bearer #{token}"`), in an array, a hash or a record, or as a
+value that may be one (`token || "none"`) — is refused by `grenat check` (E0414) and, before the
+call, at run time (`SecretError`, the secret never shown). A facet that talks to a service is given
+what Grenat fetched with the token, not the token.
+
 ## Editors
 
 `grenat lsp` is a language server (diagnostics as you type, formatting, hover, go to
@@ -693,6 +711,7 @@ end })
 | `grenat_standalone` | static library linked into `grenat build --native` executables |
 | `grenat_report` | diagnostic rendering, in the file each error points into |
 | `grenat_db` | databases: SQLite (embedded) and PostgreSQL behind one interface; vectors (pgvector, or bytes searched by brute force) |
+| `grenat_db_url` | where a database URL connects: the hosts a PostgreSQL URL reaches, local ones aside (the checker and the runtime read it alike) |
 | `grenat_mcp` | the Model Context Protocol: a client (stdio and HTTP), and the server side of `expose` |
 | `grenat_ssh` | SSH and SFTP: host keys verified, commands quoted, SOCKS5 proxies, a blocking API; a real server in process for tests |
 | `grenat_imap` | IMAP over TLS (implicit or STARTTLS): password or OAuth (`XOAUTH2`) logins, unseen messages by UID, flags and moves, MIME parsed into what `on_email` gives; a server in process for tests |
@@ -710,7 +729,7 @@ end })
 | `grenat_ext_macros` | `#[grenat_ext::export]` and `#[derive(GrenatType)]` |
 | `grenat_native` | native facets, Grenat's side: building a facet's library, loading it (ABI checked), declaring and calling its functions |
 | `grenat_bridge` | bridge facets, Grenat's side: a facet's Ruby or Python functions served by a process over JSON-RPC 2.0, described, declared and called |
-| `grenat_sandbox` | sandboxed processes (`Shell.run`, bridges): an argument vector, a clean environment, no network unless allowed |
+| `grenat_sandbox` | sandboxed processes (`Shell.run`, bridges): an argument vector, a clean environment, no network unless allowed — and nothing started where the sandbox is missing |
 | `grenat_fmt` | the formatter |
 | `grenat_lsp` | the language server |
 | `grenat_macros` | macro expansion: templates of declarations |

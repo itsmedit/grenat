@@ -22,6 +22,11 @@ Bridge.export(:first_word, params: {text: :string}, returns: "String?", pure: tr
 
 Bridge.export(:count, params: {text: :string}, returns: {string: :int}, pure: true) { |text:| text.split.tally }
 
+Bridge.export(:gather, params: {words: [:string], tags: {string: :string}, word: "Word"}, returns: :int,
+                       pure: true) do |words:, tags:, word:|
+  words.size + tags.size + word["text"].size
+end
+
 Bridge.export(:read_text, params: {path: :string}, returns: :string, effects: ["fs.read"], error: "TextError") do |path:|
   File.read(path)
 end

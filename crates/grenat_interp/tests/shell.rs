@@ -95,7 +95,11 @@ fn the_network_can_be_cut_off() {
     match curl(false).result {
         // isolated: curl cannot connect, and prints nothing
         Ok(_) => assert_eq!(curl(false).output, "\"\"\n"),
-        Err(e) => assert!(e.message.starts_with("network isolation is not available here"), "{}", e.message),
+        Err(e) => assert!(
+            e.message.starts_with("`curl` is not started: network isolation is not available here"),
+            "{}",
+            e.message
+        ),
     }
 }
 

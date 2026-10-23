@@ -231,17 +231,7 @@ fn the_network_is_cut_off_unless_a_function_declares_it() {
     if let Some(numbers) = registry(PYTHON) {
         assert_eq!(returned(&numbers, "fetch", json!([port])), json!("hello"));
     }
-    // `texts` does not: its server cannot connect, where the sandbox works
-    let Some((_, installed)) = fixture::installed(RUBY) else { return };
-    let (texts, logged) = logging(installed.clone());
-    let connected = returned(&texts, "connect", json!([port]));
-    match grenat_sandbox::isolation_works() {
-        Ok(()) => assert_eq!(connected, json!(false)),
-        Err(why) => {
-            println!("skipped: the sandbox does not work here ({why}): the network cannot be cut off");
-            assert_eq!(connected, json!(true));
-            drop(texts);
-            assert!(logged.lock().unwrap().contains("[bridge] texts: no network isolation here"));
-        }
-    }
+    // `texts` does not: its server cannot connect (it runs only where the sandbox works)
+    let Some(texts) = registry(RUBY) else { return };
+    assert_eq!(returned(&texts, "connect", json!([port])), json!(false));
 }

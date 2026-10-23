@@ -358,7 +358,11 @@ impl<'p> Checker<'p> {
             }
             "mock" | "mock_shell" | "mcp" | "mock_mcp" | "mock_ssh" | "mock_credentials" | "mock_embed"
             | "mock_transcribe" => V::new(Ty::Nil),
-            "database" | "expose" => V::new(Ty::Nil),
+            "database" => {
+                self.database_url(cx, span, argv);
+                V::new(Ty::Nil)
+            }
+            "expose" => V::new(Ty::Nil),
             // a job: its arguments are written to the database
             "enqueue" => {
                 cx.add_effect(Eff { path: "db.write".into(), arg: None, origin: span });

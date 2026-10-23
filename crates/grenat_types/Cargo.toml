@@ -11,6 +11,8 @@ rust-version.workspace = true
 # A Teams secret written out is base64, as the runtime decodes it.
 base64 = "0.22"
 grenat_ast.workspace = true
+# Database URLs: their hosts read as the runtime reads them.
+grenat_db_url.workspace = true
 grenat_llm.workspace = true
 # Rates written out, held to what the runtime allows.
 grenat_limits.workspace = true

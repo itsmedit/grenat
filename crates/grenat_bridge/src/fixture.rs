@@ -3,8 +3,9 @@
 //! served in Python), each installed once per test binary.
 //!
 //! No Ruby or Python is installed by the tests: where the interpreter is
-//! missing, [`installed`] says why and gives nothing, and the test that
-//! wanted it returns early.
+//! missing — or the sandbox a bridge's server needs to start at all —
+//! [`installed`] says why and gives nothing, and the test that wanted it
+//! returns early.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -31,8 +32,13 @@ fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures")
 }
 
-/// Why the interpreter of `facet` cannot serve it here, if it cannot.
+/// Why `facet` cannot be served here, if it cannot: its interpreter is
+/// missing, or the sandbox its server is installed in.
 pub fn missing(facet: &str) -> Option<String> {
+    interpreter_missing(facet).or_else(|| grenat_sandbox::isolation_works().err())
+}
+
+fn interpreter_missing(facet: &str) -> Option<String> {
     let (program, check) = match facet {
         RUBY => ("ruby", ["-e", "require 'json'"]),
         _ => ("python3", ["-c", "import json"]),
