@@ -5,7 +5,7 @@
 //! until the client has read the first event: had anything been buffered on
 //! the way, the client would wait for it forever.
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -275,7 +275,9 @@ fn clients_that_stop_reading_hold_no_worker() {
 }
 
 /// A burst of clients beyond the server's file descriptors: those it
-/// cannot take wait, and once the burst has gone, the server serves again.
+/// cannot take wait in the system's queue — never dropped there, as an
+/// `accept` failing for want of a descriptor drops the connection it took
+/// on macOS — and once the burst has gone, the server serves again.
 #[test]
 fn a_burst_beyond_the_descriptors_leaves_the_server_serving() {
     let (mut child, address, log) = serve_stall("descriptors", Some(64));
@@ -285,11 +287,44 @@ fn a_burst_beyond_the_descriptors_leaves_the_server_serving() {
         let _ = write!(client, "GET /big HTTP/1.1\r\nHost: x\r\n\r\n");
     }
     std::thread::sleep(Duration::from_millis(500));
+    // queued while the burst holds every descriptor the server may take
+    let queued = TcpStream::connect(&address).and_then(|mut queued| {
+        write!(queued, "GET /plain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")?;
+        Ok(queued)
+    });
+    std::thread::sleep(Duration::from_millis(500));
+    // a client of the burst is served (bytes came) or waits (none yet): none was closed or reset
+    let dropped = stalled
+        .iter()
+        .filter(|client| {
+            client.set_nonblocking(true).unwrap();
+            let mut byte = [0; 1];
+            match client.peek(&mut byte) {
+                Ok(n) => n == 0,
+                Err(e) => e.kind() != ErrorKind::WouldBlock,
+            }
+        })
+        .count();
     drop(stalled);
-    let answer = plain(&address, Duration::from_secs(10));
+    let answered = queued.and_then(|mut queued| {
+        queued.set_read_timeout(Some(Duration::from_secs(10)))?;
+        let mut answer = String::new();
+        queued.read_to_string(&mut answer)?;
+        Ok(answer)
+    });
+    // a new connection, once the burst has gone (a 503 while the server still frees what it held may be retried)
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut again = plain(&address, Duration::from_secs(10));
+    while !matches!(&again, Ok(answer) if answer.starts_with("HTTP/1.1 200")) && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+        again = plain(&address, Duration::from_secs(10));
+    }
     child.kill().unwrap();
     child.wait().unwrap();
     let log: Vec<String> = log.try_iter().collect();
-    let answer = answer.unwrap_or_else(|e| panic!("/plain was not answered: {e}\n{log:#?}"));
+    assert_eq!(dropped, 0, "clients of the burst closed or reset unserved\n{log:#?}");
+    let answer = answered.unwrap_or_else(|e| panic!("the queued /plain was not answered: {e}\n{log:#?}"));
+    assert!(answer.starts_with("HTTP/1.1 200") && answer.ends_with("plain"), "{answer:?}\n{log:#?}");
+    let answer = again.unwrap_or_else(|e| panic!("/plain was not answered: {e}\n{log:#?}"));
     assert!(answer.starts_with("HTTP/1.1 200") && answer.ends_with("plain"), "{answer:?}\n{log:#?}");
 }

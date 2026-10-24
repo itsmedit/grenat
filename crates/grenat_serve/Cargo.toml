@@ -11,3 +11,4 @@ rust-version.workspace = true
 hmac = "0.13"
 sha2 = "0.11"
 base64 = "0.22"
+libc = "0.2"

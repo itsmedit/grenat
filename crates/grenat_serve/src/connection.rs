@@ -8,13 +8,15 @@
 //!
 //! The socket is shared (never duplicated) by the reading, the writing and
 //! the stream it may be handed to: a connection accepted needs no other
-//! file descriptor to be served, however many a burst of clients holds.
+//! file descriptor to be served, however many a burst of clients holds. It
+//! is counted until closed, wherever it went (see [`crate::descriptors`]).
 
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
+use crate::descriptors::Socket;
 use crate::request::{self, Failure, Request, Sizes};
 use crate::response::{self, Answering};
 
@@ -40,7 +42,7 @@ impl Default for Timeouts {
 pub(crate) struct Exchange {
     pub request: Request,
     /// The client's socket, for a stream to write to.
-    pub socket: Arc<TcpStream>,
+    pub socket: Arc<Socket>,
     pub reply: mpsc::Sender<Reply>,
 }
 
@@ -58,14 +60,14 @@ pub(crate) enum Reply {
 
 /// Serves `socket` until the client closes it, stalls, or a stream takes
 /// it. Requests go to `program`; none is read while one is being answered.
-pub(crate) fn serve(socket: TcpStream, timeouts: Timeouts, sizes: Sizes, program: &mpsc::Sender<Exchange>) {
+pub(crate) fn serve(socket: Socket, timeouts: Timeouts, sizes: Sizes, program: &mpsc::Sender<Exchange>) {
     let _ = socket.set_nodelay(true);
     if socket.set_write_timeout(Some(timeouts.write)).is_err() {
         return;
     }
     let socket = Arc::new(socket);
     let mut reader = BufReader::new(Deadline { socket: socket.clone(), until: None });
-    let mut writer = &*socket;
+    let mut writer: &TcpStream = &socket;
     loop {
         // the first byte of the next request, within `idle`
         reader.get_mut().until = Some(Instant::now() + timeouts.idle);
@@ -143,22 +145,22 @@ fn now() -> i64 {
 }
 
 /// A socket shared with its connection, written through: what a stream writes to.
-pub(crate) struct Shared(pub Arc<TcpStream>);
+pub(crate) struct Shared(pub Arc<Socket>);
 
 impl Write for Shared {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        (&*self.0).write(buf)
+        (&**self.0).write(buf)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        (&*self.0).flush()
+        (&**self.0).flush()
     }
 }
 
 /// The socket, read until a deadline: each read waits only for what is
 /// left of it (a client sending a byte now and then gains nothing).
 struct Deadline {
-    socket: Arc<TcpStream>,
+    socket: Arc<Socket>,
     until: Option<Instant>,
 }
 
@@ -171,6 +173,6 @@ impl Read for Deadline {
             }
             self.socket.set_read_timeout(Some(left))?;
         }
-        (&*self.socket).read(buf)
+        (&**self.socket).read(buf)
     }
 }

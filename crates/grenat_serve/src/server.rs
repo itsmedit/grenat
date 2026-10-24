@@ -3,7 +3,9 @@
 //!
 //! Each connection is served by a thread of its own (see
 //! [`crate::connection`]), as many at once as [`Settings::connections`]
-//! says; a connection beyond them is answered `503` at once. The program
+//! says; a connection beyond them is answered `503` at once. None is
+//! accepted without a file descriptor for it ([`crate::descriptors`]): a
+//! burst beyond them waits in the system's queue. The program
 //! takes the requests one by one ([`Server::next`]), from every connection
 //! at once: no client, however slow, keeps another one waiting.
 
@@ -14,6 +16,7 @@ use std::time::Duration;
 
 use crate::EventStream;
 use crate::connection::{self, Exchange, Reply, Timeouts};
+use crate::descriptors::{Descriptors, Socket};
 use crate::request::Sizes;
 
 /// What the server allows its clients.
@@ -39,7 +42,7 @@ pub struct Incoming {
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
     http11: bool,
-    socket: Arc<TcpStream>,
+    socket: Arc<Socket>,
     reply: mpsc::Sender<Reply>,
     /// When a stream's client is stalled.
     stalled: crate::outbox::Limits,
@@ -130,22 +133,25 @@ impl Server {
 }
 
 /// Accepts connections, each served on a thread of its own while there is
-/// room, until `stopped`. A failure to accept (out of descriptors, a
-/// connection reset while queued) is waited out, never the end of the
-/// server: the connections served meanwhile free what they hold.
+/// room, until `stopped`. None is accepted without a descriptor to spare:
+/// the connections beyond wait in the system's queue until a socket held
+/// closes. A failure to accept all the same (the program took the last
+/// descriptor meanwhile, a connection reset while queued) is waited out,
+/// never the end of the server.
 fn accept(listener: &TcpListener, settings: Settings, program: &mpsc::Sender<Exchange>, stopped: &AtomicBool) {
+    let descriptors = Descriptors::of_this_process();
     let live = Arc::new(AtomicUsize::new(0));
-    for socket in listener.incoming() {
-        if stopped.load(Ordering::Acquire) {
-            return;
-        }
-        let socket = match socket {
-            Ok(socket) => socket,
+    while descriptors.wait_for_room(listener, stopped) {
+        let socket = match listener.accept() {
+            Ok((socket, _)) => descriptors.hold(socket),
             Err(_) => {
                 std::thread::sleep(Duration::from_millis(10));
                 continue;
             }
         };
+        if stopped.load(Ordering::Acquire) {
+            return;
+        }
         if live.fetch_add(1, Ordering::AcqRel) >= settings.connections {
             live.fetch_sub(1, Ordering::AcqRel);
             let _ = socket.set_write_timeout(Some(Duration::from_secs(1)));

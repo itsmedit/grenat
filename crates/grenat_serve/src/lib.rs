@@ -12,6 +12,7 @@
 pub mod calendar;
 mod connection;
 mod cron;
+mod descriptors;
 pub mod events;
 mod outbox;
 pub mod replay;
