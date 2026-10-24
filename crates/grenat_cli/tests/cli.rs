@@ -158,6 +158,25 @@ fn test_command_reports_each_test() {
 }
 
 #[test]
+fn test_command_starts_each_test_of_each_file_clean() {
+    // the same workflow, enqueued with the same arguments by every test of
+    // two files: each test has its own database, so one approval waits
+    let dir = std::env::temp_dir().join(format!("grenat-cli-{}-isolation", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let workflow = "database \"sqlite://app.db\"\nworkflow refund(order: Int) uses human\n  step(:ask) { approve! \"Refund #{order}?\" }\nend\n";
+    std::fs::write(dir.join("w.grn"), workflow).unwrap();
+    let tests = "require \"./w\"\ntest \"first\" do\n  enqueue(:refund, 42)\n  Jobs.perform\n  assert_equal 1, Approvals.pending.size\nend\ntest \"second, same order\" do\n  enqueue(:refund, 42)\n  Jobs.perform\n  assert_equal 1, Approvals.pending.size\nend\n";
+    std::fs::write(dir.join("a_test.grn"), tests).unwrap();
+    std::fs::write(dir.join("b_test.grn"), tests).unwrap();
+    let (a, b) = (dir.join("a_test.grn"), dir.join("b_test.grn"));
+    let out = grenat(&["test", a.to_str().unwrap(), b.to_str().unwrap()]);
+    let err = text(&out.stderr);
+    assert_eq!(code(&out), 0, "{err}");
+    assert!(err.contains("4 passed, 0 failed"), "{err}");
+    assert!(!dir.join("app.db").exists(), "a test touched the real database");
+}
+
+#[test]
 fn tokens_and_parse_dump_the_front_end() {
     let path = program("dump.grn", "x = \"a#{1}\"\n");
     let tokens = text(&grenat(&["tokens", path.to_str().unwrap()]).stdout);

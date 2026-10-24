@@ -18,6 +18,7 @@ mod evals;
 mod folders;
 mod http;
 mod io;
+mod isolation;
 mod llm;
 mod mail;
 mod mailboxes;
@@ -194,41 +195,18 @@ pub fn run_tests(program: &Program, options: Options) -> Result<Vec<TestOutcome>
             return Err(interp.runtime_error(ctrl));
         }
         let tests = std::mem::take(&mut *interp.tests.borrow_mut());
+        let script = interp.script_state();
         let mut outcomes = Vec::new();
-        let migrated = !interp.migrations.borrow().is_empty();
         for (name, block) in tests {
-            // each test has a database of its own, migrated
-            if migrated && let Err(ctrl) = interp.fresh_test_database() {
-                outcomes.push(TestOutcome { name, error: Some(interp.runtime_error(ctrl)) });
-                continue;
-            }
-            // and journals of its own: no test resumes another's workflows
+            // each test starts clean (see `isolation`)
             let journal = test_journal_dir();
-            interp.journal_dir.borrow_mut().clone_from(&journal);
-            interp.testing.store(true, std::sync::atomic::Ordering::SeqCst);
-            let error = match interp.call_block(&block, Vec::new()) {
+            let error = match interp.begin_test(&journal).and_then(|()| interp.call_block(&block, Vec::new())) {
                 Ok(_) => None,
                 Err(ctrl) => Some(interp.runtime_error(ctrl)),
             };
             interp.wait_for_tasks();
-            interp.testing.store(false, std::sync::atomic::Ordering::SeqCst);
+            interp.end_test(&script);
             let _ = std::fs::remove_dir_all(&journal);
-            // each test declares its own mocks
-            interp.mocks.borrow_mut().clear();
-            interp.embedding_mocks.borrow_mut().clear();
-            interp.transcription_mocks.borrow_mut().clear();
-            interp.http_stubs.borrow_mut().clear();
-            interp.shell_stubs.borrow_mut().clear();
-            interp.mcp_stubs.borrow_mut().clear();
-            interp.ssh_stubs.borrow_mut().clear();
-            interp.deliveries.borrow_mut().clear();
-            interp.mail_failure.borrow_mut().take();
-            interp.sent_requests.borrow_mut().clear();
-            interp.env_double.borrow_mut().clear();
-            interp.credentials_double.borrow_mut().take();
-            interp.frozen_clock.borrow_mut().take();
-            *interp.slack_replays.borrow_mut() = Default::default();
-            interp.end_test_limits();
             outcomes.push(TestOutcome { name, error });
         }
         Ok(outcomes)

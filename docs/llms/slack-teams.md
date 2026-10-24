@@ -44,7 +44,7 @@ end
 
 test "a user not allowed cannot decide" do
   mock_http "POST https://slack.com/api/*", json: {ok: true, ts: "1700000000.000100"}
-  enqueue(:refund, 43)
+  enqueue(:refund, 42)
   Jobs.perform
   r = deliver_slack_click(Approvals.pending.first["id"], action: :approve, user: "U999")
   assert_equal "not_allowed", r["outcome"]

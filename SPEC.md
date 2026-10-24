@@ -614,6 +614,16 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 17 status: tests start clean
+
+`grenat test` promised each test a new in-memory database, but made one only for a program with `migration`s: in a program without, the operations store (jobs, approvals, model calls, events, files handled) went to a database created at its first use and kept for every test after it, so a test saw the jobs and approvals of the tests before it — the same workflow enqueued with the same arguments in two tests left two approvals pending in the second (seen writing `docs/llms/slack-teams.md`, whose second test took another order number to get by). Now each test of a file starts from the state the script left, migrations or not, `database` declared or not:
+
+- **Its own database**, new, in memory, every migration applied, holding the operations store; and its own workflow journals.
+- **No double and nothing recorded**: no `mock`, `mock_embed`, `mock_transcribe`, `mock_http`, `mock_shell`, `mock_mcp`, `mock_ssh`, `mock_mail`, `mock_env`, `mock_credentials`, `with_human`, frozen clock; `Mail.deliveries` and `Http.requests` empty; the Slack signatures seen forgotten; every rate-limit bucket full, a `limit` the test declared gone.
+- **Nothing a test declared or started survives it**: `Runtime.on_approval`, `approvals_in_slack`, a trigger (`every`, `on_webhook`, `on_email`, `on_file`), a route, an `expose`, an `mcp` server, a `migration`, the children a supervisor started — what the script declared stays.
+
+What a test changes in a value the script made (a top-level variable, an agent the script spawned) is the program's own state, and is shared as in Ruby. Each file is a program of its own: `grenat test a_test.grn b_test.grn` shares nothing between them either.
+
 ### Phase 17 status: array set operators
 
 Ruby's set operators on arrays, which programs (and the models writing them) reach for: `a & b` keeps the items of `a` also in `b`, `a | b` the items of both, `a - b` those of `a` not in `b`. The order is that of `a`, then of `b`; `&` and `|` keep each item once, `-` keeps the duplicates of `a`; items are compared with `==` (`1 == 1.0`, arrays and records by their contents). Their methods take several arrays: `intersection`, `union`, `difference`, and `intersect?` says whether two arrays share an item.
