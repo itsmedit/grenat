@@ -28,6 +28,7 @@ impl<'d> Parser<'d> {
                 continue;
             }
             let before = self.pos;
+            self.misaligned_end = None;
             match self.item() {
                 Ok(item) => {
                     after_native = match &item {
@@ -41,6 +42,8 @@ impl<'d> Parser<'d> {
                         self.recover_line();
                     }
                 }
+                // the next definition, where a body stopped for want of an `end`, is parsed
+                Err(()) if self.at_definition() => {}
                 Err(()) => self.recover_line(),
             }
             if self.pos == before {
@@ -334,6 +337,8 @@ impl<'d> Parser<'d> {
                         self.recover_line();
                     }
                 }
+                // the next definition, where a body stopped for want of an `end`, is parsed
+                Err(()) if self.at_definition() => {}
                 Err(()) => self.recover_line(),
             }
             if self.pos == before {

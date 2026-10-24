@@ -267,3 +267,78 @@ fn operator_symbols_name_methods() {
     let (_, args, _) = call_parts(&kind);
     assert!(matches!(&args[0], Arg::BlockPass(Expr { kind: ExprKind::Symbol(s), .. }) if s == "*"));
 }
+
+#[test]
+fn a_do_block_is_followed_by_a_postfix_or_a_method() {
+    // `end?`: the `?` postfix on the call that took the block
+    let Item::Fn(f) = program("def f(xs: Array(Int))\n  r = xs.check do |x|\n    x > 0\n  end?\nend\n").items.remove(0)
+    else {
+        panic!()
+    };
+    let ExprKind::Assign { value, .. } = &f.body.stmts[0].kind else { panic!("{:?}", f.body.stmts[0]) };
+    let ExprKind::Try(call) = &value.kind else { panic!("{value:?}") };
+    let (name, _, block) = call_parts(&call.kind);
+    assert_eq!((name, block.is_some()), ("check", true));
+
+    // `end.select { … }`, `end&.size`, `end.or_else { … }`: a method on the call
+    let kind = stmt("xs.map do |x|\n  x * 2\nend.select { |x| x > 2 }\n");
+    let ExprKind::Call { recv: Some(recv), .. } = &kind else { panic!() };
+    assert_eq!(call_parts(&kind).0, "select");
+    assert_eq!(call_parts(&recv.kind).0, "map");
+    assert!(call_parts(&recv.kind).2.is_some());
+    let ExprKind::Call { safe, .. } = stmt("xs.first do |x|\n  x\nend&.size\n") else { panic!() };
+    assert!(safe);
+    let kind = stmt("xs.check do |x|\n  x.size > 0\nend.or_else { [] }\n");
+    assert_eq!(call_parts(&kind).0, "or_else");
+}
+
+fn first_error(src: &str) -> (Diagnostic, String) {
+    let parsed = parse(src);
+    let d = parsed.diagnostics.first().cloned().unwrap_or_else(|| panic!("no error in {src}"));
+    let at = src[d.span.start as usize..d.span.end as usize].to_string();
+    (d, at)
+}
+
+fn line_of(src: &str, span: Span) -> usize {
+    src[..span.start as usize].matches('\n').count() + 1
+}
+
+#[test]
+fn a_missing_end_is_reported_at_the_next_definition_with_the_misaligned_end() {
+    // the `do` lacks its `end`: the `end` of the `def` closes it
+    let src = "def f(xs: Array(Int)) -> Bool\n  r = xs.check do |x|\n    x > 0\n  true\nend\n\ndef g\n  1\nend\n";
+    let parsed = parse(src);
+    assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
+    let d = &parsed.diagnostics[0];
+    assert_eq!(d.message, "expected `end` to close `def` before this `def`");
+    assert_eq!(line_of(src, d.span), 7);
+    assert_eq!(line_of(src, d.notes[0].0), 1);
+    assert_eq!(d.notes[1].1, "this `end` closes the `do` of line 2, though it is less indented");
+    assert_eq!(line_of(src, d.notes[1].0), 5);
+    assert!(d.help.is_some());
+    // `g` is parsed all the same
+    assert!(matches!(&parsed.program.items[..], [Item::Fn(g)] if g.name.name == "g"), "{:?}", parsed.program.items);
+
+    // at the end of the file, the same `end` is shown
+    let src = "def f(xs: Array(Int)) -> Bool\n  r = xs.check do |x|\n    x > 0\n  true\nend\n";
+    let (d, _) = first_error(src);
+    assert!(d.message.contains("found end of file"), "{}", d.message);
+    assert_eq!(line_of(src, d.notes[1].0), 5);
+}
+
+#[test]
+fn a_detached_question_mark_after_a_block_points_at_itself() {
+    let src =
+        "def f(xs: Array(Int)) -> Bool\n  r = xs.check do |x|\n    x > 0\n  end ?\n  true\nend\n\ndef g\n  1\nend\n";
+    let parsed = parse(src);
+    assert_eq!(parsed.diagnostics.len(), 1, "{:#?}", parsed.diagnostics);
+    let d = &parsed.diagnostics[0];
+    let (question, note) = &d.notes[0];
+    assert_eq!(line_of(src, *question), 4);
+    assert_eq!(&src[question.range()], "?");
+    assert!(note.contains("`end?`"), "{note}");
+
+    // what cannot follow `end` is reported where it stands
+    let (d, at) = first_error("xs.each do |x|\n  x\nend!\n");
+    assert_eq!((d.message.as_str(), at.as_str()), ("expected end of line, found `!`", "!"));
+}

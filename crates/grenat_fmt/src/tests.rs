@@ -243,3 +243,26 @@ fn native_functions_are_one_line_declarations() {
     assert_eq!(fmt(messy), canonical);
     assert_eq!(fmt(canonical), canonical);
 }
+
+#[test]
+fn a_do_block_keeps_the_postfix_or_the_method_after_its_end() {
+    let src = "\
+def f(xs: Array(Int)) -> Array(Int)
+  ys = xs.check do |v|
+    v.size > 0
+  end?
+  xs.map do |x|
+    x * 2
+  end.select { |x| x > 2 }
+  xs.first do |x|
+    x
+  end&.size
+  ys
+end
+";
+    assert_eq!(fmt(src), src);
+    let messy = "def f(xs: Array(Int)) -> Array(Int)\n  xs.check   do |v|\n      v.size > 0\n  end?\nend\n";
+    let canonical = "def f(xs: Array(Int)) -> Array(Int)\n  xs.check do |v|\n    v.size > 0\n  end?\nend\n";
+    assert_eq!(fmt(messy), canonical);
+    assert_eq!(fmt(canonical), canonical);
+}

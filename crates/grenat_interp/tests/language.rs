@@ -185,3 +185,35 @@ p GitHub::PER_PAGE + 1, Client.new.retries, GitHub.API
 fn top_level_constants() {
     assert_eq!(run("LIMIT = 3\ndef twice = LIMIT * 2\np LIMIT, twice\n"), "3\n6\n");
 }
+
+#[test]
+fn a_do_block_followed_by_a_postfix_or_a_method_runs_as_a_brace_block() {
+    let src = "\
+def positive(xs: Array(Int)) -> Array(Int)
+  xs.check do |v|
+    v.all? { |x| x > 0 }
+  end?
+end
+
+def doubled(xs: Array(Int)) -> Array(Int)
+  xs.map do |x|
+    x * 2
+  end.select { |x| x > 2 }
+end
+
+def or_empty(xs: Array(Int)) -> Array(Int)
+  xs.check do |v|
+    v.size > 2
+  end.or_else { [] }
+end
+
+p positive([1, 2]), doubled([1, 2]), or_empty([1])
+refused = begin
+  positive([1, -2])
+rescue CheckError => e
+  e.message
+end
+p refused
+";
+    assert_eq!(run(src), "[1, 2]\n[4]\n[]\n\"validation failed for [1, -2]\"\n");
+}

@@ -18,12 +18,15 @@ pub(crate) struct Parser<'d> {
     pub(crate) no_do: bool,
     /// True inside an index's brackets: `xs[2..]` is an endless range there.
     pub(crate) in_index: bool,
+    /// The first `end` less indented than the line it closes (`end`, opener, keyword): when an
+    /// `end` is missing later, it is the likely culprit and is shown with the error.
+    pub(crate) misaligned_end: Option<(Span, Span, String)>,
 }
 
 impl<'d> Parser<'d> {
     pub(crate) fn new(toks: Vec<Token>, docs: &'d DocTable) -> Self {
         debug_assert!(matches!(toks.last(), Some(Token { kind: T::Eof, .. })));
-        Parser { toks, pos: 0, diags: Vec::new(), docs, no_do: false, in_index: false }
+        Parser { toks, pos: 0, diags: Vec::new(), docs, no_do: false, in_index: false, misaligned_end: None }
     }
 
     pub(crate) fn peek(&self) -> &Token {
@@ -129,11 +132,55 @@ impl<'d> Parser<'d> {
 
     pub(crate) fn expect_end(&mut self, opener: Span, what: &str) -> PResult<Span> {
         if self.at_kw(K::End) {
-            return Ok(self.bump().span);
+            let end = self.bump().span;
+            if self.misaligned_end.is_none()
+                && let Some(indent) = self.indent_if_first(end)
+                && indent < self.line_indent(opener)
+            {
+                self.misaligned_end = Some((end, opener, what.to_string()));
+            }
+            return Ok(end);
         }
-        let message = format!("expected `end` to close `{what}`, found {}", self.kind().describe());
-        self.report(Diagnostic::new(self.span(), message).with_note(opener, format!("`{what}` opened here")));
+        let message = match self.kind() {
+            T::Kw(kw) if is_definition(*kw) => {
+                format!("expected `end` to close `{what}` before this `{}`", kw.as_str())
+            }
+            other => format!("expected `end` to close `{what}`, found {}", other.describe()),
+        };
+        let mut diag = Diagnostic::new(self.span(), message).with_note(opener, format!("`{what}` opened here"));
+        if let Some((end, closed, closed_what)) = self.misaligned_end.take() {
+            let line = self.docs.line_of(closed) + 1;
+            let note = format!("this `end` closes the `{closed_what}` of line {line}, though it is less indented");
+            diag = diag.with_note(end, note);
+            diag.help = Some("an `end` may be missing above this one".into());
+        }
+        self.report(diag);
         Err(())
+    }
+
+    /// Indentation of the line holding `span`: the column of its first token.
+    pub(crate) fn line_indent(&self, span: Span) -> usize {
+        let line_start = self.docs.line_starts.get(self.docs.line_of(span)).copied().unwrap_or(0);
+        let first = self.toks.partition_point(|t| (t.span.start as usize) < line_start);
+        self.toks.get(first).map_or(0, |t| (t.span.start as usize).saturating_sub(line_start))
+    }
+
+    /// The indentation of `span` when it starts its line.
+    pub(crate) fn indent_if_first(&self, span: Span) -> Option<usize> {
+        let line_start = self.docs.line_starts.get(self.docs.line_of(span)).copied().unwrap_or(0);
+        let first = self.toks.partition_point(|t| (t.span.start as usize) < line_start);
+        let tok = self.toks.get(first)?;
+        (tok.span == span).then(|| (span.start as usize).saturating_sub(line_start))
+    }
+
+    /// At a keyword that starts a definition (`def`, `class`, `agent`…), which no body contains:
+    /// a body stops there, so that a missing `end` is reported at it, not at the end of the file.
+    pub(crate) fn at_definition(&self) -> bool {
+        match self.kind() {
+            T::Kw(kw) => is_definition(*kw),
+            T::Ident(name) => name == "native" && *self.nth(1) == T::Kw(K::Def),
+            _ => false,
+        }
     }
 
     pub(crate) fn ident(&mut self, expected: &str) -> PResult<Ident> {
@@ -159,4 +206,22 @@ impl<'d> Parser<'d> {
         };
         Ok(Ident { name, span: self.bump().span })
     }
+}
+
+/// Keywords that start a top-level definition (or a member of one).
+pub(crate) fn is_definition(kw: K) -> bool {
+    matches!(
+        kw,
+        K::Def
+            | K::Abstract
+            | K::Prompt
+            | K::Tool
+            | K::Workflow
+            | K::Struct
+            | K::Class
+            | K::Module
+            | K::Enum
+            | K::Agent
+            | K::Supervisor
+    )
 }

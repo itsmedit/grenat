@@ -28,6 +28,7 @@ impl<'d> Parser<'d> {
                 match p.kind() {
                     T::Kw(k) if stops.contains(k) => break,
                     T::RBrace | T::RParen | T::Eof => break,
+                    _ if p.at_definition() => break,
                     _ if p.diags.len() >= MAX_DIAGNOSTICS => break,
                     _ => {}
                 }
@@ -42,6 +43,11 @@ impl<'d> Parser<'d> {
                             p.recover_line();
                         }
                     }
+                    // an error at the `end` that starts the next line leaves it to close the body
+                    Err(())
+                        if p.pos != before
+                            && matches!(p.kind(), T::Kw(k) if stops.contains(k))
+                            && p.indent_if_first(p.span()).is_some() => {}
                     Err(()) => p.recover_line(),
                 }
                 if p.pos == before {

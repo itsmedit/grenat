@@ -91,16 +91,27 @@ impl<'d> Parser<'d> {
         if !(self.at(&T::Question) && self.peek().space_before) {
             return Ok(cond);
         }
-        self.bump();
+        let question = self.bump().span;
+        let branches = self.ternary_branches();
+        if branches.is_err()
+            && let Some(diag) = self.diags.last_mut()
+        {
+            let note = "this `?`, after a space, starts `cond ? a : b`; the `?` postfix is glued: `x?`, `end?`";
+            diag.notes.push((question, note.into()));
+        }
+        let (then, otherwise) = branches?;
+        let span = cond.span.to(otherwise.span);
+        let kind = ExprKind::If { cond: Box::new(cond), then: vec![then], else_: Some(vec![otherwise]) };
+        Ok(Expr::new(kind, span))
+    }
+
+    fn ternary_branches(&mut self) -> PResult<(Expr, Expr)> {
         self.skip_newlines();
         let then = self.ternary()?;
         self.skip_newlines();
         self.expect(T::Colon, "`:` (`cond ? a : b`)")?;
         self.skip_newlines();
-        let otherwise = self.ternary()?;
-        let span = cond.span.to(otherwise.span);
-        let kind = ExprKind::If { cond: Box::new(cond), then: vec![then], else_: Some(vec![otherwise]) };
-        Ok(Expr::new(kind, span))
+        Ok((then, self.ternary()?))
     }
 
     pub(crate) fn binary(&mut self, min_bp: u8) -> PResult<Expr> {
@@ -240,19 +251,9 @@ impl<'d> Parser<'d> {
             }
             T::Kw(K::Return | K::Break | K::Next) => self.jump(),
             T::Kw(K::End) => self.fail(tok.span, "`end` without an opening block"),
-            T::Kw(
-                kw @ (K::Def
-                | K::Abstract
-                | K::Prompt
-                | K::Tool
-                | K::Workflow
-                | K::Struct
-                | K::Class
-                | K::Module
-                | K::Enum
-                | K::Agent
-                | K::Supervisor),
-            ) => self.fail(tok.span, format!("`{}` is only allowed at the top level", kw.as_str())),
+            T::Kw(kw) if is_definition(kw) => {
+                self.fail(tok.span, format!("`{}` is only allowed at the top level", kw.as_str()))
+            }
             T::Label(name) => self.fail(tok.span, format!("unexpected named argument `{name}:`")),
             _ => self.unexpected("an expression"),
         }

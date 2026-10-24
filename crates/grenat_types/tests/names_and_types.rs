@@ -92,3 +92,17 @@ end
 ",
     );
 }
+
+#[test]
+fn a_do_block_followed_by_a_postfix_or_a_method_is_typed_as_a_brace_block() {
+    // `end?` unwraps the `Result` of `check`, as `{ … }?` does
+    clean("def f(xs: Array(Int)) -> Array(Int)\n  xs.check do |v|\n    v.size > 0\n  end?\nend\n");
+    clean("def f(xs: Array(Int)) -> Int\n  xs.map do |x|\n    x * 2\n  end.select { |x| x > 2 }.size\nend\n");
+    clean("def f(xs: Array(Int)) -> Array(Int)\n  xs.check do |v|\n    v.size > 0\n  end.or_else { [] }\nend\n");
+    // without the `?`, a `Result` is not the `Array` the function returns
+    single(
+        "def f(xs: Array(Int)) -> Array(Int)\n  xs.check do |v|\n    v.size > 0\n  end.sizes\nend\n",
+        "E0200",
+        "sizes",
+    );
+}

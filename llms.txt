@@ -84,7 +84,7 @@ def digest(text: String) -> Summary uses llm, human
 end
 ```
 
-`x.approve(by: :human)` always shows the value to the human (trusted or not) and returns it trusted, or raises `ApprovalDenied`: review a model's text with `reply.approve(by: :human)`, not by putting it in `approve!`. A field: `res.json["id"].check { |i| i > 0 }?`.
+`x.approve(by: :human)` always shows the value to the human (trusted or not) and returns it trusted, or raises `ApprovalDenied`: review a model's text with `reply.approve(by: :human)`, not by putting it in `approve!`. A field: `res.json["id"].check { |i| i > 0 }?`; after `do … end`: `end?`.
 
 ## Tools and agents
 

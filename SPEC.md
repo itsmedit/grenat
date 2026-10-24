@@ -614,6 +614,26 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 17 status: blocks followed by ? or a method
+
+`x.check do |a| … end?` did not parse: the lexer read `end?` as one name, a method ending in `?`, so the block stayed open and the error came at the end of the file, or at the next `def` — found by a model writing Grenat from `llms.txt`. A keyword never takes a `?` or a `!` (keywords are not names), except where a method name is expected: after `.`, `&.` and `def` (`x.nil?`, `def end?`). So `end?` is the block, then the `?` postfix, and a `do … end` block is followed by what follows `{ … }`: `?`, `.method`, `&.method`, `[i]`.
+
+```ruby
+def positive(xs: Array(Int)) -> Array(Int)
+  xs.check do |v|
+    v.all? { |x| x > 0 }
+  end?
+end
+
+def doubled(xs: Array(Int)) -> Array(Int)
+  xs.map do |x|
+    x * 2
+  end.select { |x| x > 2 }
+end
+```
+
+Where a body still does not close, the error says where: a body stops at the next definition (`def`, `class`, `agent`…), so a missing `end` is reported there rather than at the end of the file; it shows the first `end` that was less indented than the line it closed, the likely culprit (`this end closes the do of line 2, though it is less indented`); and a `?` after a space (`end ?`), which starts `cond ? a : b`, is pointed at when that ternary fails.
+
 ### Phase 17 status: tests start clean
 
 `grenat test` promised each test a new in-memory database, but made one only for a program with `migration`s: in a program without, the operations store (jobs, approvals, model calls, events, files handled) went to a database created at its first use and kept for every test after it, so a test saw the jobs and approvals of the tests before it — the same workflow enqueued with the same arguments in two tests left two approvals pending in the second (seen writing `docs/llms/slack-teams.md`, whose second test took another order number to get by). Now each test of a file starts from the state the script left, migrations or not, `database` declared or not:

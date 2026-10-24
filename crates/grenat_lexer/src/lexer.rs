@@ -229,11 +229,20 @@ impl<'s> Lexer<'s> {
         }
     }
 
+    /// After `.`, `&.` or `def`, a word is a method name: `x.nil?`, `def end?`. Elsewhere a keyword
+    /// keeps no `?`/`!`: `do … end?` is the block, then the `?` postfix.
+    pub(crate) fn at_method_name(&self) -> bool {
+        matches!(
+            self.tokens.last().map(|t| &t.kind),
+            Some(TokenKind::Dot | TokenKind::SafeDot | TokenKind::Kw(Keyword::Def))
+        )
+    }
+
     pub(crate) fn ident(&mut self) {
         let start = self.pos;
         self.take_ident_chars();
         let is_const = self.src[start..].starts_with(|c: char| c.is_uppercase());
-        if !is_const {
+        if !is_const && (Keyword::lookup(&self.src[start..self.pos]).is_none() || self.at_method_name()) {
             self.take_predicate_suffix();
         }
         let text = &self.src[start..self.pos];

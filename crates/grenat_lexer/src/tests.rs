@@ -169,3 +169,17 @@ fn operator_symbols() {
 fn symbol_after_block_pass() {
     assert_eq!(kinds("map(&:upcase)"), vec![ident("map"), LParen, Amp, Symbol("upcase".into()), RParen, Eof]);
 }
+
+#[test]
+fn a_keyword_takes_no_suffix_except_as_a_method_name() {
+    // `do … end?`: the block, then the `?` postfix; `end!` likewise
+    assert_eq!(kinds("end?.size"), vec![Kw(Keyword::End), Question, Dot, ident("size"), Eof]);
+    assert_eq!(kinds("end!"), vec![Kw(Keyword::End), Bang, Eof]);
+    assert_eq!(kinds("nil?"), vec![Kw(Keyword::Nil), Question, Eof]);
+    // after `.`, `&.` or `def`, a method name: `x.nil?`, `def end?`
+    assert_eq!(kinds("x.nil?"), vec![ident("x"), Dot, ident("nil?"), Eof]);
+    assert_eq!(kinds("x&.end?"), vec![ident("x"), SafeDot, ident("end?"), Eof]);
+    assert_eq!(kinds("def end?"), vec![Kw(Keyword::Def), ident("end?"), Eof]);
+    // a name that only starts like a keyword is a name
+    assert_eq!(kinds("ending? done!"), vec![ident("ending?"), ident("done!"), Eof]);
+}
