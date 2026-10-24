@@ -121,7 +121,7 @@ ok2 = s.check { |x| x.title.size > 0 }.or_else { s.approve(by: :human) }
 fine = s.trust!                                            # explicit, grep-able: only when truly safe
 ```
 
-`x.approve(by: :human)` shows the value to the human and returns it trusted, or raises `ApprovalDenied`; to review a model's text before printing it, use it (`reply.approve(by: :human)`) rather than putting the text in `approve!`. `x.check { … }` without `?` is a `Result`: `.or_else { … }` gives a fallback.
+`x.approve(by: :human)` always shows the value to the human (untrusted or not) and returns it trusted, or raises `ApprovalDenied`; to review a model's text before printing it, use it (`reply.approve(by: :human)`) rather than putting the text in `approve!`. `x.check { … }` without `?` is a `Result`: `.or_else { … }` gives a fallback.
 
 A field read from an untrusted value is untrusted too: `res.json["id"].check { |i| i > 0 }?`.
 

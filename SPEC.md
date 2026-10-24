@@ -641,6 +641,10 @@ p seen.union(fresh, [9]), seen.intersect?(fresh)
 - **The wire.** Connections kept alive as HTTP/1.1 says (HTTP/1.0 with `Connection: keep-alive`), pipelined requests answered in order, `HEAD` answered with the head only; each response has its `Date` and its `Content-Length`, and the framing headers (`Content-Length`, `Transfer-Encoding`, `Connection`) are the server's, never a program's.
 - **Tests.** Raw sockets against the server: pipelining, chunked bodies, `100 Continue`, refusals, idle and slow clients, the connection limit, a burst of idle and stalled clients answered all the same. And `grenat serve` itself: a burst of clients that ask for an endless stream and never read it (each stream starts, then ends, while another request is answered at once), and a burst beyond `ulimit -n 64`, after which the server serves again — where `tiny_http` stopped listening.
 
+### Phase 17 status: an approval always asks
+
+`x.approve(by: :human)` asked the human only when `x` was untrusted: on a trusted value — one already checked, or a field read from it — it returned the value silently, so a program reviewing a model's draft through its checked copy (`valid.reply.approve(by: :human)`) published it without anyone seeing it, even under `with_human(deny_all)`. Found by a model writing Grenat from `llms.txt`. Now an approval always asks, whatever the value: approved, the value comes back trusted; denied, `ApprovalDenied`. `trust!` stays a pass-through on a trusted value; the checker already held `approve` to the `human` effect on any value.
+
 ### Phase 17 status: bridges refused without a sandbox
 
 Three decisions on what reaches outside a program, each enforced by the checker and the runtime alike.

@@ -11,8 +11,17 @@ pub(crate) fn call_method<'p>(interp: &mut Interp<'p>, recv: Value<'p>, name: &s
         "to_s" => return interp.display(&recv).map(Value::str),
         "inspect" => return Ok(Value::str(recv.inspect())),
         "tainted?" => return Ok(Value::Bool(false)),
-        // on an untainted value, validation is a simple pass-through
-        "trust!" | "approve" => return Ok(recv),
+        // on an untainted value, `trust!` is a pass-through; `approve` still
+        // asks: whoever writes it expects a human to see the value first
+        "trust!" => return Ok(recv),
+        "approve" => {
+            let message = format!("Value to approve:\n{}", recv.inspect());
+            return if interp.ask_human(&message)? {
+                Ok(recv)
+            } else {
+                raise("ApprovalDenied", "value rejected by the human")
+            };
+        }
         "check" => {
             let body = block(&args, name)?;
             return Ok(if interp.call_block(&body, vec![recv.clone()])?.truthy() {

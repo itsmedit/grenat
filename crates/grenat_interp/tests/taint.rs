@@ -48,3 +48,17 @@ fn human_approval_untaints_or_denies() {
     let denied = run_with(&src, vec![summary_reply()], &["n"]);
     assert_eq!(denied.result.unwrap_err().ty, "ApprovalDenied");
 }
+
+#[test]
+fn approval_asks_the_human_even_for_a_trusted_value() {
+    // a checked value, or a field read from it, is trusted: `approve` still
+    // shows it to the human, who may say no (it was a silent pass-through)
+    let src = format!(
+        "{SUMMARY}s = summarize(\"x\").check {{ |x| x.bullets.size > 0 }}?\nputs s.title.approve(by: :human)\n"
+    );
+    let approved = run_with(&src, vec![summary_reply()], &["y"]);
+    approved.result.unwrap();
+    assert!(approved.output.ends_with("Cat\n"), "{}", approved.output);
+    let denied = run_with(&src, vec![summary_reply()], &["n"]);
+    assert_eq!(denied.result.unwrap_err().ty, "ApprovalDenied");
+}
