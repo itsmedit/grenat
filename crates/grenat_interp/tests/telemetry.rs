@@ -475,7 +475,7 @@ end
     let unsampled = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
     assert_eq!(request(&address, "GET", "/quiet", &[("traceparent", unsampled)]), 200);
     let caller = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
-    assert_eq!(request(&address, "GET", "/tickets/4242?secret=alice", &[("traceparent", caller)]), 200);
+    assert_eq!(request(&address, "GET", "/tickets/q4242z?secret=alice", &[("traceparent", caller)]), 200);
     assert_eq!(request(&address, "GET", "/crash", &[]), 500);
     let spans = wait_for(&collector, |spans| {
         ["GET /tickets/:id", "GET /crash", "job digest", "job broken", "schedule every 1s"]
@@ -510,8 +510,9 @@ end
     let schedule = &named(&spans, "schedule every 1s")[0];
     assert_eq!(attr(schedule, "grenat.trigger").unwrap(), "schedule");
 
+    // markers no exported number can hold by chance (ids are hex, times decimal)
     let everything = collector.everything();
-    for leak in ["4242", "alice", "crashed on customer data", "no such ticket"] {
+    for leak in ["q4242z", "alice", "crashed on customer data", "no such ticket"] {
         assert!(!everything.contains(leak), "{leak:?} was exported");
     }
 }
