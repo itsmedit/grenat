@@ -38,6 +38,16 @@ pub fn missing(facet: &str) -> Option<String> {
     interpreter_missing(facet).or_else(|| grenat_sandbox::isolation_works().err())
 }
 
+/// Why no bridge can be served here at all, if none can: the sandbox every
+/// bridge server runs in is not available (a test then says so and returns).
+pub fn sandbox_missing() -> Option<String> {
+    let missing = grenat_sandbox::isolation_works().err();
+    if let Some(why) = &missing {
+        println!("skipped: no bridge can run here: {why}");
+    }
+    missing
+}
+
 fn interpreter_missing(facet: &str) -> Option<String> {
     let (program, check) = match facet {
         RUBY => ("ruby", ["-e", "require 'json'"]),

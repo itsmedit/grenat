@@ -587,7 +587,7 @@ target/debug/grenat check examples/*.grn     # names, types, effects, taint
 target/debug/grenat fmt examples             # canonical layout (--check: only report)
 target/debug/grenat test examples/triage.grn # `test` blocks: mocks and cassettes, never a real model
 target/debug/grenat eval examples/triage.grn # `eval` blocks: the real model, scored on a dataset
-cargo test                                   # ~950 tests: unit, integration, CLI, HTTP, MCP, SSH, JIT, build
+scripts/clean-objects.sh && cargo test      # ~1,260 tests in ~3 minutes (the script clears leftover objects macOS would check)
 scripts/test-linux.sh                        # the same suite on Linux, in Docker
 ```
 

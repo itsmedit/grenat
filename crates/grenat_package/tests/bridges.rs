@@ -2,7 +2,8 @@
 //! server asked to describe itself), and loaded with the declarations
 //! written from its answer.
 //!
-//! A test whose interpreter is not installed says so and returns.
+//! A test whose interpreter, or the sandbox bridges run in, is missing says
+//! so and returns.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -124,6 +125,9 @@ fn a_bridge_facet_sees_its_own_functions() {
 
 #[test]
 fn a_server_that_cannot_describe_itself_fails_the_install() {
+    if fixture::sandbox_missing().is_some() {
+        return;
+    }
     let dir = temp_dir("broken");
     let facet = dir.join("broken");
     write(
@@ -141,6 +145,9 @@ fn a_server_that_cannot_describe_itself_fails_the_install() {
 
 #[test]
 fn a_manifest_grenat_cannot_declare_fails_the_install_and_writes_nothing() {
+    if fixture::sandbox_missing().is_some() {
+        return;
+    }
     let dir = temp_dir("keyword");
     let facet = dir.join("bad");
     let function = |name: &str, effects: &str| {

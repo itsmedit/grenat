@@ -16,6 +16,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      # Ubuntu 24.04+ restricts unprivileged user namespaces (AppArmor): allow
+      # them, so that the sandbox `Shell.run` and bridge facets need is there
+      - if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
