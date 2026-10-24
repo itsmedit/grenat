@@ -55,25 +55,43 @@ fn head_response(client: &mut TcpStream) -> String {
     read_response(client, false)
 }
 
+/// Bytes read past the response asked for — the start of the next one, when
+/// pipelined responses arrive in one read — kept for the next call, by client.
+static PENDING: std::sync::Mutex<Vec<(std::net::SocketAddr, Vec<u8>)>> = std::sync::Mutex::new(Vec::new());
+
 fn read_response(client: &mut TcpStream, with_body: bool) -> String {
-    let mut bytes = Vec::new();
+    let key = client.local_addr().unwrap();
+    let mut bytes = {
+        let mut pending = PENDING.lock().unwrap();
+        let index = pending.iter().position(|(k, _)| *k == key);
+        index.map(|i| pending.remove(i).1).unwrap_or_default()
+    };
     let mut buffer = [0; 4096];
     loop {
-        let text = String::from_utf8_lossy(&bytes).into_owned();
-        if let Some((head, body)) = text.split_once("\r\n\r\n") {
-            if !with_body {
-                return text;
+        if let Some(end) = message_end(&bytes, with_body) {
+            let rest = bytes.split_off(end);
+            if !rest.is_empty() {
+                PENDING.lock().unwrap().push((key, rest));
             }
-            let length = head.lines().find_map(|l| l.strip_prefix("Content-Length: ")).map(|l| l.parse().unwrap());
-            if length.is_some_and(|n: usize| body.len() >= n) {
-                return text;
-            }
+            return String::from_utf8_lossy(&bytes).into_owned();
         }
         match client.read(&mut buffer) {
-            Ok(0) | Err(_) => return text,
+            Ok(0) | Err(_) => return String::from_utf8_lossy(&bytes).into_owned(),
             Ok(n) => bytes.extend_from_slice(&buffer[..n]),
         }
     }
+}
+
+/// Where the first response in `bytes` ends, once it is whole: after its head
+/// (a response to `HEAD`), or after the body its `Content-Length` gives.
+fn message_end(bytes: &[u8], with_body: bool) -> Option<usize> {
+    let head = bytes.windows(4).position(|w| w == b"\r\n\r\n")? + 4;
+    if !with_body {
+        return Some(head);
+    }
+    let text = String::from_utf8_lossy(&bytes[..head]);
+    let length: usize = text.lines().find_map(|l| l.strip_prefix("Content-Length: "))?.trim().parse().ok()?;
+    (bytes.len() >= head + length).then_some(head + length)
 }
 
 fn closed(client: &mut TcpStream) -> bool {
