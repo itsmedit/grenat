@@ -113,7 +113,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_ext"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "grenat_ext_macros",
  "inventory",
@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "grenat_ext_macros"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "proc-macro2",
  "quote",

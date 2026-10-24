@@ -404,7 +404,7 @@ dates, email), Python's familiarity still pays.
 
 ## Status
 
-The latest release, v0.1.4, has phases 0 to 17.
+The latest release, v0.1.5, has phases 0 to 17.
 
 **Phase 17 — hardening**: an HTTP server of Grenat's own in place of `tiny_http`, which a burst of
 clients could starve (a thread per connection, every client timed, size limits, no request
@@ -540,9 +540,9 @@ grenat new --app hello && cd hello && grenat test
 **apt or dnf**, with the packages of a release:
 
 ```sh
-curl -LO https://github.com/itsmedit/grenat/releases/download/v0.1.4/grenat_0.1.4_amd64.deb
-sudo apt install ./grenat_0.1.4_amd64.deb                  # Ubuntu, Debian (arm64: _arm64.deb)
-sudo dnf install https://github.com/itsmedit/grenat/releases/download/v0.1.4/grenat-0.1.4-1.x86_64.rpm   # Fedora, RHEL, Amazon Linux (aarch64: .aarch64.rpm)
+curl -LO https://github.com/itsmedit/grenat/releases/download/v0.1.5/grenat_0.1.5_amd64.deb
+sudo apt install ./grenat_0.1.5_amd64.deb                  # Ubuntu, Debian (arm64: _arm64.deb)
+sudo dnf install https://github.com/itsmedit/grenat/releases/download/v0.1.5/grenat-0.1.5-1.x86_64.rpm   # Fedora, RHEL, Amazon Linux (aarch64: .aarch64.rpm)
 ```
 
 **Docker** — the official image, for amd64 and arm64, with a C linker for `grenat build`:
@@ -554,7 +554,7 @@ docker run --rm -v "$PWD":/app -p 3000:3000 ghcr.io/itsmedit/grenat serve --list
 
 ```dockerfile
 # your application's image
-FROM ghcr.io/itsmedit/grenat:0.1.4
+FROM ghcr.io/itsmedit/grenat:0.1.5
 COPY . /app
 CMD ["serve", "--listen", "0.0.0.0:3000"]
 ```
