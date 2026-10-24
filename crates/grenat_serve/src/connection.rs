@@ -84,7 +84,7 @@ pub(crate) fn serve(socket: TcpStream, timeouts: Timeouts, sizes: Sizes, program
         let request = match read {
             Ok(request) => request,
             Err(Failure::Gone) => return,
-            Err(Failure::Refused(status)) => return refuse(&socket, status),
+            Err(Failure::Refused(status)) => return refuse_lingering(&socket, status),
         };
         let to = Answering {
             http11: request.http11,
@@ -110,6 +110,32 @@ pub(crate) fn refuse(mut writer: &TcpStream, status: u16) {
     let body = crate::status::reason(status);
     let _ = writer.write_all(&response::whole(status, "text/plain; charset=utf-8", &[], body.as_bytes(), to, now()));
     let _ = writer.shutdown(std::net::Shutdown::Write);
+}
+
+/// [`refuse`], then reads what the client still sends, for a moment, before
+/// the socket is closed: closed while bytes arrive, it would reset the
+/// connection, and the client could lose the answer unread (RFC 9112 §9.6).
+fn refuse_lingering(socket: &TcpStream, status: u16) {
+    refuse(socket, status);
+    linger(socket);
+}
+
+/// Reads and drops what arrives, until the client closes, a second has
+/// passed or 64 KiB have come: bounded, so that no client holds the thread.
+fn linger(mut socket: &TcpStream) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    let mut buffer = [0; 4096];
+    let mut read = 0;
+    while read < 64 * 1024 {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() || socket.set_read_timeout(Some(left)).is_err() {
+            return;
+        }
+        match socket.read(&mut buffer) {
+            Ok(0) | Err(_) => return,
+            Ok(n) => read += n,
+        }
+    }
 }
 
 fn now() -> i64 {
