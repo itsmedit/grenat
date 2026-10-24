@@ -1,45 +1,28 @@
-# Grenat — reference for LLMs writing Grenat code
+# Grenat — reference for LLMs
 
-Grenat is a compiled language for AI agents: Ruby's syntax, static types (inferred inside bodies), effects checked by the compiler, and agents, prompts, tools and durable workflows built in. Files end in `.grn`. Read this whole page before writing code: Grenat is NOT Ruby, and code that looks like Ruby but ignores the rules below does not compile.
+A compiled language for AI agents (`.grn` files): Ruby's syntax, static types, checked effects, built-in agents, prompts, tools, durable workflows. It is NOT Ruby: read this page before writing code; a topic file (index at the end) only when needed.
 
 ## Toolchain
 
-```sh
-grenat new --app desk        # an application: src/app.grn, src/config.grn, config/models.yml, tests/, db/migrations/
-grenat check [file]          # type, effect and taint check: run it after every edit, fix every error
-grenat test [file]           # offline tests (models, HTTP, shell, mail mocked)
-grenat run file.grn args…    # runs `main`
-grenat serve                 # routes, webhooks, schedules, job workers
-grenat fmt                   # canonical layout
-```
+`grenat new --app desk` (src/app.grn, src/config.grn, config/models.yml, tests/, db/migrations/), `grenat check [file]` (types, effects, taint: after every edit, fix every error), `grenat test [file]`, `grenat run file.grn args…` (runs `main`), `grenat serve` (routes, webhooks, schedules, job workers), `grenat fmt`.
 
-`grenat check` errors carry codes: E0100 unknown name, E0200 type, E0300 effect not granted, E0310 non-deterministic effect outside a workflow `step`, E0412 untrusted value reaching a sink, E0414 secret reaching a model, E0500 bad declaration. Fix the cause; never silence E0412 with `.trust!` unless the value is genuinely safe.
+Errors: E0100 unknown name, E0200 type, E0300 effect not granted, E0310 non-deterministic effect outside a workflow `step`, E0412 untrusted value reaching a sink, E0414 secret reaching a model, E0500 bad declaration. Fix the cause: `.trust!` only a genuinely safe value.
 
-## Differences from Ruby (the rules that matter)
+## Differences from Ruby
 
-- Types are written on `def`/`tool`/`prompt` parameters and returns, and on struct fields; inferred everywhere else. `def total(items: Array(Item), rate: Float = 0.2) -> Float`.
-- Types: `Int`, `Float`, `Bool`, `String`, `Money`, `Path`, `Email`, `Array(T)`, `Hash(K, V)`, `T?` (optional), `Result(T, E)`, `~T` (untrusted), `Secret`, `Attachment`.
-- Optionals instead of nil everywhere: `user&.email || "unknown"`. Errors are values: `?` propagates a `Result`; `raise "msg"`, `raise ArgumentError, "msg"` and `begin … rescue KeyError, ArgumentError => e … end` also work (a `def` body may end with `rescue` without `begin`).
+- Types are written on parameters, returns and struct fields, inferred elsewhere: `def total(items: Array(Item), rate: Float = 0.2) -> Float`. `Int`, `Float`, `Bool`, `String`, `Money`, `Path`, `Email`, `Array(T)`, `Hash(K, V)`, `T?`, `Result(T, E)`, `~T` (untrusted), `Secret`, `Attachment`.
+- Optionals, not nil everywhere: `user&.email || "unknown"`. Errors are values: `?` propagates a `Result`; `raise "msg"`, `raise ArgumentError, "msg"`, `begin … rescue KeyError, ArgumentError => e … end` work too (a `def` body may end with `rescue`).
 - No `method_missing`, `send`, `eval`, monkey-patching, `require "json"`, gems, `async`/`await`, `attr_accessor` (use a struct field or a `macro`). `require "./file"` only for your own files, at the top level.
-- Construct a struct by calling its name: `Point(x: 1.0, y: 2.0)`; hash shorthand `{query:}`, keyword shorthand `f(to:, body:)`.
-- One-line methods: `def norm = Math.sqrt(x * x + y * y)`. Class methods: `def self.load(...)`. Constants: `LIMIT = 10`, `API = "…"` inside a module (`GitHub::API`).
-- Everything is concurrent without coloring: `xs.parallel_map(limit: 5) { |x| … }`, `race do … end`.
-- Locals cannot be annotated (`x: Int = 1` does not parse); keywords (`until`, `end`, `in`…) cannot be parameter names; no `\` line continuation (break after an operator or a comma instead).
-- Not in Grenat (don't use them): regular expressions (`/…/`, `=~`, `scan`, `match`), `strftime`, `freeze`, `step`, `each_char`, destructuring block parameters (`|(k, v), acc|`: take the pair, `pair[0]`), endless ranges outside an index (`(1..)`).
-- Time: an instant is a `Float` (epoch seconds): `Time.now` (`uses time`), `Time.parse("2026-09-28T08:00:00+02:00")` (ISO 8601; a date alone is midnight UTC; invalid → `ArgumentError`), `Time.at(2026, 9, 28, 8, 0, 0)`; written in UTC by `Time.iso(t)` → `"2026-09-28T06:00:00Z"`, `Time.date(t)` → `"2026-09-28"`, `Time.weekday(t)` → 1 (Monday)…7 (cut to the millisecond, never rounded). `Time.today` is a `"YYYY-MM-DD"` string. `7.days`, `1.hour`, `2.min` are `Duration`s: `Time.now - 7.days` is a `Float`, `2.h - 30.min`, `3 * 1.h`, `1.h < 2.h`, `1.h == 3600` (a duration compares with its seconds), `d.to_i` (seconds). No time zones besides offsets, no `t.year` (use `Time.date`).
+- Build a struct by calling its name, `Point(x: 1.0, y: 2.0)`; shorthands `{query:}`, `f(to:, body:)`. `def norm = …` (one line), `def self.load(...)`, `LIMIT = 10`, `GitHub::API` (a module's constant).
+- Concurrency, uncolored: `xs.parallel_map(limit: 5) { |x| … }`, `race do … end`.
+- Locals cannot be annotated (`x: Int = 1` does not parse); keywords (`until`, `end`, `in`…) cannot be parameter names; no `\` continuation (break after an operator or a comma).
+- Not in Grenat: regular expressions (`/…/`, `=~`, `scan`, `match`), `strftime`, `freeze`, `step`, `each_char`, destructuring block parameters (`|(k, v), acc|`: take the pair, `pair[0]`), endless ranges outside an index (`(1..)`).
+- Time: an instant is a `Float` (epoch seconds), not an object: `Time.now` (`uses time`), `Time.parse("2026-09-28T08:00:00+02:00")`, `Time.iso(t)`, `Time.date(t)` → `"2026-09-28"`, `Time.today` (a string), `Time.now - 7.days`; no `t.year`, no time zones besides offsets (time topic).
+- Ruby's usual string, array and hash methods exist (collections-and-strings topic). Slices count characters, are `String?` / `Array(T)?` (`nil` past the end) and read only: `xs[i] = v` assigns an item, `xs[0, 2] = v` and `s[0] = "x"` are errors (build a new value). `format("%.2f", x)`, `"%05d" % n`, `x.round(2)`.
 
 ```ruby
-struct Point
-  x: Float
-  y: Float
-
-  def norm = Math.sqrt(x * x + y * y)
-end
-
-class Counter                    # a reference; @ivars need a type or a default
+class Counter  # a reference: @ivars need a type or a default
   @count: Int = 0
-
-  def incr! = @count += 1
 end
 
 enum Shape
@@ -53,40 +36,19 @@ def area(s: Shape) -> Float
   in Rect(w, h) then w * h
   end
 end
-
-module Greeting
-  def self.hello(name: String) -> String = "Hello, #{name}"
-end
 ```
 
-## Effects (capabilities)
+## Effects
 
-A function that does I/O declares it with `uses`; a caller must cover its callees' effects, and `main` is the root. Missing one is E0300.
+I/O is declared, `def main(args: Array(String)) uses llm, env, fs.read("./docs")`; callers cover their callees' (else E0300).
 
-`llm` (calls a model) · `net("api.github.com")` (HTTP, SMTP, IMAP or PostgreSQL to that host; `Mail.connect("smtp://smtp.acme.io")` needs `net("smtp.acme.io")`, `Db.connect("postgres://app:pw@db.acme.io/app")` in a function `net("db.acme.io")` — SQLite and localhost/`127.0.0.1`/`::1`/a Unix socket need none, nor a top-level `database`; `net` alone = any host — use it when the host comes from configuration, e.g. `Mail.connect(Credentials.fetch(:smtp, :url))`: a host checked at run time must be granted) · `fs.read("./docs")`, `fs.write("out")` (path prefix) · `shell("git")` (that program) · `ssh("host")` · `db.read`, `db.write` (`db` = both) · `mcp("server")` · `env` (environment, credentials) · `human` (approval) · `time`, `random`.
-
-```ruby
-def main(args: Array(String)) uses llm, net("api.github.com"), env, fs.read("./docs")
-  puts args.first
-end
-```
+`llm` · `net("api.github.com")` (HTTP, SMTP, IMAP, PostgreSQL to that host: `net("smtp.acme.io")` for `Mail.connect("smtp://smtp.acme.io")`, `net("db.acme.io")` for `Db.connect("postgres://…@db.acme.io/app")`, none for SQLite, localhost (`127.0.0.1`, `::1`), a Unix socket, a top-level `database`; `net` alone = any host, when it comes from configuration, `Mail.connect(Credentials.fetch(:smtp, :url))`: a host checked at run time must be granted) · `fs.read("./docs")`, `fs.write("out")` (path prefix) · `shell("git")` (that program) · `ssh("host")` · `db.read`, `db.write` (`db` = both) · `mcp("server")` · `env` (environment, credentials) · `human` (approval) · `time`, `random`.
 
 ## Models and prompts
 
-Models are configured in `config/models.yml` (the first is the default); keys come from `grenat credentials edit` (`openai: {api_key: …}`) or the provider's variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`…). Providers: anthropic, openai, gemini, mistral, xai, openrouter, groq, deepseek, together, ollama.
+Models are in `config/models.yml` (the first is the default): `fast: {provider: anthropic, name: claude-haiku-4-5}`, `smart: {provider: anthropic, name: claude-opus-5}`; in a single file, `model :fast, provider: :anthropic, name: "claude-haiku-4-5"`. Keys: `openai: {api_key: …}` in `grenat credentials edit`, or the provider's variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`…). Providers: anthropic, openai, gemini, mistral, xai, openrouter, groq, deepseek, together, ollama.
 
-```yaml
-fast:
-  provider: anthropic
-  name: claude-haiku-4-5
-smart:
-  provider: anthropic
-  name: claude-opus-5
-```
-
-In a single file, declare them in code instead: `model :fast, provider: :anthropic, name: "claude-haiku-4-5"`.
-
-A `prompt` is a function implemented by a model. Its return type becomes a JSON schema; the answer is validated and retried if malformed. `##` comments (on the prompt, on fields) are sent to the model as descriptions.
+A `prompt` is a function a model implements; the answer is validated against its return type (retried if malformed); `##` comments go to the model.
 
 ```ruby
 enum Sentiment
@@ -96,7 +58,7 @@ enum Sentiment
 end
 
 struct Summary
-  title: String         ## 8 words at most
+  title: String  ## 8 words at most
   bullets: Array(String)  ## 3 to 5 key points
   sentiment: Sentiment
 end
@@ -108,26 +70,25 @@ prompt summarize(article: String) -> ~Summary using :fast
 end
 ```
 
-`user` also takes attachments: `user "Extract this invoice.", Pdf.read(path)` (`Image.read`, `Pdf.url`, `Image.url`).
+`user "Extract this invoice.", Pdf.read(path)` sends attachments (documents-and-audio topic).
 
-## Untrusted values `~T` (taint)
+## Taint: untrusted `~T`
 
-Whatever comes from outside is untrusted: model answers, HTTP bodies, files read from the web, webhook payloads, shell output, MCP results, an agent's answer. (Inside a `tool`, its arguments are trusted: the tool is the trust boundary, so `approve! "Open #{title}?"` is allowed there.) You may read, print, or pass it to another prompt. It may NOT reach a sink — HTTP request, shell argument, file write, email, database write, HTML page, approval text — until cleaned (E0412):
+Untrusted: model answers, HTTP bodies, files from the web, webhook payloads, shell output, MCP results, an agent's answer, their fields. Read, print, pass it to a prompt; it may NOT reach a sink — HTTP request, shell argument, file write, email, database write, HTML page, approval text — until cleaned (E0412). A `tool`'s arguments are trusted (the trust boundary): `approve! "Open #{title}?"` is fine there.
 
 ```ruby
-s = summarize(text)                                        # ~Summary
-ok = s.check { |x| x.bullets.size.between?(3, 5) }?        # Summary, or the CheckError propagates
-ok2 = s.check { |x| x.title.size > 0 }.or_else { s.approve(by: :human) }
-fine = s.trust!                                            # explicit, grep-able: only when truly safe
+def digest(text: String) -> Summary uses llm, human
+  s = summarize(text)  # ~Summary
+  s.check { |x| x.bullets.size.between?(3, 5) }?  # Summary, or the CheckError propagates
+  s.check { |x| x.title.size > 0 }.or_else { s.approve(by: :human) }  # a Result, with a fallback
+end
 ```
 
-`x.approve(by: :human)` always shows the value to the human (untrusted or not) and returns it trusted, or raises `ApprovalDenied`; to review a model's text before printing it, use it (`reply.approve(by: :human)`) rather than putting the text in `approve!`. `x.check { … }` without `?` is a `Result`: `.or_else { … }` gives a fallback.
-
-A field read from an untrusted value is untrusted too: `res.json["id"].check { |i| i > 0 }?`.
+`x.approve(by: :human)` always shows the value to the human (trusted or not) and returns it trusted, or raises `ApprovalDenied`: review a model's text with `reply.approve(by: :human)`, not by putting it in `approve!`. A field: `res.json["id"].check { |i| i > 0 }?`.
 
 ## Tools and agents
 
-A `tool` is a function a model may call; its `##` doc and parameter types become the tool's description and schema. Tool arguments arrive validated: the tool is the trust boundary.
+A `tool` is a function a model may call, described by its `##` doc and parameter types (its schema: arguments arrive validated).
 
 ```ruby
 ## Reads a documentation page.
@@ -142,11 +103,11 @@ tool open_ticket(title: String) -> Int uses net("tracker.acme.io"), human
 end
 ```
 
-An `agent` is an actor with a mailbox. `run` is the built-in loop (model → tools → model…) that ends when the model produces the handler's return type, or when `budget`/`max_turns` runs out.
+An `agent` is an actor; `run` is the loop (model → tools → model…) until the model produces the handler's return type, or `budget`/`max_turns` ends it.
 
 ```ruby
 struct Answer
-  body: String            ## the reply, in the customer's language
+  body: String  ## the reply, in the customer's language
   sources: Array(String)  ## pages used
 end
 
@@ -157,27 +118,21 @@ agent Support
   max_turns 12
   instructions "Answer from the documentation only. Open a ticket for bugs."
 
-  @handled: Int = 0
-
   on Ask(question: String) -> ~Answer
-    @handled += 1
     run "Customer question: #{question}"
   end
 end
 
 def answer(question: String) -> String uses llm, fs.read("./docs"), net("tracker.acme.io"), human
-  reply = spawn(Support).ask(Ask(question:))
-  reply.check { |a| a.sources.any? }?.body
+  spawn(Support).ask(Ask(question:)).check { |a| a.sources.any? }?.body
 end
 ```
 
-When a tool raises (including `approve!` denied, which raises `ApprovalDenied`), the error is sent back to the model as the tool's result and the loop goes on: that is how the model learns a denial. A tool is also an ordinary function: tests may call it directly. `run` raises `MaxTurnsExceeded` after `max_turns`, `BudgetExceeded` when the budget is spent.
+A tool that raises (a denied `approve!`: `ApprovalDenied`) gives the model its error as result; the loop goes on. Tests may call a tool directly. `run` raises `MaxTurnsExceeded`, `BudgetExceeded`; `within budget(usd: 1.00) do … end` caps spending.
 
-`a.tell(Msg(...))` sends without waiting; `spawn_pool(Support, size: 4)` is a load-balanced pool; `within budget(usd: 1.00) do … rescue BudgetExceeded => e … end` caps spending; `tool_timeout 20` in an agent bounds each tool call. Agents can use MCP servers: `mcp :linear, url: "…", headers: {…}` then `tools mcp(:linear)`.
+## Workflows, jobs, approvals
 
-## Durable workflows, jobs, approvals
-
-A `workflow` journals each `step`: after a crash or a human wait, finished steps are replayed, never re-billed. Inside a workflow, every `llm`/`net`/`time`/`random`/`human` effect must be inside a `step` (E0310).
+A `workflow` journals each `step`: after a crash or a human wait, finished steps are replayed, never re-billed. In a workflow, every `llm`/`net`/`time`/`random`/`human` effect is inside a `step` (E0310).
 
 ```ruby
 workflow publish(topic: String) uses llm, net("blog.acme.io"), human
@@ -187,27 +142,18 @@ workflow publish(topic: String) uses llm, net("blog.acme.io"), human
 end
 ```
 
-A workflow run is identified by its name and arguments: calling it again with the same arguments (after a crash) replays the finished steps from the journal and runs the rest; pass a key such as the week's Monday (`weekly(monday: "2026-09-28")`) to get one run per period.
+A run is its name and arguments: called again with them (after a crash), it replays the finished steps, runs the rest; a key such as `weekly(monday: "2026-09-28")` gives one run per period. `enqueue(:publish, "rust")` (or `in: 1.hour`) queues a call for `grenat serve`'s workers; in a job, `approve!` waits for `Approvals.approve(id)` (or `grenat console`).
 
-`enqueue(:publish, "rust")` (or `enqueue(:digest, in: 1.hour)`) queues a call for `grenat serve`'s workers; in a job, `approve!` waits for `Approvals.approve(id)` (also from `grenat console`).
+## Standard library
 
-## Standard library (most used)
+- `Http.get/post/put/patch/delete(url, query:, headers:, json:, body:, timeout:)` → `status`, `ok?`, `headers`, `body`, `json` (untrusted).
+- `Credentials.fetch(:github, :token)` → `Secret`, for every token, password and connection URL (a spec's `GITHUB_TOKEN`; `github: {token: …}` in `grenat credentials edit`): works in HTTP headers/URLs, `Db.connect`, `Mail.connect`, `Ssh.connect`; never printed or sent to a model; missing → `KeyError`. `"Bearer #{token}"` is a `Secret` too, equal to its text.
+- `Env.fetch("NAME")`, `Env.fetch("NAME", "default")`, `Env.get("NAME")` (nil when unset), `Env.key?("NAME")`: plain strings, for non-secret settings.
+- `File.read(path)`, `File.write(path, text)`, `File.lines(path)`, `Dir.list(dir)` (bare names, not paths); `Json.parse(text)`, `Json.generate(v)`.
+- `Shell.run(["git", "status"], timeout: 60, network: false)` (an argument vector, never a shell line) → `status`, `ok?`, `stdout`, `stderr`.
+- `Mail.connect(url).send(from:, to: [...], subject:, body:)`. `Db.connect(url)` → `query(sql, [params], as: Row)`, `first`, `execute`, `transaction do … end`; `?` placeholders.
 
-- `Http.get/post/put/patch/delete(url, query:, headers:, json:, body:, timeout:)` → `status`, `ok?`, `headers`, `body`, `json` (body/headers/json untrusted); a `429` with `Retry-After` is waited out and sent again (3 times at most) for GET/HEAD/PUT/DELETE, for POST/PATCH only with `retry: true` (`retry:` is a `Bool`); the host that answered (after redirects) is paused until then.
-- `Credentials.fetch(:github, :token)` → `Secret` (works in HTTP headers/URLs, `Db.connect`, `Mail.connect`, `Ssh.connect`; never printed, never sent to a model; a missing one raises `KeyError`). Use it for every token, password and connection URL: a spec's `GITHUB_TOKEN` becomes `Credentials.fetch(:github, :token)` (`github: {token: …}` in `grenat credentials edit`). `"Bearer #{token}"` is itself a `Secret`; comparing a secret to a string works (`assert_equal "Bearer t", header`). In tests without credentials, `Credentials.fetch(:a, :b)` is the stand-in secret `"test-a-b"`; `mock_credentials` sets others. `Env.fetch("NAME")`, `Env.fetch("NAME", "default")`, `Env.get("NAME")` (nil when unset), `Env.key?("NAME")` give plain strings (non-secret settings); in tests, `Env` sees only what `mock_env` gives (never the machine's environment).
-- `File.read(path)`, `File.write(path, text)`, `File.lines(path)`, `Dir.list(dir)` (bare file names, not paths); `Json.parse(text)`, `Json.generate(v)`.
-- `Shell.run(["git", "status"], timeout: 60, network: false)` → `status`, `ok?`, `stdout`, `stderr` (argument vector, never a shell line).
-- `Mail.connect(url).send(from:, to: [...], subject:, body:)`.
-- `Db.connect(url)` → `query(sql, [params], as: Row)`, `first`, `execute`, `transaction do … end`; `?` placeholders.
-- Records: `database Env.fetch("DATABASE_URL")`, a struct with `table :tickets` and `id: Int?` gets `create`, `find`, `where`, `all`, `count`, `save`, `delete`, `with(field: v)`; `migration "001_x" do |db| db.migrate("CREATE TABLE …") end`, applied by `grenat migrate`.
-- `embed(:docs, texts)` (an embedding model: `kind: embedding` in models.yml) + record field `embedding: Vector(1024)` + `Doc.nearest(:embedding, vector, limit: 4)`.
-- `Conversation.load("chat.json", model: :fast, system: "…")` → `say(text)` (untrusted answer), `save(path)`.
-- `xs.batch_map { |x| prompt_call(x) }`: batch API, half price, answers within 24 h.
-- `transcribe(:whisper, Audio.read("call.mp3"))`, `Html.text(html)`, `Html.escape(s)`, `Ssh.connect("user@host", key: secret).run(["uptime"])`.
-- Arrays/hashes/strings: Ruby's usual methods (`map`, `select`, `each_with_index`, `sort_by`, `take`, `join`, `split`, `include?`, `upcase`, `strip`, `to_i`, `to_f`, `to_s`, `size`, `first`, `any?`, `all?`, `partition`, `group_by`, `sum`, `flatten` / `flatten(depth)` (negative: all levels), `each_slice`, `each_cons`, `each_with_object`, `filter_map`, `tally`, `zip`, `min_by`, `minmax`, `uniq`, set operators `a & b` / `a | b` / `a - b` (order of `a`; `&` and `|` drop duplicates; both arrays of the same items) and `intersection`, `union`, `difference`, `intersect?`, `sort { |a, b| b <=> a }`, `reduce(:+)`, `inject(0, :*)`, `inject(0) { … }`, `dig`, `transform_values`, `transform_keys`, `merge(h) { |k, a, b| … }`, `fetch(k, default)`, `delete_prefix`, `delete_suffix`, `start_with?`, `center`, `ljust`, `tr`, `squeeze`, `count("a-z", "^aeiou")` (several sets intersect), `gsub`/`sub` with strings, `then`…).
-- Slices count characters, as in Ruby: `s[0, 4]`, `s[1..]`, `s[1..-2]`, `xs[2, 3]`, `xs[1...-1]` are `String?` / `Array(T)?` (`nil` when the start is past the end); they are read only (`xs[i] = v` assigns an item, `xs[0, 2] = v` and `s[0] = "x"` are errors: build a new value). `format("%.2f", x)`, `"%05d" % n`, `"%.3d" % n`, `"%s-%s" % [a, b]` format numbers as Ruby does (`%x` of a negative is `-ff`, not `..f01`); `x.round(2)` rounds.
-
-## Serving: routes, webhooks, schedules
+## Serving
 
 ```ruby
 get "/tickets/:id" do |req|
@@ -221,126 +167,59 @@ on_webhook "/github", secret: Credentials.fetch(:github, :webhook_secret), signa
   "ok"
 end
 
-every cron: "0 8 * * MON" do  # cron schedules are in UTC
+every cron: "0 8 * * MON" do  # UTC
   enqueue(:publish, "weekly digest")
 end
 ```
 
-A handler's value is the response: a string, a hash/record (JSON), `json(v)`, `html(page)` (escape untrusted with `Html.escape`), `status(201, v)`, `redirect(url)`, an integer status, `nil` (204). `stream do |out| … end` answers as Server-Sent Events; `expose "/mcp", tools: [:read_doc], agents: [Support], token: Credentials.fetch(:api, :token)` serves tools and agents over MCP.
-
-Email in: `grenat serve` reads a mailbox (Gmail, Microsoft 365, any IMAP server) and hands each new message to its handler, then marks it seen (or moves it with `move_to:`); a handler that raises leaves it unseen, tried three times, then flagged.
-
-```ruby
-struct Triage
-  urgent: Bool
-  summary: String
-end
-
-prompt triage(subject: String, body: String, documents: Array(Attachment)) -> ~Triage using :fast
-  user subject, body
-  documents.each { |d| user d }  # attachments go to the model
-end
-
-on_email Credentials.fetch(:support, :imap_url), every: 1.minute, move_to: "Done" do |email|
-  documents = email.attachments.select { |a| a.kind != "file" }  # PDFs, images, audio
-  t = triage(email.subject, email.text, documents).check { |t| t.summary.size < 300 }?
-  enqueue(:follow_up, t.summary) if t.urgent
-end
-```
-
-The URL is `imaps://user%40acme.io:APP-PASSWORD@imap.gmail.com/INBOX` (folder in the path), a `Credentials` secret; `token: :fn` names a function returning an OAuth access token instead (Microsoft 365 requires one). `email` is an `IncomingEmail`: `from`, `from_name`, `to`, `cc` (`Array(String)`), `reply_to`, `subject`, `date` (`Float?`), `message_id`, `text`, `html`, `attachments` (`Array(Attachment)`: `kind` `document`/`image`/`audio`/`file`, `media_type`, `name`) — every field untrusted, the sender's address included. Reading the mailbox needs `net` (`net("imap.gmail.com")` for a literal URL). `every:` is positive, `move_to:` names an existing folder (a refused move flags the message), and `token:` a function of no argument giving a `String` or a `Secret`. A message nesting over 100 messages, holding over 1000 parts, or forwarding an encoded message is flagged unparsed.
-
-Files in: `grenat serve` watches a folder (inotify on Linux, FSEvents on macOS, and a scan every `every:`) and hands each file matching the pattern to its handler once it has stopped changing for `settle:`, once per content (SHA-256; kept in the `database` across restarts).
-
-```ruby
-struct Invoice
-  number: String
-  total: Float
-end
-
-prompt extract(pdf: Attachment) -> ~Invoice using :fast
-  user "Extract this invoice.", pdf
-end
-
-on_file "inbox/**/*.{pdf,PDF}", settle: 5.s do |path|
-  invoice = extract(Pdf.read(path)).check { |i| i.total > 0 }?    # reading `path` needs no check
-  File.write("filed/#{invoice.number}.json", Json.dump(invoice))  # but `path` itself would need one
-end
-```
-
-`path` is a `String` as the pattern writes it (`inbox/2026/a.pdf`), untrusted: the dropper chose the name, so check it before a command, a request or a written path. Patterns: `*`, `?`, `[a-z]`, `{a,b}`, `**`; hidden names (`.x`) are left out. Options: `settle:` (2 s), `every:` (10 s), `existing: false` (skip the files there at start). Needs `fs.read` on the folder (`fs.read("inbox")`). A link leading out of the folder is refused, checked on the file opened: `File.read`/`File.lines`/`Pdf.read`/`Image.read`/`Audio.read` of a path under a watched folder raise `IoError` if it was swapped for a link leading out; a raising handler is retried three times, then given up until the file changes.
-
-Slack and Teams: `approvals_in_slack` posts every question `approve!` asks in a job to a channel, with Approve and Deny buttons that decide it in one click; `on_webhook` checks Slack's and Teams' signatures.
-
-```ruby
-approvals_in_slack(
-  channel: "#approvals",
-  token: Credentials.fetch(:slack, :bot_token),
-  signing_secret: Credentials.fetch(:slack, :signing_secret),
-  allowed: ["U024BE7LH"],
-)
-
-workflow refund(order: Int) uses human, net("slack.com")
-  step(:ask) { approve! "Refund order #{order}?" }  # posted to #approvals with buttons
-  step(:tell) { Slack.post("#support", "Order #{order} refunded") }
-end
-
-on_webhook "/slack/events", signature: :slack, secret: Credentials.fetch(:slack, :signing_secret) do |req|
-  event = req.json.check { |e| e["type"] == "event_callback" }?
-  enqueue(:refund, 42) if event["event"]["type"] == "app_mention"
-  nil
-end
-
-test "approved in Slack" do
-  mock_http "POST https://slack.com/api/*", json: {ok: true, ts: "1700000000.000100"}
-  enqueue(:refund, 42)
-  Jobs.perform
-  r = deliver_slack_click(Approvals.pending.first["id"], action: :approve, user: "U024BE7LH")
-  assert_equal "approved", r["outcome"]
-end
-```
-
-`approvals_in_slack` is declared once: `channel:`, `token:` (the bot token), `signing_secret:`, optional `allowed:` (Slack user IDs who may decide) and `path:` (the Interactivity Request URL, `/slack/interactivity` by default; no webhook or route may claim it); it needs `net("slack.com")`. A click is decided as `Approvals.approve`/`deny` (recorded as decided by `slack:U…`) and the message updated; a click on a decided approval changes nothing. `Slack.post(channel, text)` posts (`token:` or the credential `slack.bot_token`), needs `net("slack.com")`, returns the message's `ts` (untrusted) and refuses untrusted text (check it first). `signature: :slack` checks `X-Slack-Signature` (five minutes, replays refused) and answers `url_verification` itself; `signature: :teams` takes the outgoing webhook's base64 security token.
-
-OpenTelemetry: nothing to write in the program. With `OTEL_EXPORTER_OTLP_ENDPOINT` (and `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME`) set, `grenat run` and `grenat serve` export spans over OTLP/HTTP: requests, triggers, jobs, workflows and steps, `ask`s, model calls (tokens, `grenat.usage.cost_usd`), tool calls, `Http` (sends `traceparent`) and SSH calls. Prompts, answers and secrets are never exported unless `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` (prompts and answers; secrets still never). A caller's `traceparent` with flags `00` (not sampled) is followed: its spans are not exported. `429`/`502`/`503`/`504` and an unreachable collector are retried (Retry-After, backoff, 4 sends); redirects are never followed. Tests export nothing.
-
-Rate limits: `limit net("api.hubspot.com"), 10.per_second` (also `per_minute`, `per_hour`, `per_day`, `100.per(15.minutes)`, and/or `concurrent: 4`), once per host, as a statement at the top level of the program or of a `test` block (never in a function, block or loop: E0500). Every call to the host from any task or job waits its turn (never fails): `Http`, `Slack.post`, sending mail, and model calls by their provider's host (`limit net("api.anthropic.com"), 50.per_minute`).
+A handler's value is the response: a string, a hash/record (JSON), `json(v)`, `html(page)` (escape untrusted with `Html.escape`), `status(201, v)`, `redirect(url)`, an integer status, `nil` (204).
 
 ## Tests
 
-Tests run offline; every external call must be mocked. Put them in `tests/*_test.grn` (or `x_test.grn` with `require "./x"`).
+Offline, every external call mocked, in `tests/*_test.grn` (or `x_test.grn` with `require "./x"`).
 
 ```ruby
 test "the agent answers from the docs" do
   mock :smart, replies: [
-    call(:read_doc, path: "refunds.md"),                         # the model calls a tool…
-    {body: "Refunds take 30 days.", sources: ["refunds.md"]},    # …then answers
+    call(:read_doc, path: "refunds.md"),  # the model calls a tool…
+    {body: "Refunds take 30 days.", sources: ["refunds.md"]},  # …then answers
   ]
   File.write("./docs/refunds.md", "Refunds: 30 days.")
   assert_equal "Refunds take 30 days.", answer("How long for a refund?")
 end
-
-test "a summary" do
-  mock :fast, replies: [{title: "Rust 2.0", bullets: ["a", "b", "c"], sentiment: "Positive"}]
-  assert_equal "Rust 2.0", summarize("…").trust!.title
-end
 ```
 
-Doubles: `mock :model, replies: [...]` (a reply is a value of the return type as a hash, a string, or `call(:tool, args…)`), `mock_http "GET https://api.x.com/*", json: {…}` (or `status:`, `body:`), `mock_shell "git status*", stdout: "…"`, `mock_mcp :linear, tools: {"create_issue" => "L-1"}`, `mock_embed :docs`, `mock_credentials({"github" => {"token" => "t"}})`, `mock_env({"SMTP_URL" => "smtp://smtp.test"})` (what `Env` reads in this test), `mock_mail(raise: "SMTP down")` (sends raise `MailError`; `raise: nil` restores), `with_human(approve_all) do … end` (or `deny_all`), `freeze_time("2026-09-28T08:00:00Z") do … end` (`Time.now`/`Time.today` answer that instant inside; only in a `test` block), `request :get, "/tickets/1"`, `deliver_webhook "/github", json: {…}`, `deliver_email(from: "ada@example.com", subject: "Refund", text: "…", attachments: [Pdf.read("invoice.pdf")])` (runs the `on_email` handler; returns `{"status" => "seen"}`, `"moved"` with `"folder"`, or `"failed"` with `"error"`), `deliver_file("inbox/a.pdf")` (runs every `on_file` handler matching the path; returns `{"status" => "handled"}` or `"failed"` with `"error"`), `deliver_slack_click(id, action: :approve, user: "U024BE7LH")` (clicks approval `id`'s button in Slack; returns `{"status" => 200, "outcome" => "approved"}`, or `denied`, `already_decided`, `not_allowed`, `unknown`), `Jobs.perform`, `Mail.deliveries`, `Http.requests`. `freeze_time`, `mock_env`, `mock_mail`, `deliver_email`, `deliver_file`, `deliver_slack_click` and `Http.requests` work only inside a `test` block. Assertions: `assert x`, `assert_equal expected, actual`, `assert_raises TaintError { … }`.
+Doubles: `mock :model, replies: [...]` (each the return type as a hash, enums by name, `{title: "x", sentiment: "Positive"}`; a string; or `call(:tool, args…)`), `mock_http "GET https://api.x.com/*", json: {…}`, `mock_shell "git status*", stdout: "…"`, `mock_env({"SMTP_URL" => "smtp://smtp.test"})` (all `Env` sees), `mock_mail(raise: "SMTP down")` (sending raises `MailError`; `raise: nil` undoes), `with_human(approve_all) do … end` (or `deny_all`), `freeze_time("2026-09-28T08:00:00Z") do … end`, `request :get, "/tickets/1"` (→ `"status"`, `"body"`, `"headers"`), `deliver_webhook "/github", json: {…}`, `Jobs.perform`, `Mail.deliveries`, `Http.requests`; `freeze_time`, `mock_env`, `mock_mail`, `Http.requests`, `deliver_*` only in a `test`. `assert x`, `assert_equal expected, actual`, `assert_raises TaintError { … }`.
 
-- `mock :model, replies: [...]` fails the test ("mock has no reply left") when the model is called more often than replies were given: that is how a test proves a workflow did not call the model again.
-- `mock_http` options: `json:`, `body:`, `status:`, `headers:` (the response's), `times:` (a positive `Int`: answers the next n requests only); an unstubbed request raises `HttpError`. `Http.requests` lists what the test sent (stubbed or not), in order, as hashes: `req = Http.requests.last; assert_equal "POST", req["method"]; assert_equal({"title" => "x"}, req["json"]); assert_equal "Bearer t", req["headers"]["Authorization"]` (also `"url"`, `"body"`; `"json"` is nil when the body is not JSON; a secret stays a `Secret`, equal to its text).
-- `Mail.deliveries` is an array of hashes with string keys: `m["from"]`, `m["to"]` (an array), `m["subject"]`, `m["body"]`.
-- To simulate a crash between two workflow steps, make the later step fail (`mock_mail(raise: "SMTP down")` before a sending step), assert the error, undo it (`mock_mail(raise: nil)`), then run the workflow again with the same arguments: finished steps replay from the journal.
-- Error classes: `TaintError`, `CapabilityError`, `SecretError`, `CheckError`, `ApprovalDenied`, `BudgetExceeded`, `MaxTurnsExceeded`, `TimeoutError`, `HttpError`, `MailError`, `KeyError`, `ArgumentError`, `TypeError`, `LlmError`, `RuntimeError` (a bare `raise "msg"`). `rescue` names the class.
-- The stand-in secret `"test-a-b"` is not a URL: a test that sends mail or connects to a database gives a real-looking one, `mock_credentials({"smtp" => {"url" => "smtp://u:p@smtp.acme.io:587"}, "github" => {"token" => "t"}})` (it replaces all the stand-ins).
-- Mocked models cost nothing, so a dollar budget cannot be exceeded in a test; test `max_turns` instead (give more tool-call replies than turns).
+- A `mock` with no reply left fails the test ("mock has no reply left"): that proves a workflow did not call the model again.
+- `mock_http` takes `json:`, `body:`, `status:`, `headers:`, `times:`; an unstubbed request raises `HttpError`. `Http.requests` lists what was sent, in order: `Http.requests.last["method"]`, also `"url"`, `"body"`, `"json"` (nil if not JSON), `"headers"` (a secret stays a `Secret`, equal to its text).
+- `Mail.deliveries`: hashes, `m["from"]`, `m["to"]` (an array), `m["subject"]`, `m["body"]`.
+- To simulate a crash between steps, make the later step fail (`mock_mail(raise: "SMTP down")`), assert the error, undo it (`mock_mail(raise: nil)`), run the workflow again with the same arguments: finished steps replay.
+- Errors: `TaintError`, `CapabilityError`, `SecretError`, `CheckError`, `ApprovalDenied`, `BudgetExceeded`, `MaxTurnsExceeded`, `TimeoutError`, `HttpError`, `MailError`, `KeyError`, `ArgumentError`, `TypeError`, `LlmError`, `RuntimeError` (a bare `raise`).
+- In tests `Credentials.fetch(:a, :b)` is the stand-in `"test-a-b"`, not a URL: to send mail or open a database, `mock_credentials({"smtp" => {"url" => "smtp://u:p@smtp.acme.io:587"}, "github" => {"token" => "t"}})` (replacing all stand-ins).
+- Mocked models cost nothing: test `max_turns` (more tool-call replies than turns), not a dollar budget.
 - `GRENAT_LOG=1 grenat test …` prints each model, tool and HTTP call.
 
-## Checklist before answering
+## Checklist
 
-1. Every function doing I/O has `uses …`, and `main` covers everything.
-2. Every value from a model, HTTP, a webhook or a tool's output is `check`ed (or `approve`d) before reaching a sink.
-3. Secrets come from `Credentials.fetch` and never go into a prompt.
+1. Every function doing I/O has `uses …`; `main` covers everything.
+2. Every value from a model, HTTP, a webhook or a tool is `check`ed (or `approve`d) before a sink.
+3. Secrets come from `Credentials.fetch`, never into a prompt.
 4. Prompts and handlers return typed structs with `##` field docs.
 5. `grenat check` passes, then `grenat test`.
+
+## Topics: read `docs/llms/<topic>.md` when the task needs it
+
+- `email-in`: a mailbox read by `on_email`.
+- `files-in`: a folder watched by `on_file`.
+- `slack-teams`: approvals in Slack, `Slack.post`, Slack/Teams webhooks.
+- `rate-limits`: `limit`, `429`, `mock_http times:`.
+- `telemetry`: OpenTelemetry (`OTEL_*`).
+- `records-and-search`: `database`, records, migrations, `embed`, `nearest`.
+- `documents-and-audio`: PDFs, images, audio, `transcribe`, `batch_map`.
+- `streaming-and-chat`: `stream` (Server-Sent Events), `Conversation`.
+- `agents-advanced`: `tell`, pools, `race`, budgets, `tool_timeout`.
+- `mcp-and-expose`: MCP servers, `expose`.
+- `ssh`: `Ssh.connect`, SFTP.
+- `time`: dates, durations.
+- `collections-and-strings`: all string, array, hash methods, formats.

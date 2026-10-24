@@ -23,7 +23,7 @@ end
 ```
 
 - Specification: [`SPEC.md`](SPEC.md)
-- A compact reference for LLMs writing Grenat: [`llms.txt`](llms.txt)
+- A compact reference for LLMs writing Grenat: [`llms.txt`](llms.txt) (the core), with topic files in [`docs/llms/`](docs/llms)
 - Examples: [`basics.grn`](examples/basics.grn), [`reviews.grn`](examples/reviews.grn) (native statistics + validated LLM analysis), [`explorer.grn`](examples/explorer.grn) (a real agent), [`support_desk.grn`](examples/support_desk.grn) (multi-agent, human approval), [`triage.grn`](examples/triage.grn) (tests with mocks, evals with an LLM judge), [`macros.grn`](examples/macros.grn) (compile-time code generation), [`usecases/`](examples/usecases) (twelve agent use cases: support, code review, research, data, documents, a weekly digest, operations, a chat with memory, a team of agents, MCP tools, a knowledge base searched by meaning, meeting minutes from a recording)
 
 ## A tour in code
@@ -370,15 +370,26 @@ setter publish                         tag this facet's version for the indexes
 
 ## Writing Grenat with an LLM
 
-[`llms.txt`](llms.txt) is a reference of about 4,000 tokens written for models: the syntax, the
-effects, taint, agents, workflows, the standard library, the test doubles and the mistakes to
-avoid. Every code block in it passes `grenat check` and `grenat test`.
+[`llms.txt`](llms.txt) is the core reference written for models, about 3,500 tokens: the
+toolchain and error codes, the differences from Ruby and the mistakes to avoid, effects, models
+and prompts, taint, tools and agents, workflows and approvals, the most used standard library,
+routes, webhooks and schedules, the test doubles and a checklist. It ends with an index of topic
+files in [`docs/llms/`](docs/llms), one per specialised feature, each self-contained with its own
+examples: `email-in`, `files-in`, `slack-teams`, `rate-limits`, `telemetry`,
+`records-and-search`, `documents-and-audio`, `streaming-and-chat`, `agents-advanced`,
+`mcp-and-expose`, `ssh`, `time` and `collections-and-strings`.
 
-It was measured: agents were given two real tasks — a support agent (tools, a ticket opened after
-human approval, a structured answer) and a weekly release digest (GitHub, a validated summary,
-email, resumption after a crash without calling the model again) — once in Python with the
-official Anthropic SDK, once in Grenat with `llms.txt` as its only documentation, twice each.
-Every program passes its tests.
+Give a model `llms.txt` always, and a topic file only when the task needs it (an agent reading
+a mailbox gets `docs/llms/email-in.md` too; one reading the files itself can follow the index):
+every task pays for what it reads, and the core alone covers most programs. Every ruby block of
+the core and of the topic files passes `grenat check`, and every test among them passes
+`grenat test` (`crates/grenat_cli/tests/llms_reference.rs`).
+
+It was measured (with the 15.8 KB `llms.txt` of phase 14, before the split): agents were given two
+real tasks — a support agent (tools, a ticket opened after human approval, a structured answer) and
+a weekly release digest (GitHub, a validated summary, email, resumption after a crash without
+calling the model again) — once in Python with the official Anthropic SDK, once in Grenat with
+`llms.txt` as its only documentation, twice each. Every program passes its tests.
 
 | Average of 2 runs | Python | Grenat |
 |---|---|---|
