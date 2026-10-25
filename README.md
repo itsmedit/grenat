@@ -703,7 +703,19 @@ what Grenat fetched with the token, not the token.
 ## Editors
 
 `grenat lsp` is a language server (diagnostics as you type, formatting, hover, go to
-definition, symbols). In Neovim:
+definition, symbols).
+
+VS Code: the extension in [`editors/vscode`](editors/vscode) (highlighting, snippets, the language
+server, format on save, Run/Test File commands). Install the `.vsix` attached to a release, or
+build it:
+
+```sh
+code --install-extension grenat-0.1.5.vsix
+# or, from the repository
+cd editors/vscode && npm ci && npx @vscode/vsce package && code --install-extension grenat-*.vsix
+```
+
+In Neovim:
 
 ```lua
 vim.filetype.add({ extension = { grn = "grenat" } })

@@ -25,3 +25,17 @@ jobs:
       - run: cargo test
       - run: cargo run -q -p grenat_cli -- check examples/*.grn
       - run: cargo run -q -p grenat_cli -- run examples/basics.grn
+
+  vscode:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - run: npm ci && npm test
