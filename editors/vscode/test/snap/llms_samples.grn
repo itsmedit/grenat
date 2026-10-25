@@ -1,0 +1,103 @@
+# The code samples of llms.txt, one after the other.
+
+class Counter  # a reference: @ivars need a type or a default
+  @count: Int = 0
+end
+
+enum Shape
+  Circle(radius: Float)
+  Rect(w: Float, h: Float)
+end
+
+def area(s: Shape) -> Float
+  case s
+  in Circle(r) then 3.14159 * r * r
+  in Rect(w, h) then w * h
+  end
+end
+
+enum Sentiment
+  Positive
+  Neutral
+  Negative
+end
+
+struct Summary
+  title: String  ## 8 words at most
+  bullets: Array(String)  ## 3 to 5 key points
+  sentiment: Sentiment
+end
+
+## Summarizes an article.
+prompt summarize(article: String) -> ~Summary using :fast
+  system "You are a concise analyst."
+  user "Summarize:\n#{article}"
+end
+
+def digest(text: String) -> Summary uses llm, human
+  s = summarize(text)  # ~Summary
+  s.check { |x| x.bullets.size.between?(3, 5) }?  # Summary, or the CheckError propagates
+  s.check { |x| x.title.size > 0 }.or_else { s.approve(by: :human) }  # a Result, with a fallback
+end
+
+## Reads a documentation page.
+tool read_doc(path: String) -> String uses fs.read("./docs")
+  File.read("./docs/#{path}")
+end
+
+## Opens a ticket in the tracker. Requires human approval.
+tool open_ticket(title: String) -> Int uses net("tracker.acme.io"), human
+  approve! "Open ticket “#{title}”?"
+  Http.post("https://tracker.acme.io/tickets", json: {title:}).status
+end
+
+struct Answer
+  body: String  ## the reply, in the customer's language
+  sources: Array(String)  ## pages used
+end
+
+agent Support
+  model :smart
+  tools read_doc, open_ticket
+  budget usd: 0.50, time: 2.min
+  max_turns 12
+  instructions "Answer from the documentation only. Open a ticket for bugs."
+
+  on Ask(question: String) -> ~Answer
+    run "Customer question: #{question}"
+  end
+end
+
+def answer(question: String) -> String uses llm, fs.read("./docs"), net("tracker.acme.io"), human
+  spawn(Support).ask(Ask(question:)).check { |a| a.sources.any? }?.body
+end
+
+workflow publish(topic: String) uses llm, net("blog.acme.io"), human
+  post = step(:draft) { summarize(topic).trust! }
+  step(:review) { approve! "Publish “#{post.title}”?" }
+  step(:publish) { Http.post("https://blog.acme.io/posts", json: {title: post.title}) }
+end
+
+get "/tickets/:id" do |req|
+  id = req.params["id"].check { |i| i.to_i > 0 }?.to_i
+  json({id:})
+end
+
+on_webhook "/github", secret: Credentials.fetch(:github, :webhook_secret), signature: :github do |req|
+  event = req.json.check { |e| e["action"] == "opened" }?
+  enqueue(:publish, "pull request")
+  "ok"
+end
+
+every cron: "0 8 * * MON" do  # UTC
+  enqueue(:publish, "weekly digest")
+end
+
+test "the agent answers from the docs" do
+  mock :smart, replies: [
+    call(:read_doc, path: "refunds.md"),  # the model calls a tool…
+    {body: "Refunds take 30 days.", sources: ["refunds.md"]},  # …then answers
+  ]
+  File.write("./docs/refunds.md", "Refunds: 30 days.")
+  assert_equal "Refunds take 30 days.", answer("How long for a refund?")
+end

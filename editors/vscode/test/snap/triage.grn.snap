@@ -1,0 +1,528 @@
+># triage.grn — testing and measuring model-driven code.
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.number-sign.grenat
+>#
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+>#   grenat test examples/triage.grn   deterministic: mocks, never a real model
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.number-sign.grenat
+>#   grenat eval examples/triage.grn   quality: the real model, on a dataset
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.number-sign.grenat
+>#
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+># Tests say what the model answers (`mock`); evals measure how well it
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.number-sign.grenat
+># actually does, row by row, and fail under a threshold.
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.number-sign.grenat
+>
+>model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+#^^^^^ source.grenat keyword.other.declaration.grenat
+#     ^ source.grenat
+#      ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#       ^^^^ source.grenat constant.other.symbol.grenat
+#           ^ source.grenat punctuation.separator.delimiter.grenat
+#            ^ source.grenat
+#             ^^^^^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                     ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                      ^ source.grenat
+#                       ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#                        ^^^^^^^^^ source.grenat constant.other.symbol.grenat
+#                                 ^ source.grenat punctuation.separator.delimiter.grenat
+#                                  ^ source.grenat
+#                                   ^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                                       ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                                        ^ source.grenat
+#                                         ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                                          ^^^^^^^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                                                          ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+>
+>enum Team
+#^^^^ source.grenat storage.type.enum.grenat
+#    ^ source.grenat
+#     ^^^^ source.grenat entity.name.type.grenat
+>  Billing    ## payments, invoices, refunds
+#^^ source.grenat
+#  ^^^^^^^ source.grenat entity.name.type.grenat
+#         ^^^^ source.grenat
+#             ^^ source.grenat comment.line.documentation.grenat punctuation.definition.comment.grenat
+#               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.documentation.grenat
+>  Technical  ## bugs, errors, outages
+#^^ source.grenat
+#  ^^^^^^^^^ source.grenat entity.name.type.grenat
+#           ^^ source.grenat
+#             ^^ source.grenat comment.line.documentation.grenat punctuation.definition.comment.grenat
+#               ^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.documentation.grenat
+>  Account    ## login, profile, settings
+#^^ source.grenat
+#  ^^^^^^^ source.grenat entity.name.type.grenat
+#         ^^^^ source.grenat
+#             ^^ source.grenat comment.line.documentation.grenat punctuation.definition.comment.grenat
+#               ^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.documentation.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+>## Routing of a support ticket.
+#^^ source.grenat comment.line.documentation.grenat punctuation.definition.comment.grenat
+#  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.documentation.grenat
+>struct Route
+#^^^^^^ source.grenat storage.type.struct.grenat
+#      ^ source.grenat
+#       ^^^^^ source.grenat entity.name.type.grenat
+>  team: Team
+#^^ source.grenat
+#  ^^^^ source.grenat variable.parameter.grenat
+#      ^ source.grenat punctuation.separator.type.grenat
+#       ^ source.grenat
+#        ^^^^ source.grenat entity.name.type.grenat
+>  urgent: Bool  ## the customer is blocked or losing money
+#^^ source.grenat
+#  ^^^^^^ source.grenat variable.parameter.grenat
+#        ^ source.grenat punctuation.separator.type.grenat
+#         ^ source.grenat
+#          ^^^^ source.grenat support.type.builtin.grenat
+#              ^^ source.grenat
+#                ^^ source.grenat comment.line.documentation.grenat punctuation.definition.comment.grenat
+#                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.documentation.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+>## Routes a support ticket to the right team.
+#^^ source.grenat comment.line.documentation.grenat punctuation.definition.comment.grenat
+#  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.documentation.grenat
+>prompt route(ticket: String) -> ~Route using :fast
+#^^^^^^ source.grenat storage.type.function.prompt.grenat
+#      ^ source.grenat
+#       ^^^^^ source.grenat entity.name.function.grenat
+#            ^ source.grenat punctuation.section.parens.grenat
+#             ^^^^^^ source.grenat variable.parameter.grenat
+#                   ^ source.grenat punctuation.separator.type.grenat
+#                    ^ source.grenat
+#                     ^^^^^^ source.grenat support.type.builtin.grenat
+#                           ^ source.grenat punctuation.section.parens.grenat
+#                            ^ source.grenat
+#                             ^^ source.grenat keyword.operator.arrow.grenat
+#                               ^ source.grenat
+#                                ^ source.grenat storage.modifier.untrusted.grenat
+#                                 ^^^^^ source.grenat entity.name.type.grenat
+#                                      ^ source.grenat
+#                                       ^^^^^ source.grenat storage.modifier.using.grenat
+#                                            ^ source.grenat
+#                                             ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#                                              ^^^^ source.grenat constant.other.symbol.grenat
+>  system "You route the support tickets of a SaaS product."
+#^^ source.grenat
+#  ^^^^^^ source.grenat keyword.other.directive.grenat
+#        ^ source.grenat
+#         ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                                                          ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+>  user ticket
+#^^ source.grenat
+#  ^^^^ source.grenat keyword.other.directive.grenat
+#      ^^^^^^^^ source.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+>## Replies to the customer, in one short paragraph.
+#^^ source.grenat comment.line.documentation.grenat punctuation.definition.comment.grenat
+#  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.documentation.grenat
+>prompt reply(ticket: String, team: Team) -> ~String using :fast
+#^^^^^^ source.grenat storage.type.function.prompt.grenat
+#      ^ source.grenat
+#       ^^^^^ source.grenat entity.name.function.grenat
+#            ^ source.grenat punctuation.section.parens.grenat
+#             ^^^^^^ source.grenat variable.parameter.grenat
+#                   ^ source.grenat punctuation.separator.type.grenat
+#                    ^ source.grenat
+#                     ^^^^^^ source.grenat support.type.builtin.grenat
+#                           ^ source.grenat punctuation.separator.delimiter.grenat
+#                            ^ source.grenat
+#                             ^^^^ source.grenat variable.parameter.grenat
+#                                 ^ source.grenat punctuation.separator.type.grenat
+#                                  ^ source.grenat
+#                                   ^^^^ source.grenat entity.name.type.grenat
+#                                       ^ source.grenat punctuation.section.parens.grenat
+#                                        ^ source.grenat
+#                                         ^^ source.grenat keyword.operator.arrow.grenat
+#                                           ^ source.grenat
+#                                            ^ source.grenat storage.modifier.untrusted.grenat
+#                                             ^^^^^^ source.grenat support.type.builtin.grenat
+#                                                   ^ source.grenat
+#                                                    ^^^^^ source.grenat storage.modifier.using.grenat
+#                                                         ^ source.grenat
+#                                                          ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#                                                           ^^^^ source.grenat constant.other.symbol.grenat
+>  user "Ticket: #{ticket}\nOur #{team} team is on it. Write a short, kind reply."
+#^^ source.grenat
+#  ^^^^ source.grenat keyword.other.directive.grenat
+#      ^ source.grenat
+#       ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#        ^^^^^^^^ source.grenat string.quoted.double.grenat
+#                ^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat punctuation.section.embedded.begin.grenat
+#                  ^^^^^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat source.grenat
+#                        ^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat punctuation.section.embedded.end.grenat
+#                         ^^ source.grenat string.quoted.double.grenat constant.character.escape.grenat
+#                           ^^^^ source.grenat string.quoted.double.grenat
+#                               ^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat punctuation.section.embedded.begin.grenat
+#                                 ^^^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat source.grenat
+#                                     ^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat punctuation.section.embedded.end.grenat
+#                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                                                                                ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+>## The label of a routed ticket, e.g. `billing!` when urgent.
+#^^ source.grenat comment.line.documentation.grenat punctuation.definition.comment.grenat
+#  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.documentation.grenat
+>def label(route: Route) -> String
+#^^^ source.grenat storage.type.function.def.grenat
+#   ^ source.grenat
+#    ^^^^^ source.grenat entity.name.function.grenat
+#         ^ source.grenat punctuation.section.parens.grenat
+#          ^^^^^ source.grenat variable.parameter.grenat
+#               ^ source.grenat punctuation.separator.type.grenat
+#                ^ source.grenat
+#                 ^^^^^ source.grenat entity.name.type.grenat
+#                      ^ source.grenat punctuation.section.parens.grenat
+#                       ^ source.grenat
+#                        ^^ source.grenat keyword.operator.arrow.grenat
+#                          ^ source.grenat
+#                           ^^^^^^ source.grenat support.type.builtin.grenat
+>  name = route.team.to_s.downcase
+#^^^^^^^ source.grenat
+#       ^ source.grenat keyword.operator.assignment.grenat
+#        ^^^^^^ source.grenat
+#              ^ source.grenat punctuation.accessor.grenat
+#               ^^^^ source.grenat
+#                   ^ source.grenat punctuation.accessor.grenat
+#                    ^^^^ source.grenat
+#                        ^ source.grenat punctuation.accessor.grenat
+#                         ^^^^^^^^^ source.grenat
+>  if route.urgent
+#^^ source.grenat
+#  ^^ source.grenat keyword.control.grenat
+#    ^^^^^^ source.grenat
+#          ^ source.grenat punctuation.accessor.grenat
+#           ^^^^^^^ source.grenat
+>    "#{name}!"
+#^^^^ source.grenat
+#    ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#     ^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat punctuation.section.embedded.begin.grenat
+#       ^^^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat source.grenat
+#           ^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat punctuation.section.embedded.end.grenat
+#            ^ source.grenat string.quoted.double.grenat
+#             ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+>  else
+#^^ source.grenat
+#  ^^^^ source.grenat keyword.control.grenat
+>    name
+#^^^^^^^^^ source.grenat
+>  end
+#^^ source.grenat
+#  ^^^ source.grenat keyword.control.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+># ── Tests: deterministic, offline ────────────────────────────
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.number-sign.grenat
+>
+>test "urgent tickets are marked" do
+#^^^^ source.grenat keyword.other.declaration.test.grenat
+#    ^ source.grenat
+#     ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#      ^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                               ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                ^ source.grenat
+#                                 ^^ source.grenat keyword.control.grenat
+>  mock :fast, replies: [{team: "Billing", urgent: true}]
+#^^ source.grenat
+#  ^^^^ source.grenat support.function.builtin.grenat
+#      ^ source.grenat
+#       ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#        ^^^^ source.grenat constant.other.symbol.grenat
+#            ^ source.grenat punctuation.separator.delimiter.grenat
+#             ^ source.grenat
+#              ^^^^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                     ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                      ^ source.grenat
+#                       ^ source.grenat punctuation.section.brackets.grenat
+#                        ^ source.grenat punctuation.section.scope.grenat
+#                         ^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                             ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                              ^ source.grenat
+#                               ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                                ^^^^^^^ source.grenat string.quoted.double.grenat
+#                                       ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                        ^ source.grenat punctuation.separator.delimiter.grenat
+#                                         ^ source.grenat
+#                                          ^^^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                                                ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                                                 ^ source.grenat
+#                                                  ^^^^ source.grenat constant.language.grenat
+#                                                      ^ source.grenat punctuation.section.scope.grenat
+#                                                       ^ source.grenat punctuation.section.brackets.grenat
+>  route = route(fixture("ticket.txt")).trust!
+#^^^^^^^^ source.grenat
+#        ^ source.grenat keyword.operator.assignment.grenat
+#         ^^^^^^ source.grenat
+#               ^ source.grenat punctuation.section.parens.grenat
+#                ^^^^^^^ source.grenat support.function.builtin.grenat
+#                       ^ source.grenat punctuation.section.parens.grenat
+#                        ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                         ^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                                   ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                    ^ source.grenat punctuation.section.parens.grenat
+#                                     ^ source.grenat punctuation.section.parens.grenat
+#                                      ^ source.grenat punctuation.accessor.grenat
+#                                       ^^^^^ source.grenat
+#                                            ^ source.grenat keyword.operator.logical.grenat
+>  assert_equal "billing!", label(route)
+#^^ source.grenat
+#  ^^^^^^^^^^^^ source.grenat support.function.builtin.grenat
+#              ^ source.grenat
+#               ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                ^^^^^^^^ source.grenat string.quoted.double.grenat
+#                        ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                         ^ source.grenat punctuation.separator.delimiter.grenat
+#                          ^^^^^^ source.grenat
+#                                ^ source.grenat punctuation.section.parens.grenat
+#                                 ^^^^^ source.grenat
+#                                      ^ source.grenat punctuation.section.parens.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+>test "an unknown team is rejected" do
+#^^^^ source.grenat keyword.other.declaration.test.grenat
+#    ^ source.grenat
+#     ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#      ^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                                 ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                  ^ source.grenat
+#                                   ^^ source.grenat keyword.control.grenat
+>  mock :fast, replies: [{team: "Sales", urgent: false}, {team: "Sales", urgent: false}]
+#^^ source.grenat
+#  ^^^^ source.grenat support.function.builtin.grenat
+#      ^ source.grenat
+#       ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#        ^^^^ source.grenat constant.other.symbol.grenat
+#            ^ source.grenat punctuation.separator.delimiter.grenat
+#             ^ source.grenat
+#              ^^^^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                     ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                      ^ source.grenat
+#                       ^ source.grenat punctuation.section.brackets.grenat
+#                        ^ source.grenat punctuation.section.scope.grenat
+#                         ^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                             ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                              ^ source.grenat
+#                               ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                                ^^^^^ source.grenat string.quoted.double.grenat
+#                                     ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                      ^ source.grenat punctuation.separator.delimiter.grenat
+#                                       ^ source.grenat
+#                                        ^^^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                                              ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                                               ^ source.grenat
+#                                                ^^^^^ source.grenat constant.language.grenat
+#                                                     ^ source.grenat punctuation.section.scope.grenat
+#                                                      ^ source.grenat punctuation.separator.delimiter.grenat
+#                                                       ^ source.grenat
+#                                                        ^ source.grenat punctuation.section.scope.grenat
+#                                                         ^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                                                             ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                                                              ^ source.grenat
+#                                                               ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                                                                ^^^^^ source.grenat string.quoted.double.grenat
+#                                                                     ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                                                      ^ source.grenat punctuation.separator.delimiter.grenat
+#                                                                       ^ source.grenat
+#                                                                        ^^^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                                                                              ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                                                                               ^ source.grenat
+#                                                                                ^^^^^ source.grenat constant.language.grenat
+#                                                                                     ^ source.grenat punctuation.section.scope.grenat
+#                                                                                      ^ source.grenat punctuation.section.brackets.grenat
+>  assert_raises(LlmError) { route("Can I get a discount?") }
+#^^ source.grenat
+#  ^^^^^^^^^^^^^ source.grenat support.function.builtin.grenat
+#               ^ source.grenat punctuation.section.parens.grenat
+#                ^^^^^^^^ source.grenat entity.name.type.grenat
+#                        ^ source.grenat punctuation.section.parens.grenat
+#                         ^ source.grenat
+#                          ^ source.grenat punctuation.section.scope.grenat
+#                           ^^^^^^ source.grenat
+#                                 ^ source.grenat punctuation.section.parens.grenat
+#                                  ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                                   ^^^^^^^^^^^^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                                                        ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                                         ^ source.grenat punctuation.section.parens.grenat
+#                                                          ^ source.grenat
+#                                                           ^ source.grenat punctuation.section.scope.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+>test "a failing model is an error" do
+#^^^^ source.grenat keyword.other.declaration.test.grenat
+#    ^ source.grenat
+#     ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#      ^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                                 ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                  ^ source.grenat
+#                                   ^^ source.grenat keyword.control.grenat
+>  mock replies: [LlmError("overloaded")]
+#^^ source.grenat
+#  ^^^^ source.grenat support.function.builtin.grenat
+#      ^ source.grenat
+#       ^^^^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#              ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#               ^ source.grenat
+#                ^ source.grenat punctuation.section.brackets.grenat
+#                 ^^^^^^^^ source.grenat entity.name.type.grenat
+#                         ^ source.grenat punctuation.section.parens.grenat
+#                          ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                           ^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                                     ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                      ^ source.grenat punctuation.section.parens.grenat
+#                                       ^ source.grenat punctuation.section.brackets.grenat
+>  assert_raises(LlmError) { route("?") }
+#^^ source.grenat
+#  ^^^^^^^^^^^^^ source.grenat support.function.builtin.grenat
+#               ^ source.grenat punctuation.section.parens.grenat
+#                ^^^^^^^^ source.grenat entity.name.type.grenat
+#                        ^ source.grenat punctuation.section.parens.grenat
+#                         ^ source.grenat
+#                          ^ source.grenat punctuation.section.scope.grenat
+#                           ^^^^^^ source.grenat
+#                                 ^ source.grenat punctuation.section.parens.grenat
+#                                  ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                                   ^ source.grenat string.quoted.double.grenat
+#                                    ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                     ^ source.grenat punctuation.section.parens.grenat
+#                                      ^ source.grenat
+#                                       ^ source.grenat punctuation.section.scope.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+># ── Evals: the real model, measured ──────────────────────────
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.number-sign.grenat
+>
+>eval "routing", dataset: "triage.jsonl", threshold: 0.8 do |row|
+#^^^^ source.grenat keyword.other.declaration.eval.grenat
+#    ^ source.grenat
+#     ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#      ^^^^^^^ source.grenat string.quoted.double.grenat
+#             ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#              ^ source.grenat punctuation.separator.delimiter.grenat
+#               ^ source.grenat
+#                ^^^^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                       ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                        ^ source.grenat
+#                         ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                          ^^^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                                      ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                       ^ source.grenat punctuation.separator.delimiter.grenat
+#                                        ^ source.grenat
+#                                         ^^^^^^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                                                  ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                                                   ^ source.grenat
+#                                                    ^^^ source.grenat constant.numeric.grenat
+#                                                       ^ source.grenat
+#                                                        ^^ source.grenat keyword.control.grenat
+#                                                          ^ source.grenat meta.block.parameters.grenat
+#                                                           ^ source.grenat meta.block.parameters.grenat punctuation.separator.variable.grenat
+#                                                            ^^^ source.grenat meta.block.parameters.grenat variable.parameter.block.grenat
+#                                                               ^ source.grenat meta.block.parameters.grenat punctuation.separator.variable.grenat
+>  route(row.ticket).trust!.team.to_s == row.team
+#^^^^^^^ source.grenat
+#       ^ source.grenat punctuation.section.parens.grenat
+#        ^^^ source.grenat
+#           ^ source.grenat punctuation.accessor.grenat
+#            ^^^^^^ source.grenat
+#                  ^ source.grenat punctuation.section.parens.grenat
+#                   ^ source.grenat punctuation.accessor.grenat
+#                    ^^^^^ source.grenat
+#                         ^ source.grenat keyword.operator.logical.grenat
+#                          ^ source.grenat punctuation.accessor.grenat
+#                           ^^^^ source.grenat
+#                               ^ source.grenat punctuation.accessor.grenat
+#                                ^^^^^ source.grenat
+#                                     ^^ source.grenat keyword.operator.comparison.grenat
+#                                       ^^^^ source.grenat
+#                                           ^ source.grenat punctuation.accessor.grenat
+#                                            ^^^^^ source.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+>eval "replies are kind", dataset: "triage.jsonl", threshold: 0.7 do |row|
+#^^^^ source.grenat keyword.other.declaration.eval.grenat
+#    ^ source.grenat
+#     ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#      ^^^^^^^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                      ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                       ^ source.grenat punctuation.separator.delimiter.grenat
+#                        ^ source.grenat
+#                         ^^^^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                                ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                                 ^ source.grenat
+#                                  ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                                   ^^^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                                               ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                                ^ source.grenat punctuation.separator.delimiter.grenat
+#                                                 ^ source.grenat
+#                                                  ^^^^^^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                                                           ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                                                            ^ source.grenat
+#                                                             ^^^ source.grenat constant.numeric.grenat
+#                                                                ^ source.grenat
+#                                                                 ^^ source.grenat keyword.control.grenat
+#                                                                   ^ source.grenat meta.block.parameters.grenat
+#                                                                    ^ source.grenat meta.block.parameters.grenat punctuation.separator.variable.grenat
+#                                                                     ^^^ source.grenat meta.block.parameters.grenat variable.parameter.block.grenat
+#                                                                        ^ source.grenat meta.block.parameters.grenat punctuation.separator.variable.grenat
+>  text = reply(row.ticket, route(row.ticket).trust!.team)
+#^^^^^^^ source.grenat
+#       ^ source.grenat keyword.operator.assignment.grenat
+#        ^^^^^^ source.grenat
+#              ^ source.grenat punctuation.section.parens.grenat
+#               ^^^ source.grenat
+#                  ^ source.grenat punctuation.accessor.grenat
+#                   ^^^^^^ source.grenat
+#                         ^ source.grenat punctuation.separator.delimiter.grenat
+#                          ^^^^^^ source.grenat
+#                                ^ source.grenat punctuation.section.parens.grenat
+#                                 ^^^ source.grenat
+#                                    ^ source.grenat punctuation.accessor.grenat
+#                                     ^^^^^^ source.grenat
+#                                           ^ source.grenat punctuation.section.parens.grenat
+#                                            ^ source.grenat punctuation.accessor.grenat
+#                                             ^^^^^ source.grenat
+#                                                  ^ source.grenat keyword.operator.logical.grenat
+#                                                   ^ source.grenat punctuation.accessor.grenat
+#                                                    ^^^^ source.grenat
+#                                                        ^ source.grenat punctuation.section.parens.grenat
+>  judge(:fast, "Is this reply kind, relevant and short?", row.ticket, text)
+#^^ source.grenat
+#  ^^^^^ source.grenat support.function.builtin.grenat
+#       ^ source.grenat punctuation.section.parens.grenat
+#        ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#         ^^^^ source.grenat constant.other.symbol.grenat
+#             ^ source.grenat punctuation.separator.delimiter.grenat
+#              ^ source.grenat
+#               ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat string.quoted.double.grenat
+#                                                       ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                                        ^ source.grenat punctuation.separator.delimiter.grenat
+#                                                         ^^^^ source.grenat
+#                                                             ^ source.grenat punctuation.accessor.grenat
+#                                                              ^^^^^^ source.grenat
+#                                                                    ^ source.grenat punctuation.separator.delimiter.grenat
+#                                                                     ^^^^^ source.grenat
+#                                                                          ^ source.grenat punctuation.section.parens.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>

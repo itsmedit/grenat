@@ -1,0 +1,158 @@
+{
+  "name": "grenat",
+  "displayName": "Grenat",
+  "description": "Grenat language support: syntax highlighting, snippets, and the grenat language server (diagnostics, formatting, hover, go to definition, symbols).",
+  "version": "0.1.5",
+  "publisher": "itsmedit",
+  "license": "(MIT OR Apache-2.0)",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itsmedit/grenat.git",
+    "directory": "editors/vscode"
+  },
+  "homepage": "https://github.com/itsmedit/grenat#readme",
+  "bugs": {
+    "url": "https://github.com/itsmedit/grenat/issues"
+  },
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Formatters",
+    "Linters"
+  ],
+  "keywords": [
+    "grenat",
+    "agents",
+    "llm",
+    "ai"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/*.grn"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "grenat",
+        "aliases": [
+          "Grenat",
+          "grenat"
+        ],
+        "extensions": [
+          ".grn"
+        ],
+        "filenames": [
+          "Facetfile"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/icon.png",
+          "dark": "./images/icon.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "grenat",
+        "scopeName": "source.grenat",
+        "path": "./syntaxes/grenat.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "grenat",
+        "path": "./snippets/grenat.code-snippets"
+      }
+    ],
+    "configuration": {
+      "title": "Grenat",
+      "properties": {
+        "grenat.path": {
+          "type": "string",
+          "default": "grenat",
+          "scope": "machine-overridable",
+          "markdownDescription": "The `grenat` executable: a name looked up on `PATH`, or an absolute path. Used for the language server (`grenat lsp`) and the run, test and check commands."
+        },
+        "grenat.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the Grenat language server."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[grenat]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "itsmedit.grenat"
+      }
+    },
+    "commands": [
+      {
+        "command": "grenat.runFile",
+        "title": "Run File",
+        "category": "Grenat"
+      },
+      {
+        "command": "grenat.testFile",
+        "title": "Test File",
+        "category": "Grenat"
+      },
+      {
+        "command": "grenat.checkWorkspace",
+        "title": "Check Workspace",
+        "category": "Grenat"
+      },
+      {
+        "command": "grenat.restartServer",
+        "title": "Restart Language Server",
+        "category": "Grenat"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "grenat.runFile",
+          "when": "editorLangId == grenat"
+        },
+        {
+          "command": "grenat.testFile",
+          "when": "editorLangId == grenat"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "lint": "eslint src",
+    "test:grammar": "vscode-tmgrammar-test \"test/grammar/**/*.grn\" && vscode-tmgrammar-snap \"test/snap/**/*.grn\"",
+    "test:unit": "node --test \"out/test/**/*.test.js\"",
+    "test": "npm run compile && npm run lint && npm run test:grammar && npm run test:unit",
+    "package": "vsce package",
+    "vscode:prepublish": "npm run compile"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^20.19.43",
+    "@types/vscode": "1.82.0",
+    "@vscode/vsce": "^3.9.2",
+    "eslint": "^9.39.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.0",
+    "vscode-tmgrammar-test": "^0.1.3"
+  }
+}

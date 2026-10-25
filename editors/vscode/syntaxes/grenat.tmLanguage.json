@@ -1,0 +1,372 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Grenat",
+  "scopeName": "source.grenat",
+  "fileTypes": ["grn", "Facetfile"],
+  "patterns": [{ "include": "#code" }],
+  "repository": {
+    "code": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#heredocs" },
+        { "include": "#strings" },
+        { "include": "#macro-expansions" },
+        { "include": "#declarations" },
+        { "include": "#directives" },
+        { "include": "#uses-clause" },
+        { "include": "#keywords" },
+        { "include": "#block-parameters" },
+        { "include": "#typed-names" },
+        { "include": "#symbols" },
+        { "include": "#instance-variables" },
+        { "include": "#numbers" },
+        { "include": "#types" },
+        { "include": "#operators" },
+        { "include": "#punctuation" }
+      ]
+    },
+
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.documentation.grenat",
+          "match": "(##)(?!#).*$",
+          "captures": { "1": { "name": "punctuation.definition.comment.grenat" } }
+        },
+        {
+          "name": "comment.line.number-sign.grenat",
+          "match": "(#)(?!\\{).*$",
+          "captures": { "1": { "name": "punctuation.definition.comment.grenat" } }
+        }
+      ]
+    },
+
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.grenat",
+          "begin": "\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.grenat" } },
+          "end": "\"",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.grenat" } },
+          "patterns": [
+            { "include": "#escapes" },
+            { "include": "#interpolation" },
+            { "include": "#macro-expansions" }
+          ]
+        },
+        {
+          "name": "string.quoted.single.grenat",
+          "begin": "'",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.grenat" } },
+          "end": "'",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.grenat" } },
+          "patterns": [{ "name": "constant.character.escape.grenat", "match": "\\\\[\\\\']" }]
+        }
+      ]
+    },
+
+    "escapes": {
+      "name": "constant.character.escape.grenat",
+      "match": "\\\\(?:u\\{[0-9A-Fa-f]+\\}|u[0-9A-Fa-f]{4}|x[0-9A-Fa-f]{2}|.)"
+    },
+
+    "interpolation": {
+      "name": "meta.embedded.line.grenat",
+      "begin": "#\\{",
+      "beginCaptures": { "0": { "name": "punctuation.section.embedded.begin.grenat" } },
+      "end": "\\}",
+      "endCaptures": { "0": { "name": "punctuation.section.embedded.end.grenat" } },
+      "contentName": "source.grenat",
+      "patterns": [{ "include": "#nested-braces" }, { "include": "#code" }]
+    },
+
+    "nested-braces": {
+      "begin": "\\{",
+      "beginCaptures": { "0": { "name": "punctuation.section.scope.begin.grenat" } },
+      "end": "\\}",
+      "endCaptures": { "0": { "name": "punctuation.section.scope.end.grenat" } },
+      "patterns": [{ "include": "#nested-braces" }, { "include": "#code" }]
+    },
+
+    "heredocs": {
+      "name": "meta.heredoc.grenat",
+      "begin": "(<<[~-])([A-Za-z_]\\w*)\\b(.*)$",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.string.begin.grenat" },
+        "2": { "name": "entity.name.tag.heredoc.grenat" },
+        "3": { "comment": "the rest of the opening line is code", "patterns": [{ "include": "#code" }] }
+      },
+      "end": "^\\s*(\\2)$",
+      "endCaptures": { "1": { "name": "entity.name.tag.heredoc.grenat" } },
+      "contentName": "string.unquoted.heredoc.grenat",
+      "patterns": [
+        { "include": "#escapes" },
+        { "include": "#interpolation" }
+      ]
+    },
+
+    "macro-expansions": {
+      "patterns": [
+        {
+          "name": "meta.embedded.expression.macro.grenat",
+          "begin": "\\{\\{",
+          "beginCaptures": { "0": { "name": "punctuation.section.embedded.begin.macro.grenat" } },
+          "end": "\\}\\}",
+          "endCaptures": { "0": { "name": "punctuation.section.embedded.end.macro.grenat" } },
+          "patterns": [{ "include": "#code" }]
+        },
+        {
+          "name": "meta.embedded.statement.macro.grenat",
+          "begin": "\\{%",
+          "beginCaptures": { "0": { "name": "punctuation.section.embedded.begin.macro.grenat" } },
+          "end": "%\\}",
+          "endCaptures": { "0": { "name": "punctuation.section.embedded.end.macro.grenat" } },
+          "patterns": [
+            { "name": "keyword.control.macro.grenat", "match": "\\b(?:for|in|if|elsif|else|unless|end)\\b" },
+            { "include": "#code" }
+          ]
+        }
+      ]
+    },
+
+    "declarations": {
+      "patterns": [
+        {
+          "comment": "def, native def, def self.name",
+          "match": "(?<![.\\w])(?:(native)\\s+)?(def)\\s+(?:(self)(\\.))?([A-Za-z_]\\w*[?!=]?)?",
+          "captures": {
+            "1": { "name": "storage.modifier.native.grenat" },
+            "2": { "name": "storage.type.function.def.grenat" },
+            "3": { "name": "variable.language.self.grenat" },
+            "4": { "name": "punctuation.separator.method.grenat" },
+            "5": { "name": "entity.name.function.grenat" }
+          }
+        },
+        {
+          "match": "(?<![.\\w])(prompt|tool|workflow)\\s+([a-z_]\\w*[?!]?)",
+          "captures": {
+            "1": { "name": "storage.type.function.$1.grenat" },
+            "2": { "name": "entity.name.function.grenat" }
+          }
+        },
+        {
+          "match": "(?<![.\\w])(macro)\\s+([a-z_]\\w*[?!]?)",
+          "captures": {
+            "1": { "name": "storage.type.macro.grenat" },
+            "2": { "name": "entity.name.function.macro.grenat" }
+          }
+        },
+        {
+          "match": "(?<![.\\w])(class|module)\\s+([A-Z]\\w*(?:::[A-Z]\\w*)*)",
+          "captures": {
+            "1": { "name": "storage.type.$1.grenat" },
+            "2": { "name": "entity.name.type.class.grenat" }
+          }
+        },
+        {
+          "match": "(?<![.\\w])(struct|enum|agent|supervisor)\\s+([A-Z]\\w*)",
+          "captures": {
+            "1": { "name": "storage.type.$1.grenat" },
+            "2": { "name": "entity.name.type.grenat" }
+          }
+        },
+        {
+          "comment": "an agent's message handler: on Ask(question: String)",
+          "match": "^\\s*(on)\\s+([A-Z]\\w*)",
+          "captures": {
+            "1": { "name": "keyword.other.handler.grenat" },
+            "2": { "name": "entity.name.function.handler.grenat" }
+          }
+        },
+        {
+          "match": "(?<![.\\w])(test|eval|migration)(?=\\s+[\"'])",
+          "captures": { "1": { "name": "keyword.other.declaration.$1.grenat" } }
+        },
+        {
+          "match": "(?<![.\\w])(model|mcp|expose|database|limit|on_webhook|on_email|on_file|every|approvals_in_slack|require|child)\\b(?![?!:(]|\\s*=(?![=~>])|\\s*\\.)|(?<![.\\w])(approvals_in_slack|step)(?=\\()",
+          "captures": {
+            "1": { "name": "keyword.other.declaration.grenat" },
+            "2": { "name": "keyword.other.declaration.grenat" }
+          }
+        },
+        {
+          "comment": "routes: get \"/tickets/:id\" do |req|",
+          "match": "^\\s*(get|post|put|patch|delete)(?=\\s+[\"'])",
+          "captures": { "1": { "name": "keyword.other.route.grenat" } }
+        }
+      ]
+    },
+
+    "directives": {
+      "comment": "lines of an agent or a prompt body: model, tools, budget, system, user…",
+      "match": "^\\s*(tools|budget|max_turns|instructions|system|user|tool_timeout|run)(?=\\s+[^\\s=.,)])",
+      "captures": { "1": { "name": "keyword.other.directive.grenat" } }
+    },
+
+    "uses-clause": {
+      "patterns": [
+        {
+          "name": "meta.effects.grenat",
+          "begin": "(?<![.\\w])(uses)\\b",
+          "beginCaptures": { "1": { "name": "storage.modifier.uses.grenat" } },
+          "end": "(?=\\s*(?:$|#|\\bdo\\b|=(?!=)))",
+          "patterns": [
+            {
+              "match": "\\b(llm|net|fs|shell|ssh|db|mcp|env|human|time|random)\\b(?:(\\.)(read|write)\\b)?",
+              "captures": {
+                "1": { "name": "support.constant.effect.grenat" },
+                "2": { "name": "punctuation.accessor.grenat" },
+                "3": { "name": "support.constant.effect.grenat" }
+              }
+            },
+            { "include": "#strings" },
+            { "include": "#punctuation" }
+          ]
+        },
+        {
+          "match": "(?<![.\\w])(using)\\s+((:)[A-Za-z_]\\w*)",
+          "captures": {
+            "1": { "name": "storage.modifier.using.grenat" },
+            "2": { "name": "constant.other.symbol.grenat" },
+            "3": { "name": "punctuation.definition.constant.grenat" }
+          }
+        },
+        {
+          "match": "(?<=[)\\w])\\s+(pure)\\s*$",
+          "captures": { "1": { "name": "storage.modifier.pure.grenat" } }
+        }
+      ]
+    },
+
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.grenat",
+          "match": "(?<![.\\w])(?:if|unless|elsif|else|case|in|when|then|while|until|for|do|end|return|break|next|begin|rescue|ensure|retry|raise|yield|race|within)\\b(?![?!:])|(?<![.\\w])end(?=[?!])"
+        },
+        {
+          "name": "keyword.operator.logical.grenat",
+          "match": "(?<![.\\w])(?:and|or|not)\\b(?![?!:])"
+        },
+        {
+          "name": "constant.language.grenat",
+          "match": "(?<![.\\w])(?:nil|true|false)\\b(?![?!:])"
+        },
+        {
+          "name": "variable.language.self.grenat",
+          "match": "(?<![.\\w])self\\b(?![?!:])"
+        },
+        {
+          "name": "support.function.builtin.grenat",
+          "match": "(?<![.\\w])(?:spawn|enqueue|approve!|puts|print|warn|format|assert|assert_equal|assert_raises|mock|mock_http|mock_shell|mock_env|mock_mail|mock_credentials|with_human|freeze_time|deliver_webhook|request|fixture|judge|call)(?![\\w?!:])"
+        }
+      ]
+    },
+
+    "block-parameters": {
+      "name": "meta.block.parameters.grenat",
+      "begin": "(?<=\\{|\\bdo)\\s*(\\|)",
+      "beginCaptures": { "1": { "name": "punctuation.separator.variable.grenat" } },
+      "end": "\\|",
+      "endCaptures": { "0": { "name": "punctuation.separator.variable.grenat" } },
+      "patterns": [
+        { "name": "variable.parameter.block.grenat", "match": "[a-z_]\\w*" },
+        { "name": "punctuation.separator.delimiter.grenat", "match": "," },
+        { "name": "keyword.operator.splat.grenat", "match": "\\*\\*?|&" }
+      ]
+    },
+
+    "typed-names": {
+      "comment": "a parameter or a field followed by its type: article: String, x: ~Summary",
+      "match": "(?<![.\\w:])([a-z_]\\w*)(:)(?=\\s*~?[A-Z][\\w:]*(?:\\([^)]*\\))?\\??\\s*(?:[,)=]|#|$|->|\\buses\\b))",
+      "captures": {
+        "1": { "name": "variable.parameter.grenat" },
+        "2": { "name": "punctuation.separator.type.grenat" }
+      }
+    },
+
+    "symbols": {
+      "patterns": [
+        {
+          "name": "constant.other.symbol.hashkey.grenat",
+          "match": "(?<![\\w:])[a-z_]\\w*[?!]?(:)(?!:)",
+          "captures": { "1": { "name": "punctuation.definition.constant.hashkey.grenat" } }
+        },
+        {
+          "name": "constant.other.symbol.grenat",
+          "match": "(?<![\\w:])(:)[A-Za-z_]\\w*[?!=]?",
+          "captures": { "1": { "name": "punctuation.definition.constant.grenat" } }
+        }
+      ]
+    },
+
+    "instance-variables": {
+      "name": "variable.other.readwrite.instance.grenat",
+      "match": "(@)[A-Za-z_]\\w*",
+      "captures": { "1": { "name": "punctuation.definition.variable.grenat" } }
+    },
+
+    "numbers": {
+      "patterns": [
+        {
+          "comment": "a number with a unit: 2.min, 7.days, 10.per_second",
+          "match": "(?<![\\w.])(\\d[\\d_]*(?:\\.\\d[\\d_]*)?)(\\.)(ms|s|seconds?|min|minutes?|h|hours?|days?|weeks?|per_second|per_minute|per_hour|per_day|per)\\b",
+          "captures": {
+            "1": { "name": "constant.numeric.grenat" },
+            "2": { "name": "punctuation.accessor.grenat" },
+            "3": { "name": "keyword.other.unit.grenat" }
+          }
+        },
+        { "name": "constant.numeric.hex.grenat", "match": "(?<![\\w.])0x[0-9A-Fa-f_]+\\b" },
+        {
+          "name": "constant.numeric.grenat",
+          "match": "(?<![\\w.])\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][+-]?\\d+)?\\b"
+        }
+      ]
+    },
+
+    "types": {
+      "patterns": [
+        {
+          "comment": "~T: an untrusted value",
+          "match": "(~)(?=[A-Z])",
+          "captures": { "1": { "name": "storage.modifier.untrusted.grenat" } }
+        },
+        {
+          "name": "support.type.builtin.grenat",
+          "match": "\\b(?:Int|Float|Bool|String|Money|Path|Email|Array|Hash|Result|Secret|Attachment|Unit|Rate)\\b(?!::)"
+        },
+        { "name": "variable.other.constant.grenat", "match": "\\b[A-Z][A-Z0-9_]+\\b" },
+        { "name": "entity.name.type.grenat", "match": "\\b[A-Z]\\w*\\b" }
+      ]
+    },
+
+    "operators": {
+      "patterns": [
+        { "name": "keyword.operator.arrow.grenat", "match": "->|=>" },
+        { "name": "keyword.operator.safe-navigation.grenat", "match": "&\\." },
+        { "name": "punctuation.separator.namespace.grenat", "match": "::" },
+        { "name": "keyword.operator.assignment.compound.grenat", "match": "(?:\\|\\||&&|\\*\\*|[+\\-*/%|&^]|<<|>>)=" },
+        { "name": "keyword.operator.comparison.grenat", "match": "<=>|==|!=|<=|>=|<|>" },
+        { "name": "keyword.operator.logical.grenat", "match": "&&|\\|\\||!" },
+        { "name": "keyword.operator.range.grenat", "match": "\\.\\.\\.?" },
+        { "name": "keyword.operator.arithmetic.grenat", "match": "\\*\\*|[+\\-*/%]" },
+        { "name": "keyword.operator.bitwise.grenat", "match": "<<|>>|[&|^]" },
+        { "name": "keyword.operator.assignment.grenat", "match": "=" },
+        { "name": "keyword.operator.question.grenat", "match": "\\?" },
+        { "name": "keyword.operator.untrusted.grenat", "match": "~" }
+      ]
+    },
+
+    "punctuation": {
+      "patterns": [
+        { "name": "punctuation.separator.delimiter.grenat", "match": "," },
+        { "name": "punctuation.accessor.grenat", "match": "\\." },
+        { "name": "punctuation.section.parens.grenat", "match": "[()]" },
+        { "name": "punctuation.section.brackets.grenat", "match": "[\\[\\]]" },
+        { "name": "punctuation.section.scope.grenat", "match": "[{}]" }
+      ]
+    }
+  }
+}

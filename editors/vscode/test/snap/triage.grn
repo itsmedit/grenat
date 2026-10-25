@@ -1,0 +1,71 @@
+# triage.grn — testing and measuring model-driven code.
+#
+#   grenat test examples/triage.grn   deterministic: mocks, never a real model
+#   grenat eval examples/triage.grn   quality: the real model, on a dataset
+#
+# Tests say what the model answers (`mock`); evals measure how well it
+# actually does, row by row, and fail under a threshold.
+
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+
+enum Team
+  Billing    ## payments, invoices, refunds
+  Technical  ## bugs, errors, outages
+  Account    ## login, profile, settings
+end
+
+## Routing of a support ticket.
+struct Route
+  team: Team
+  urgent: Bool  ## the customer is blocked or losing money
+end
+
+## Routes a support ticket to the right team.
+prompt route(ticket: String) -> ~Route using :fast
+  system "You route the support tickets of a SaaS product."
+  user ticket
+end
+
+## Replies to the customer, in one short paragraph.
+prompt reply(ticket: String, team: Team) -> ~String using :fast
+  user "Ticket: #{ticket}\nOur #{team} team is on it. Write a short, kind reply."
+end
+
+## The label of a routed ticket, e.g. `billing!` when urgent.
+def label(route: Route) -> String
+  name = route.team.to_s.downcase
+  if route.urgent
+    "#{name}!"
+  else
+    name
+  end
+end
+
+# ── Tests: deterministic, offline ────────────────────────────
+
+test "urgent tickets are marked" do
+  mock :fast, replies: [{team: "Billing", urgent: true}]
+  route = route(fixture("ticket.txt")).trust!
+  assert_equal "billing!", label(route)
+end
+
+test "an unknown team is rejected" do
+  mock :fast, replies: [{team: "Sales", urgent: false}, {team: "Sales", urgent: false}]
+  assert_raises(LlmError) { route("Can I get a discount?") }
+end
+
+test "a failing model is an error" do
+  mock replies: [LlmError("overloaded")]
+  assert_raises(LlmError) { route("?") }
+end
+
+# ── Evals: the real model, measured ──────────────────────────
+
+eval "routing", dataset: "triage.jsonl", threshold: 0.8 do |row|
+  route(row.ticket).trust!.team.to_s == row.team
+end
+
+eval "replies are kind", dataset: "triage.jsonl", threshold: 0.7 do |row|
+  text = reply(row.ticket, route(row.ticket).trust!.team)
+  judge(:fast, "Is this reply kind, relevant and short?", row.ticket, text)
+end

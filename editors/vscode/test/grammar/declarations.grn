@@ -1,0 +1,124 @@
+# SYNTAX TEST "source.grenat" "declarations, effects and types"
+
+## Summarizes an article.
+# <-- comment.line.documentation.grenat
+# a plain comment
+# <- comment.line.number-sign.grenat
+# ^^^^^^^^^^^^^^^ comment.line.number-sign.grenat - comment.line.documentation.grenat
+
+struct Summary
+# <------ storage.type.struct.grenat
+#      ^^^^^^^ entity.name.type.grenat
+  title: String  ## 8 words at most
+# ^^^^^ variable.parameter.grenat
+#        ^^^^^^ support.type.builtin.grenat
+#                ^^^^^^^^^^^^^^^^^^ comment.line.documentation.grenat
+end
+# <--- keyword.control.grenat
+
+prompt summarize(article: String) -> ~Summary using :fast
+# <------ storage.type.function.prompt.grenat
+#      ^^^^^^^^^ entity.name.function.grenat
+#                ^^^^^^^ variable.parameter.grenat
+#                                 ^^ keyword.operator.arrow.grenat
+#                                    ^ storage.modifier.untrusted.grenat
+#                                     ^^^^^^^ entity.name.type.grenat
+#                                             ^^^^^ storage.modifier.using.grenat
+#                                                   ^^^^^ constant.other.symbol.grenat
+  system "You are a concise analyst."
+# ^^^^^^ keyword.other.directive.grenat
+#        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ string.quoted.double.grenat
+  user <<~P
+# ^^^^ keyword.other.directive.grenat
+#      ^^^ punctuation.definition.string.begin.grenat
+#         ^ entity.name.tag.heredoc.grenat
+    Summarize: #{article}
+#   ^^^^^^^^^^^ string.unquoted.heredoc.grenat
+#              ^^ punctuation.section.embedded.begin.grenat
+#                ^^^^^^^ meta.embedded.line.grenat
+  P
+# ^ entity.name.tag.heredoc.grenat
+end
+
+tool read_doc(path: String) -> String uses fs.read("./docs"), net("api.github.com"), human
+# <---- storage.type.function.tool.grenat
+#    ^^^^^^^^ entity.name.function.grenat
+#                                     ^^^^ storage.modifier.uses.grenat
+#                                          ^^ support.constant.effect.grenat
+#                                             ^^^^ support.constant.effect.grenat
+#                                                  ^^^^^^^^ string.quoted.double.grenat
+#                                                             ^^^ support.constant.effect.grenat
+#                                                                                    ^^^^^ support.constant.effect.grenat
+  File.read("./docs/#{path}")
+# ^^^^ entity.name.type.grenat
+#           ^^^^^^^^ string.quoted.double.grenat
+#                   ^^ punctuation.section.embedded.begin.grenat
+#                         ^ punctuation.section.embedded.end.grenat
+end
+
+native def add(a: Int, b: Int) -> Int pure
+# <------ storage.modifier.native.grenat
+#      ^^^ storage.type.function.def.grenat
+#          ^^^ entity.name.function.grenat
+#                                     ^^^^ storage.modifier.pure.grenat
+
+def self.load?(path: Path) -> Result(Config, IoError) uses fs.read
+#   ^^^^ variable.language.self.grenat
+#        ^^^^^ entity.name.function.grenat
+#                             ^^^^^^ support.type.builtin.grenat
+#                                    ^^^^^^ entity.name.type.grenat
+#                                                          ^^ support.constant.effect.grenat
+#                                                             ^^^^ support.constant.effect.grenat
+  @count += 1
+# ^ punctuation.definition.variable.grenat
+# ^^^^^^ variable.other.readwrite.instance.grenat
+#        ^^ keyword.operator.assignment.compound.grenat
+end
+
+agent Support
+# <----- storage.type.agent.grenat
+#     ^^^^^^^ entity.name.type.grenat
+  model :smart
+# ^^^^^ keyword.other.declaration.grenat
+#       ^^^^^^ constant.other.symbol.grenat
+  tools read_doc, open_ticket
+# ^^^^^ keyword.other.directive.grenat
+  budget usd: 0.50, time: 2.min
+# ^^^^^^ keyword.other.directive.grenat
+#        ^^^^ constant.other.symbol.hashkey.grenat
+#             ^^^^ constant.numeric.grenat
+#                         ^ constant.numeric.grenat
+#                           ^^^ keyword.other.unit.grenat
+  max_turns 12
+# ^^^^^^^^^ keyword.other.directive.grenat
+#           ^^ constant.numeric.grenat
+
+  on Ask(question: String) -> ~Answer
+# ^^ keyword.other.handler.grenat
+#    ^^^ entity.name.function.handler.grenat
+    run "Customer question: #{question}"
+#   ^^^ keyword.other.directive.grenat
+  end
+end
+
+enum Team
+# <---- storage.type.enum.grenat
+#    ^^^^ entity.name.type.grenat
+  Billing    ## payments, invoices, refunds
+# ^^^^^^^ entity.name.type.grenat
+#            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment.line.documentation.grenat
+end
+
+class Counter
+# <----- storage.type.class.grenat
+#     ^^^^^^^ entity.name.type.class.grenat
+  @count: Int = 0
+# ^^^^^^ variable.other.readwrite.instance.grenat
+end
+
+module GitHub
+# <------ storage.type.module.grenat
+  LIMIT = 10_000
+# ^^^^^ variable.other.constant.grenat
+#         ^^^^^^ constant.numeric.grenat
+end

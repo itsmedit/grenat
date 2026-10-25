@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- A faceted garnet: the table, the crown and the pavilion -->
+  <polygon points="36,22 92,22 116,50 64,114 12,50" fill="#8e1330"/>
+  <polygon points="36,22 92,22 80,50 48,50" fill="#c8274b"/>
+  <polygon points="36,22 48,50 12,50" fill="#a81d3d"/>
+  <polygon points="92,22 116,50 80,50" fill="#a81d3d"/>
+  <polygon points="12,50 48,50 64,114" fill="#73102a"/>
+  <polygon points="48,50 80,50 64,114" fill="#9c1836"/>
+  <polygon points="80,50 116,50 64,114" fill="#5e0c22"/>
+  <polygon points="44,28 60,28 54,44 50,44" fill="#ffffff" opacity="0.45"/>
+</svg>

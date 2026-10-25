@@ -1,0 +1,205 @@
+# support_desk.grn — a complete multi-agent customer support desk.
+#
+#   grenat run examples/support_desk.grn examples/tickets.jsonl
+#
+# A prompt triages each ticket, a pool of Writer agents searches the docs
+# and drafts the answer, and a human approves before anything is sent.
+
+model :fast, provider: :anthropic, name: "claude-haiku-4-5"
+model :smart, provider: :anthropic, name: "claude-opus-5"
+
+# ── Domain ─────────────────────────────────────────────────
+
+enum Priority
+  Low
+  Normal
+  Urgent
+end
+
+enum Category
+  Billing
+  Bug
+  Question
+  Spam
+end
+
+struct Triage
+  category: Category
+  priority: Priority
+  language: String  ## ISO 639-1 code of the customer's language
+  reason: String    ## one sentence justifying the classification
+end
+
+struct Answer
+  body: String          ## reply to the customer, in their language, warm tone
+  sources: Array(Path)  ## documentation pages used
+  confidence: Float     ## between 0.0 and 1.0
+end
+
+enum Outcome
+  Skipped(id: Int)
+  Sent(id: Int, cost: Money)
+
+  def self.skipped(id: Int) = Skipped(id)
+  def self.sent(id: Int, cost: Money) = Sent(id, cost)
+
+  def sent?
+    case self
+    in Sent then true
+    else false
+    end
+  end
+end
+
+struct Ticket
+  id: Int
+  from: Email
+  subject: String
+  body: String
+
+  def self.from_json(line: String) -> Result(Ticket, ParseError)
+    h = Json.parse(line)
+    Ok(Ticket(id: h["id"], from: h["from"], subject: h["subject"], body: h["body"]))
+  end
+end
+
+# ── Integrations ───────────────────────────────────────────
+
+struct Hit
+  path: Path
+  score: Float
+end
+
+## The pages of a directory that contain the most words of a query.
+struct DocIndex
+  root: Path
+
+  def search(query: String, limit: Int) -> Array(Hit) uses fs.read
+    words = query.downcase.split(" ")
+    hits = Dir.list(root).map do |name|
+      text = File.read("#{root}/#{name}").downcase
+      Hit(path: "#{root}/#{name}", score: words.count { |w| text.include?(w) }.to_f / words.size)
+    end
+    hits.select { |h| h.score > 0 }.sort_by { |h| -h.score }.take(limit)
+  end
+end
+
+module Docs
+  def self.index(root: Path) -> DocIndex = DocIndex(root:)
+end
+
+module Smtp
+  ## The support mailbox's server (`SMTP_URL`, e.g. smtps://user:password@smtp.mail.com:465).
+  def self.send(to: Email, subject: String, body: String) -> Unit uses net("smtp.mail.com"), env
+    mailer = Mail.connect(Env.fetch("SMTP_URL", "smtps://smtp.mail.com:465"))
+    mailer.send(from: "support@example.com", to:, subject:, body:)
+  end
+end
+
+module Pager
+  def self.notify(message: String) -> Unit = warn "[pager] #{message}"
+end
+
+# ── Prompts ────────────────────────────────────────────────
+
+## Classifies a support ticket.
+prompt classify(t: Ticket) -> ~Triage using :fast
+  system "You triage the support tickets of an invoicing SaaS."
+  user "Subject: #{t.subject}\n\n#{t.body}"
+end
+
+# ── Tools ──────────────────────────────────────────────────
+
+## Full-text search in the product documentation.
+tool search_docs(query: String, limit: Int = 5) -> Array(Hit) uses fs.read("./docs")
+  Docs.index("./docs").search(query, limit:)
+end
+
+## Reads a documentation page.
+tool read_doc(path: Path) -> String uses fs.read("./docs")
+  File.read(path)?
+end
+
+## Sends the reply to the customer. Always requires human approval.
+tool send_reply(to: Email, body: String) -> Unit uses net("smtp.mail.com"), env, human
+  approve! "Send to #{to}?\n\n#{body}"
+  Smtp.send(to:, subject: "Re: your request", body:)
+end
+
+# ── Agents ─────────────────────────────────────────────────
+
+agent Writer
+  model :smart
+  tools search_docs, read_doc
+  budget usd: 0.30, time: 2.min
+  max_turns 12
+
+  instructions <<~I
+    You write accurate support replies. Never make up a feature:
+    if the documentation has no answer, say so and offer a callback.
+  I
+
+  on Draft(ticket: Ticket, triage: Triage) -> ~Answer
+    run <<~T
+      Reply in #{triage.language} to the following ticket (#{triage.category}):
+      #{ticket.body}
+    T
+  end
+end
+
+agent Dispatcher
+  @handled: Int = 0
+  @writers = spawn_pool(Writer, size: 4)
+
+  on Handle(ticket: Ticket) -> Outcome
+    triage = classify(ticket).check { |t| t.reason.size > 0 }?
+
+    case triage
+    in Triage(category: Spam)
+      return Outcome.skipped(ticket.id)
+    in Triage(priority: Urgent)
+      Pager.notify("Urgent ticket ##{ticket.id}")
+    else
+    end
+
+    answer = @writers.ask(Draft(ticket:, triage:))
+
+    # An ~Answer cannot reach send_reply (effects net + human) without
+    # validation: `send_reply(ticket.from, answer.body)` is rejected by
+    # `grenat check` (E0412).
+    safe = answer
+      .check { |a| a.confidence >= 0.7 && a.sources.any? }
+      .or_else { answer.approve(by: :human) }
+
+    send_reply(ticket.from, safe.body)
+    @handled += 1
+    Outcome.sent(ticket.id, cost: budget.spent)
+  end
+end
+
+supervisor Desk, strategy: :one_for_one, max_restarts: 3, within: 1.min
+  child Dispatcher
+end
+
+# ── Durable workflow: survives a crash while waiting for a human ──
+
+workflow process_ticket(ticket: Ticket) -> Outcome
+  step(:handle) { Desk[Dispatcher].ask(Handle(ticket:)) }
+end
+
+# ── Entry point ────────────────────────────────────────────
+
+def main(args: Array(String)) uses llm, net("smtp.mail.com"), env, fs.read, human
+  tickets = File.lines(args.first).map { |l| Ticket.from_json(l)? }
+
+  Runtime.on_approval { |req| Cli.confirm(req.message) }  # human = the terminal
+
+  within budget(usd: 5.00, time: 30.min) do
+    outcomes = tickets.parallel_map(limit: 8) { |t| process_ticket(t) }
+
+    sent, skipped = outcomes.partition(&.sent?)
+    puts "✓ #{sent.size} sent, #{skipped.size} skipped — cost #{budget.spent}"
+  rescue BudgetExceeded => e
+    warn "Budget exhausted after #{e.spent}: the run can resume, the journal is intact."
+  end
+end

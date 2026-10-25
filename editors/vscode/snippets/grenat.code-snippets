@@ -1,0 +1,92 @@
+{
+  "agent": {
+    "prefix": "agent",
+    "description": "An agent: a model, tools, a budget and a message handler",
+    "body": [
+      "agent ${1:Support}",
+      "  model :${2:smart}",
+      "  tools ${3:read_doc}",
+      "  budget usd: ${4:0.50}, time: ${5:2}.min",
+      "  max_turns ${6:12}",
+      "  instructions \"${7:Answer from the documentation only.}\"",
+      "",
+      "  on ${8:Ask}(${9:question}: String) -> ~${10:Answer}",
+      "    run \"${11:Customer question}: #{${9:question}}\"",
+      "  end",
+      "end"
+    ]
+  },
+  "prompt": {
+    "prefix": "prompt",
+    "description": "A prompt: a function a model implements, its answer typed",
+    "body": [
+      "## ${1:Summarizes an article.}",
+      "prompt ${2:summarize}(${3:article}: String) -> ~${4:Summary} using :${5:fast}",
+      "  system \"${6:You are a concise analyst.}\"",
+      "  user \"${7:Summarize}:\\n#{${3:article}}\"",
+      "end"
+    ]
+  },
+  "tool": {
+    "prefix": "tool",
+    "description": "A tool a model may call, described by its ## doc",
+    "body": [
+      "## ${1:Reads a documentation page.}",
+      "tool ${2:read_doc}(${3:path}: String) -> ${4:String} uses ${5:fs.read(\"./docs\")}",
+      "  $0",
+      "end"
+    ]
+  },
+  "workflow": {
+    "prefix": "workflow",
+    "description": "A durable workflow, each effect inside a step",
+    "body": [
+      "workflow ${1:publish}(${2:topic}: String) uses ${3:llm, human}",
+      "  ${4:draft} = step(:${4:draft}) { $5 }",
+      "  step(:${6:review}) { approve! \"${7:Publish?}\" }",
+      "  $0",
+      "end"
+    ]
+  },
+  "test": {
+    "prefix": "test",
+    "description": "A test, offline, external calls mocked",
+    "body": [
+      "test \"${1:does something}\" do",
+      "  ${2:mock :${3:fast}, replies: [${4:{\\}}]}",
+      "  assert_equal ${5:expected}, ${6:actual}",
+      "end"
+    ]
+  },
+  "struct": {
+    "prefix": "struct",
+    "description": "A struct, its fields typed and documented",
+    "body": [
+      "## ${1:A summary.}",
+      "struct ${2:Summary}",
+      "  ${3:title}: ${4:String}  ## ${5:8 words at most}",
+      "  $0",
+      "end"
+    ]
+  },
+  "on_webhook": {
+    "prefix": "on_webhook",
+    "description": "A signed webhook served by grenat serve",
+    "body": [
+      "on_webhook \"/${1:github}\", secret: Credentials.fetch(:${1:github}, :webhook_secret), signature: :${2:github} do |req|",
+      "  ${3:event} = req.json.check { |e| ${4:e[\"action\"] == \"opened\"} }?",
+      "  $0",
+      "  \"ok\"",
+      "end"
+    ]
+  },
+  "every": {
+    "prefix": "every",
+    "description": "A schedule (cron, UTC) run by grenat serve",
+    "body": [
+      "every cron: \"${1:0 8 * * MON}\" do",
+      "  ${0:enqueue(:publish, \"weekly digest\")}",
+      "end"
+    ]
+  }
+}

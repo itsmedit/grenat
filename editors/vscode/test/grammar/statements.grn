@@ -1,0 +1,147 @@
+# SYNTAX TEST "source.grenat" "statements, workflows, serving and macros"
+
+workflow publish(topic: String) uses llm, net("blog.acme.io"), human
+# <-------- storage.type.function.workflow.grenat
+#        ^^^^^^^ entity.name.function.grenat
+#                                    ^^^ support.constant.effect.grenat
+  post = step(:draft) { summarize(topic).trust! }
+#        ^^^^ keyword.other.declaration.grenat
+#             ^^^^^^ constant.other.symbol.grenat
+  step(:review) { approve! "Publish “#{post.title}”?" }
+# ^^^^ keyword.other.declaration.grenat
+#                 ^^^^^^^^ support.function.builtin.grenat
+end
+
+def area(s: Shape) -> Float
+  case s
+# ^^^^ keyword.control.grenat
+  in Circle(r) then 3.14159 * r * r
+# ^^ keyword.control.grenat
+#    ^^^^^^ entity.name.type.grenat
+#              ^^^^ keyword.control.grenat
+#                   ^^^^^^^ constant.numeric.grenat
+#                           ^ keyword.operator.arithmetic.grenat
+  end
+end
+
+def total(xs: Array(Int)) -> Int
+  xs.each do |x, acc|
+#         ^^ keyword.control.grenat
+#            ^ punctuation.separator.variable.grenat
+#             ^ variable.parameter.block.grenat
+#                ^^^ variable.parameter.block.grenat
+    return nil unless x&.positive? && acc != 0
+#   ^^^^^^ keyword.control.grenat
+#          ^^^ constant.language.grenat
+#              ^^^^^^ keyword.control.grenat
+#                      ^^ keyword.operator.safe-navigation.grenat
+#                                  ^^ keyword.operator.logical.grenat
+#                                         ^^ keyword.operator.comparison.grenat
+  end?
+# ^^^ keyword.control.grenat
+  begin
+# ^^^^^ keyword.control.grenat
+    raise ArgumentError, "msg"
+#   ^^^^^ keyword.control.grenat
+#         ^^^^^^^^^^^^^ entity.name.type.grenat
+  rescue KeyError, ArgumentError => e
+# ^^^^^^ keyword.control.grenat
+#                                ^^ keyword.operator.arrow.grenat
+  ensure
+# ^^^^^^ keyword.control.grenat
+  end
+  enqueue(:publish, "rust", in: 1.hour)
+# ^^^^^^^ support.function.builtin.grenat
+#                           ^^^ constant.other.symbol.hashkey.grenat - keyword.control.grenat
+#                               ^ constant.numeric.grenat
+#                                 ^^^^ keyword.other.unit.grenat
+  limit = 3
+# ^^^^^ - keyword.other.declaration.grenat
+  "it's \"quoted\"\n"
+#       ^^ constant.character.escape.grenat
+#                 ^^ constant.character.escape.grenat
+end
+
+limit net("api.hubspot.com"), 10.per_second
+# <----- keyword.other.declaration.grenat
+#                             ^^ constant.numeric.grenat
+#                                ^^^^^^^^^^ keyword.other.unit.grenat
+
+on_webhook "/github", secret: Credentials.fetch(:github, :webhook_secret), signature: :github do |req|
+# <---------- keyword.other.declaration.grenat
+#                     ^^^^^^^ constant.other.symbol.hashkey.grenat
+#                                                                                             ^^ keyword.control.grenat
+#                                                                                                 ^^^ variable.parameter.block.grenat
+  "ok"
+end
+
+every cron: "0 8 * * MON" do
+# <----- keyword.other.declaration.grenat
+#     ^^^^^ constant.other.symbol.hashkey.grenat
+end
+
+on_email Credentials.fetch(:support, :imap_url), every: 1.minute, move_to: "Triaged" do |email|
+# <-------- keyword.other.declaration.grenat
+#                                                ^^^^^^ constant.other.symbol.hashkey.grenat
+#                                                         ^^^^^^ keyword.other.unit.grenat
+end
+
+on_file "inbox/**/*.{pdf,PDF}", settle: 5.s do |path|
+# <------- keyword.other.declaration.grenat
+#                                         ^ keyword.other.unit.grenat
+end
+
+get "/tickets/:id" do |req|
+# <--- keyword.other.route.grenat
+  json({id:})
+#       ^^^ constant.other.symbol.hashkey.grenat
+end
+
+mcp :linear, url: "https://mcp.linear.app/mcp"
+# <--- keyword.other.declaration.grenat
+expose "/mcp", tools: [:find_ticket], agents: [Triage], token: Env.fetch("API_TOKEN")
+# <------ keyword.other.declaration.grenat
+database Env.fetch("DATABASE_URL")
+# <-------- keyword.other.declaration.grenat
+migration "001_create_tickets" do |db|
+# <--------- keyword.other.declaration.migration.grenat
+end
+supervisor SupportTeam, strategy: :one_for_one, max_restarts: 3, within: 1.min
+# <---------- storage.type.supervisor.grenat
+#          ^^^^^^^^^^^ entity.name.type.grenat
+  child Researcher, count: 4
+# ^^^^^ keyword.other.declaration.grenat
+end
+approvals_in_slack(
+# <------------------ keyword.other.declaration.grenat
+  channel: "#deploys",
+#          ^^^^^^^^^^ string.quoted.double.grenat - comment
+)
+
+test "urgent tickets are marked" do
+# <---- keyword.other.declaration.test.grenat
+  mock :fast, replies: [{team: "Billing", urgent: true}]
+# ^^^^ support.function.builtin.grenat
+#                                                 ^^^^ constant.language.grenat
+end
+
+eval "routing", dataset: "triage.jsonl", threshold: 0.8 do |row|
+# <---- keyword.other.declaration.eval.grenat
+end
+
+macro getters(*names)
+# <----- storage.type.macro.grenat
+#     ^^^^^^^ entity.name.function.macro.grenat
+  {% for n in names %}
+# ^^ punctuation.section.embedded.begin.macro.grenat
+#    ^^^ keyword.control.macro.grenat
+#          ^^ keyword.control.macro.grenat
+  def {{n}} = @{{n}}
+#     ^^ punctuation.section.embedded.begin.macro.grenat
+#       ^ meta.embedded.expression.macro.grenat
+#        ^^ punctuation.section.embedded.end.macro.grenat
+  def {{s}}?(status: String) -> Bool = status == "{{s}}"
+#                                                 ^^ string.quoted.double.grenat punctuation.section.embedded.begin.macro.grenat
+  {% end %}
+#    ^^^ keyword.control.macro.grenat
+end

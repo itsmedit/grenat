@@ -1,0 +1,315 @@
+># macros.grn — code that writes code, at compile time.
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.number-sign.grenat
+>#
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+>#   grenat run examples/macros.grn
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.number-sign.grenat
+>#
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+># Where Ruby would use `attr_accessor` or `define_method` at run time, a
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.number-sign.grenat
+># Grenat macro expands before the program is checked: the generated code is
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.number-sign.grenat
+># typed and checked like the rest.
+#^ source.grenat comment.line.number-sign.grenat punctuation.definition.comment.grenat
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.number-sign.grenat
+>
+>## A reader and a writer for an instance variable.
+#^^ source.grenat comment.line.documentation.grenat punctuation.definition.comment.grenat
+#  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.documentation.grenat
+>macro property(name, type)
+#^^^^^ source.grenat storage.type.macro.grenat
+#     ^ source.grenat
+#      ^^^^^^^^ source.grenat entity.name.function.macro.grenat
+#              ^ source.grenat punctuation.section.parens.grenat
+#               ^^^^ source.grenat
+#                   ^ source.grenat punctuation.separator.delimiter.grenat
+#                    ^^^^^ source.grenat
+#                         ^ source.grenat punctuation.section.parens.grenat
+>  def {{name}} -> {{type}} = @{{name}}
+#^^ source.grenat
+#  ^^^ source.grenat storage.type.function.def.grenat
+#     ^ source.grenat
+#      ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#        ^^^^ source.grenat meta.embedded.expression.macro.grenat
+#            ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.end.macro.grenat
+#              ^ source.grenat
+#               ^^ source.grenat keyword.operator.arrow.grenat
+#                 ^ source.grenat
+#                  ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#                    ^^^^ source.grenat meta.embedded.expression.macro.grenat
+#                        ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.end.macro.grenat
+#                          ^ source.grenat
+#                           ^ source.grenat keyword.operator.assignment.grenat
+#                            ^^ source.grenat
+#                              ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#                                ^^^^ source.grenat meta.embedded.expression.macro.grenat
+#                                    ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.end.macro.grenat
+>
+>  def set_{{name}}(value: {{type}})
+#^^ source.grenat
+#  ^^^ source.grenat storage.type.function.def.grenat
+#     ^ source.grenat
+#      ^^^^ source.grenat entity.name.function.grenat
+#          ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#            ^^^^ source.grenat meta.embedded.expression.macro.grenat
+#                ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.end.macro.grenat
+#                  ^ source.grenat punctuation.section.parens.grenat
+#                   ^^^^^ source.grenat constant.other.symbol.hashkey.grenat
+#                        ^ source.grenat constant.other.symbol.hashkey.grenat punctuation.definition.constant.hashkey.grenat
+#                         ^ source.grenat
+#                          ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#                            ^^^^ source.grenat meta.embedded.expression.macro.grenat
+#                                ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.end.macro.grenat
+#                                  ^ source.grenat punctuation.section.parens.grenat
+>    @{{name}} = value
+#^^^^^ source.grenat
+#     ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#       ^^^^ source.grenat meta.embedded.expression.macro.grenat
+#           ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.end.macro.grenat
+#             ^ source.grenat
+#              ^ source.grenat keyword.operator.assignment.grenat
+#               ^^^^^^^ source.grenat
+>  end
+#^^ source.grenat
+#  ^^^ source.grenat keyword.control.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+>## Readers for several instance variables.
+#^^ source.grenat comment.line.documentation.grenat punctuation.definition.comment.grenat
+#  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.documentation.grenat
+>macro getters(*names)
+#^^^^^ source.grenat storage.type.macro.grenat
+#     ^ source.grenat
+#      ^^^^^^^ source.grenat entity.name.function.macro.grenat
+#             ^ source.grenat punctuation.section.parens.grenat
+#              ^ source.grenat keyword.operator.arithmetic.grenat
+#               ^^^^^ source.grenat
+#                    ^ source.grenat punctuation.section.parens.grenat
+>  {% for n in names %}
+#^^ source.grenat
+#  ^^ source.grenat meta.embedded.statement.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#    ^ source.grenat meta.embedded.statement.macro.grenat
+#     ^^^ source.grenat meta.embedded.statement.macro.grenat keyword.control.macro.grenat
+#        ^^^ source.grenat meta.embedded.statement.macro.grenat
+#           ^^ source.grenat meta.embedded.statement.macro.grenat keyword.control.macro.grenat
+#             ^^^^^^^ source.grenat meta.embedded.statement.macro.grenat
+#                    ^^ source.grenat meta.embedded.statement.macro.grenat punctuation.section.embedded.end.macro.grenat
+>  def {{n}} = @{{n}}
+#^^ source.grenat
+#  ^^^ source.grenat storage.type.function.def.grenat
+#     ^ source.grenat
+#      ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#        ^ source.grenat meta.embedded.expression.macro.grenat
+#         ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.end.macro.grenat
+#           ^ source.grenat
+#            ^ source.grenat keyword.operator.assignment.grenat
+#             ^^ source.grenat
+#               ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#                 ^ source.grenat meta.embedded.expression.macro.grenat
+#                  ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.end.macro.grenat
+>  {% end %}
+#^^ source.grenat
+#  ^^ source.grenat meta.embedded.statement.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#    ^ source.grenat meta.embedded.statement.macro.grenat
+#     ^^^ source.grenat meta.embedded.statement.macro.grenat keyword.control.macro.grenat
+#        ^ source.grenat meta.embedded.statement.macro.grenat
+#         ^^ source.grenat meta.embedded.statement.macro.grenat punctuation.section.embedded.end.macro.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+>## A predicate per status: `draft?`, `sent?`…
+#^^ source.grenat comment.line.documentation.grenat punctuation.definition.comment.grenat
+#  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ source.grenat comment.line.documentation.grenat
+>macro statuses(*names)
+#^^^^^ source.grenat storage.type.macro.grenat
+#     ^ source.grenat
+#      ^^^^^^^^ source.grenat entity.name.function.macro.grenat
+#              ^ source.grenat punctuation.section.parens.grenat
+#               ^ source.grenat keyword.operator.arithmetic.grenat
+#                ^^^^^ source.grenat
+#                     ^ source.grenat punctuation.section.parens.grenat
+>  {% for s in names %}
+#^^ source.grenat
+#  ^^ source.grenat meta.embedded.statement.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#    ^ source.grenat meta.embedded.statement.macro.grenat
+#     ^^^ source.grenat meta.embedded.statement.macro.grenat keyword.control.macro.grenat
+#        ^^^ source.grenat meta.embedded.statement.macro.grenat
+#           ^^ source.grenat meta.embedded.statement.macro.grenat keyword.control.macro.grenat
+#             ^^^^^^^ source.grenat meta.embedded.statement.macro.grenat
+#                    ^^ source.grenat meta.embedded.statement.macro.grenat punctuation.section.embedded.end.macro.grenat
+>  def {{s}}?(status: String) -> Bool = status == "{{s}}"
+#^^ source.grenat
+#  ^^^ source.grenat storage.type.function.def.grenat
+#     ^ source.grenat
+#      ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#        ^ source.grenat meta.embedded.expression.macro.grenat
+#         ^^ source.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.end.macro.grenat
+#           ^ source.grenat keyword.operator.question.grenat
+#            ^ source.grenat punctuation.section.parens.grenat
+#             ^^^^^^ source.grenat variable.parameter.grenat
+#                   ^ source.grenat punctuation.separator.type.grenat
+#                    ^ source.grenat
+#                     ^^^^^^ source.grenat support.type.builtin.grenat
+#                           ^ source.grenat punctuation.section.parens.grenat
+#                            ^ source.grenat
+#                             ^^ source.grenat keyword.operator.arrow.grenat
+#                               ^ source.grenat
+#                                ^^^^ source.grenat support.type.builtin.grenat
+#                                    ^ source.grenat
+#                                     ^ source.grenat keyword.operator.assignment.grenat
+#                                      ^^^^^^^^ source.grenat
+#                                              ^^ source.grenat keyword.operator.comparison.grenat
+#                                                ^ source.grenat
+#                                                 ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                                                  ^^ source.grenat string.quoted.double.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#                                                    ^ source.grenat string.quoted.double.grenat meta.embedded.expression.macro.grenat
+#                                                     ^^ source.grenat string.quoted.double.grenat meta.embedded.expression.macro.grenat punctuation.section.embedded.end.macro.grenat
+#                                                       ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+>  {% end %}
+#^^ source.grenat
+#  ^^ source.grenat meta.embedded.statement.macro.grenat punctuation.section.embedded.begin.macro.grenat
+#    ^ source.grenat meta.embedded.statement.macro.grenat
+#     ^^^ source.grenat meta.embedded.statement.macro.grenat keyword.control.macro.grenat
+#        ^ source.grenat meta.embedded.statement.macro.grenat
+#         ^^ source.grenat meta.embedded.statement.macro.grenat punctuation.section.embedded.end.macro.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+>class Invoice
+#^^^^^ source.grenat storage.type.class.grenat
+#     ^ source.grenat
+#      ^^^^^^^ source.grenat entity.name.type.class.grenat
+>  @customer: String = ""
+#^^ source.grenat
+#  ^ source.grenat variable.other.readwrite.instance.grenat punctuation.definition.variable.grenat
+#   ^^^^^^^^ source.grenat variable.other.readwrite.instance.grenat
+#           ^^ source.grenat
+#             ^^^^^^ source.grenat support.type.builtin.grenat
+#                   ^ source.grenat
+#                    ^ source.grenat keyword.operator.assignment.grenat
+#                     ^ source.grenat
+#                      ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                       ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+>  @total: Int = 0
+#^^ source.grenat
+#  ^ source.grenat variable.other.readwrite.instance.grenat punctuation.definition.variable.grenat
+#   ^^^^^ source.grenat variable.other.readwrite.instance.grenat
+#        ^^ source.grenat
+#          ^^^ source.grenat support.type.builtin.grenat
+#             ^ source.grenat
+#              ^ source.grenat keyword.operator.assignment.grenat
+#               ^ source.grenat
+#                ^ source.grenat constant.numeric.grenat
+>  @currency: String = "EUR"
+#^^ source.grenat
+#  ^ source.grenat variable.other.readwrite.instance.grenat punctuation.definition.variable.grenat
+#   ^^^^^^^^ source.grenat variable.other.readwrite.instance.grenat
+#           ^^ source.grenat
+#             ^^^^^^ source.grenat support.type.builtin.grenat
+#                   ^ source.grenat
+#                    ^ source.grenat keyword.operator.assignment.grenat
+#                     ^ source.grenat
+#                      ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                       ^^^ source.grenat string.quoted.double.grenat
+#                          ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+>  property :customer, String
+#^^^^^^^^^^^ source.grenat
+#           ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#            ^^^^^^^^ source.grenat constant.other.symbol.grenat
+#                    ^ source.grenat punctuation.separator.delimiter.grenat
+#                     ^ source.grenat
+#                      ^^^^^^ source.grenat support.type.builtin.grenat
+>  getters :total, :currency
+#^^^^^^^^^^ source.grenat
+#          ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#           ^^^^^ source.grenat constant.other.symbol.grenat
+#                ^ source.grenat punctuation.separator.delimiter.grenat
+#                 ^ source.grenat
+#                  ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#                   ^^^^^^^^ source.grenat constant.other.symbol.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>
+>statuses :draft, :sent, :paid
+#^^^^^^^^^ source.grenat
+#         ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#          ^^^^^ source.grenat constant.other.symbol.grenat
+#               ^ source.grenat punctuation.separator.delimiter.grenat
+#                ^ source.grenat
+#                 ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#                  ^^^^ source.grenat constant.other.symbol.grenat
+#                      ^ source.grenat punctuation.separator.delimiter.grenat
+#                       ^ source.grenat
+#                        ^ source.grenat constant.other.symbol.grenat punctuation.definition.constant.grenat
+#                         ^^^^ source.grenat constant.other.symbol.grenat
+>
+>def main
+#^^^ source.grenat storage.type.function.def.grenat
+#   ^ source.grenat
+#    ^^^^ source.grenat entity.name.function.grenat
+>  invoice = Invoice.new
+#^^^^^^^^^^ source.grenat
+#          ^ source.grenat keyword.operator.assignment.grenat
+#           ^ source.grenat
+#            ^^^^^^^ source.grenat entity.name.type.grenat
+#                   ^ source.grenat punctuation.accessor.grenat
+#                    ^^^^ source.grenat
+>  invoice.set_customer("Ada")
+#^^^^^^^^^ source.grenat
+#         ^ source.grenat punctuation.accessor.grenat
+#          ^^^^^^^^^^^^ source.grenat
+#                      ^ source.grenat punctuation.section.parens.grenat
+#                       ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                        ^^^ source.grenat string.quoted.double.grenat
+#                           ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                            ^ source.grenat punctuation.section.parens.grenat
+>  puts "#{invoice.customer}: #{invoice.total} #{invoice.currency}"
+#^^ source.grenat
+#  ^^^^ source.grenat support.function.builtin.grenat
+#      ^ source.grenat
+#       ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#        ^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat punctuation.section.embedded.begin.grenat
+#          ^^^^^^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat source.grenat
+#                 ^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat source.grenat punctuation.accessor.grenat
+#                  ^^^^^^^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat source.grenat
+#                          ^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat punctuation.section.embedded.end.grenat
+#                           ^^ source.grenat string.quoted.double.grenat
+#                             ^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat punctuation.section.embedded.begin.grenat
+#                               ^^^^^^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat source.grenat
+#                                      ^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat source.grenat punctuation.accessor.grenat
+#                                       ^^^^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat source.grenat
+#                                            ^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat punctuation.section.embedded.end.grenat
+#                                             ^ source.grenat string.quoted.double.grenat
+#                                              ^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat punctuation.section.embedded.begin.grenat
+#                                                ^^^^^^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat source.grenat
+#                                                       ^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat source.grenat punctuation.accessor.grenat
+#                                                        ^^^^^^^^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat source.grenat
+#                                                                ^ source.grenat string.quoted.double.grenat meta.embedded.line.grenat punctuation.section.embedded.end.grenat
+#                                                                 ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+>  puts sent?("sent"), paid?("draft")
+#^^ source.grenat
+#  ^^^^ source.grenat support.function.builtin.grenat
+#      ^^^^^ source.grenat
+#           ^ source.grenat keyword.operator.question.grenat
+#            ^ source.grenat punctuation.section.parens.grenat
+#             ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#              ^^^^ source.grenat string.quoted.double.grenat
+#                  ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                   ^ source.grenat punctuation.section.parens.grenat
+#                    ^ source.grenat punctuation.separator.delimiter.grenat
+#                     ^^^^^ source.grenat
+#                          ^ source.grenat keyword.operator.question.grenat
+#                           ^ source.grenat punctuation.section.parens.grenat
+#                            ^ source.grenat string.quoted.double.grenat punctuation.definition.string.begin.grenat
+#                             ^^^^^ source.grenat string.quoted.double.grenat
+#                                  ^ source.grenat string.quoted.double.grenat punctuation.definition.string.end.grenat
+#                                   ^ source.grenat punctuation.section.parens.grenat
+>end
+#^^^ source.grenat keyword.control.grenat
+>

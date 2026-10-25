@@ -1,0 +1,134 @@
+{
+  "comments": {
+    "lineComment": "#"
+  },
+  "brackets": [
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ]
+  ],
+  "autoClosingPairs": [
+    {
+      "open": "{",
+      "close": "}"
+    },
+    {
+      "open": "[",
+      "close": "]"
+    },
+    {
+      "open": "(",
+      "close": ")"
+    },
+    {
+      "open": "\"",
+      "close": "\"",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "'",
+      "close": "'",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "#{",
+      "close": "}",
+      "notIn": [
+        "comment"
+      ]
+    },
+    {
+      "open": "{{",
+      "close": "}}",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "{%",
+      "close": "%}",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    }
+  ],
+  "autoCloseBefore": ";:.,=}])>` \n\t",
+  "surroundingPairs": [
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ],
+    [
+      "\"",
+      "\""
+    ],
+    [
+      "'",
+      "'"
+    ],
+    [
+      "|",
+      "|"
+    ]
+  ],
+  "colorizedBracketPairs": [
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ]
+  ],
+  "wordPattern": "(-?\\d[\\d_]*(?:\\.\\d[\\d_]*)?)|(@?[A-Za-z_][\\w]*[?!]?)",
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*def\\s+(?![^(\\s=]+(\\([^()]*(\\([^()]*\\)[^()]*)*\\))?(\\s*->\\s*[^=]+)?\\s=[^=~>])(?!.*\\bend\\b[?!]?\\s*(#.*)?$)|^\\s*(class|module|struct|enum|agent|prompt|tool|workflow|macro|supervisor|on|if|unless|elsif|else|case|while|until|for|begin|rescue|ensure)\\b(?!.*\\bend\\b[?!]?\\s*(#.*)?$)|^\\s*(in|when)\\b(?!.*\\bthen\\b\\s*\\S)|.*\\bdo(\\s*\\|[^|]*\\|)?\\s*(#.*)?$|.*[\\{\\[\\(](\\s*\\|[^|]*\\|)?\\s*(#.*)?$",
+    "decreaseIndentPattern": "^\\s*(end\\b[?!]?|elsif\\b|else\\b|in\\b|when\\b|rescue\\b|ensure\\b|\\}|\\]|\\))"
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*##.*$",
+      "action": {
+        "indent": "none",
+        "appendText": "## "
+      }
+    }
+  ],
+  "folding": {
+    "offSide": false,
+    "markers": {
+      "start": "^\\s*#\\s*region\\b",
+      "end": "^\\s*#\\s*endregion\\b"
+    }
+  }
+}
