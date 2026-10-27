@@ -42,7 +42,7 @@ end
 
 I/O is declared, `def main(args: Array(String)) uses llm, env, fs.read("./docs")`; callers cover their callees' (else E0300).
 
-`llm` · `net("api.github.com")` (HTTP, SMTP, IMAP, PostgreSQL to that host: `net("smtp.acme.io")` for `Mail.connect("smtp://smtp.acme.io")`, `net("db.acme.io")` for `Db.connect("postgres://…@db.acme.io/app")`, none for SQLite, localhost (`127.0.0.1`, `::1`), a Unix socket, a top-level `database`; `net` alone = any host, when it comes from configuration, `Mail.connect(Credentials.fetch(:smtp, :url))`: a host checked at run time must be granted) · `fs.read("./docs")`, `fs.write("out")` (path prefix) · `shell("git")` (that program) · `ssh("host")` · `db.read`, `db.write` (`db` = both) · `mcp("server")` · `env` (environment, credentials) · `human` (approval) · `time`, `random`.
+`llm` · `net("api.github.com")` (HTTP, SMTP, IMAP, PostgreSQL to that host: `net("db.acme.io")` for `Db.connect("postgres://…@db.acme.io/app")`; none for SQLite, localhost, a Unix socket, a top-level `database`; `net` alone = any host, when it comes from configuration, `Mail.connect(Credentials.fetch(:smtp, :url))`: a host checked at run time must be granted) · `fs.read("./docs")`, `fs.write("out")` (path prefix) · `shell("git")` (that program) · `ssh("host")` · `db.read`, `db.write` (`db` = both) · `mcp("server")` · `env` (environment, credentials) · `human` (approval) · `time`, `random`.
 
 ## Models and prompts
 
@@ -84,7 +84,7 @@ def digest(text: String) -> Summary uses llm, human
 end
 ```
 
-`x.approve(by: :human)` always shows the value to the human (trusted or not) and returns it trusted, or raises `ApprovalDenied`: review a model's text with `reply.approve(by: :human)`, not by putting it in `approve!`. A field: `res.json["id"].check { |i| i > 0 }?`; after `do … end`: `end?`.
+`x.approve(by: :human)` always shows the value to the human (trusted or not) and returns it trusted, or raises `ApprovalDenied`: review a model's text with `reply.approve(by: :human)`, not by putting it in `approve!`. A JSON field: `res.json["id"].check { |i| i.is_a?(Int) && i > 0 }?`; multi-line: `check do |v| … end?`. Taint follows values into structs and results (json-and-taint topic).
 
 ## Tools and agents
 
@@ -93,6 +93,7 @@ A `tool` is a function a model may call, described by its `##` doc and parameter
 ```ruby
 ## Reads a documentation page.
 tool read_doc(path: String) -> String uses fs.read("./docs")
+  raise ArgumentError, "no .. in a path" if path.include?("..")
   File.read("./docs/#{path}")
 end
 
@@ -128,7 +129,7 @@ def answer(question: String) -> String uses llm, fs.read("./docs"), net("tracker
 end
 ```
 
-A tool that raises (a denied `approve!`: `ApprovalDenied`) gives the model its error as result; the loop goes on. Tests may call a tool directly. `run` raises `MaxTurnsExceeded`, `BudgetExceeded`; `within budget(usd: 1.00) do … end` caps spending.
+A tool refuses an input by raising: the model gets the error (`ArgumentError: no .. in a path`) as the result, the loop goes on (a denied `approve!`: `ApprovalDenied`). Tests may call a tool directly. `run` raises `MaxTurnsExceeded`, `BudgetExceeded`; `within budget(usd: 1.00) do … end` caps spending.
 
 ## Workflows, jobs, approvals
 
@@ -142,7 +143,7 @@ workflow publish(topic: String) uses llm, net("blog.acme.io"), human
 end
 ```
 
-A run is its name and arguments: called again with them (after a crash), it replays the finished steps, runs the rest; a key such as `weekly(monday: "2026-09-28")` gives one run per period. `enqueue(:publish, "rust")` (or `in: 1.hour`) queues a call for `grenat serve`'s workers; in a job, `approve!` waits for `Approvals.approve(id)` (or `grenat console`).
+A run is its name and arguments: called again with them (after a crash), it replays the finished steps, runs the rest; a key such as `monday: "2026-09-28"` gives one run per period. `enqueue(:weekly, monday: "2026-09-28")` (arguments as in a call; `in: 1.hour`) queues a call for `grenat serve`'s workers; in a job, `approve!` waits for `Approvals.approve(id)` (or `grenat console`).
 
 ## Standard library
 
@@ -167,7 +168,7 @@ on_webhook "/github", secret: Credentials.fetch(:github, :webhook_secret), signa
   "ok"
 end
 
-every cron: "0 8 * * MON" do  # UTC
+every cron: "0 8 * * MON" do  # UTC; no `uses` at the top level
   enqueue(:publish, "weekly digest")
 end
 ```
@@ -189,14 +190,13 @@ test "the agent answers from the docs" do
 end
 ```
 
-Doubles: `mock :model, replies: [...]` (each the return type as a hash, enums by name, `{title: "x", sentiment: "Positive"}`; a string; or `call(:tool, args…)`), `mock_http "GET https://api.x.com/*", json: {…}`, `mock_shell "git status*", stdout: "…"`, `mock_env({"SMTP_URL" => "smtp://smtp.test"})` (all `Env` sees), `mock_mail(raise: "SMTP down")` (sending raises `MailError`; `raise: nil` undoes), `with_human(approve_all) do … end` (or `deny_all`), `freeze_time("2026-09-28T08:00:00Z") do … end`, `request :get, "/tickets/1"` (→ `"status"`, `"body"`, `"headers"`), `deliver_webhook "/github", json: {…}`, `Jobs.perform`, `Mail.deliveries`, `Http.requests`; `freeze_time`, `mock_env`, `mock_mail`, `Http.requests`, `deliver_*` only in a `test`. `assert x`, `assert_equal expected, actual`, `assert_raises TaintError { … }`.
+Doubles: `mock :model, replies: [...]` (each the return type as a hash, enums by name, `{title: "x", sentiment: "Positive"}`; a string; or `call(:tool, args…)`), `mock_http "GET https://api.x.com/*", json: {…}`, `mock_shell "git status*", stdout: "…"`, `mock_env({"SMTP_URL" => "smtp://smtp.test"})` (all `Env` sees), `mock_mail(raise: "SMTP down")` (sending raises `MailError`; `raise: nil` undoes), `with_human(approve_all) do … end` (or `deny_all`; also `.approve(by: :human)`), `freeze_time("2026-09-28T08:00:00Z") do … end`, `request :get, "/tickets/1"` (→ `"status"`, `"body"`, `"headers"`), `deliver_webhook "/github", json: {…}`, `Jobs.perform`, `Mail.deliveries`, `Http.requests`; `freeze_time`, `mock_env`, `mock_mail`, `Http.requests`, `deliver_*` only in a `test`. `assert x`, `assert_equal expected, actual`, `assert_raises TaintError { … }`.
 
 - A `mock` with no reply left fails the test ("mock has no reply left"): that proves a workflow did not call the model again.
 - `mock_http` takes `json:`, `body:`, `status:`, `headers:`, `times:`; an unstubbed request raises `HttpError`. `Http.requests` lists what was sent, in order: `Http.requests.last["method"]`, also `"url"`, `"body"`, `"json"` (nil if not JSON), `"headers"` (a secret stays a `Secret`, equal to its text).
 - `Mail.deliveries`: hashes, `m["from"]`, `m["to"]` (an array), `m["subject"]`, `m["body"]`.
-- To simulate a crash between steps, make the later step fail (`mock_mail(raise: "SMTP down")`), assert the error, undo it (`mock_mail(raise: nil)`), run the workflow again with the same arguments: finished steps replay.
 - Errors: `TaintError`, `CapabilityError`, `SecretError`, `CheckError`, `ApprovalDenied`, `BudgetExceeded`, `MaxTurnsExceeded`, `TimeoutError`, `HttpError`, `MailError`, `KeyError`, `ArgumentError`, `TypeError`, `LlmError`, `RuntimeError` (a bare `raise`).
-- In tests `Credentials.fetch(:a, :b)` is the stand-in `"test-a-b"`, not a URL: to send mail or open a database, `mock_credentials({"smtp" => {"url" => "smtp://u:p@smtp.acme.io:587"}, "github" => {"token" => "t"}})` (replacing all stand-ins).
+- In tests `Credentials.fetch(:a, :b)` is the stand-in `"test-a-b"` (`:tracker, :token` → `"test-tracker-token"`), not a URL: to send mail or open a database, `mock_credentials({"smtp" => {"url" => "smtp://u:p@smtp.acme.io:587"}, "github" => {"token" => "t"}})` (replacing all stand-ins).
 - Mocked models cost nothing: test `max_turns` (more tool-call replies than turns), not a dollar budget.
 - `GRENAT_LOG=1 grenat test …` prints each model, tool and HTTP call.
 
@@ -219,6 +219,8 @@ Doubles: `mock :model, replies: [...]` (each the return type as a hash, enums by
 - `documents-and-audio`: PDFs, images, audio, `transcribe`, `batch_map`.
 - `streaming-and-chat`: `stream` (Server-Sent Events), `Conversation`.
 - `agents-advanced`: `tell`, pools, `race`, budgets, `tool_timeout`.
+- `workflows`: `return`, step values, jobs, `every`, crash tests.
+- `json-and-taint`: JSON fields, `dig`, tainted structs.
 - `mcp-and-expose`: MCP servers, `expose`.
 - `ssh`: `Ssh.connect`, SFTP.
 - `time`: dates, durations.

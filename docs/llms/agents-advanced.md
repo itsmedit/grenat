@@ -48,7 +48,8 @@ end
 - `a.ask(Msg(...))` waits for the answer; `a.tell(Msg(...))` sends without waiting.
 - `spawn_pool(Writer, size: 4)` is a load-balanced pool: each message goes to the least busy agent.
 - `xs.parallel_map(limit: 5) { |x| … }` runs the block concurrently, at most `limit` at a time; `race do … end` runs each statement as a branch, the first to succeed wins, the others are cancelled (all failing: the first error is raised).
-- `within budget(usd: 1.00) do … rescue BudgetExceeded => e … end` caps spending (an inner budget never exceeds its enclosing one); an agent's own `budget usd: 0.50, time: 2.min` caps each `run`.
+- `within budget(usd: 1.00) do … rescue BudgetExceeded => e … end` caps spending (an inner budget never exceeds its enclosing one); an agent's own `budget usd: 0.50, time: 2.min` caps each `run` (either alone: `budget usd: 0.50`, `budget time: 2.min`).
+- A tool refuses an input with `raise ArgumentError, "…"` (any error): the model receives `ArgumentError: …` as the call's result, marked as an error, and may call again or answer; the loop goes on. `BudgetExceeded` and `TaintError` raised in a tool end `run` instead.
 - `tool_timeout 20` in an agent bounds each tool call (seconds).
 - Mocked models cost nothing: a test proves a limit with `max_turns` (more tool-call replies than turns), not with a dollar budget.
 
