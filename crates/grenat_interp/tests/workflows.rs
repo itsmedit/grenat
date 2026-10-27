@@ -127,3 +127,68 @@ keep
     assert_eq!(e.ty, "TypeError");
     assert!(e.message.contains("step :object must return data"), "{}", e.message);
 }
+
+#[test]
+fn keywords_and_positions_name_the_same_run() {
+    let src = "\
+workflow weekly(monday: String, size: Int = 1, tone: String = \"plain\") -> String
+  step(:count) { \"#{monday} #{size} #{tone}\" }
+end
+
+def main
+  p weekly(\"a\")
+  p weekly(monday: \"a\")
+  p weekly(\"a\", 2)
+  p weekly(size: 2, monday: \"a\")
+  p weekly(\"a\", tone: \"warm\")
+  p weekly(tone: \"warm\", monday: \"a\")
+end
+";
+    let journal = temp_dir("keywords");
+    let mode = Mode { journal: Some(journal.clone()), ..Mode::default() };
+    let out = run_mode(src, Scripted::new([]), &[], &[], mode).ok();
+    assert_eq!(out, "\"a 1 plain\"\n\"a 1 plain\"\n\"a 2 plain\"\n\"a 2 plain\"\n\"a 1 warm\"\n\"a 1 warm\"\n");
+    assert_eq!(std::fs::read_dir(&journal).unwrap().count(), 3);
+}
+
+#[test]
+fn a_return_ends_the_run_and_its_value_is_journaled() {
+    let src = "\
+model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"
+
+prompt word(text: String) -> ~String using :fast
+  user text
+end
+
+workflow early(n: Int) -> String
+  first = step(:first) { word(\"one\").trust! }
+  return \"early #{first}\" if n > 1
+  step(:second) { word(\"two\").trust! }
+end
+
+workflow inside(n: Int) -> String
+  step(:first) do
+    return \"from the step\" if n > 1
+    word(\"one\").trust!
+  end
+end
+
+def main
+  puts early(2)
+  puts inside(2)
+end
+";
+    let journal = temp_dir("return");
+    let run = |replies: Vec<Response>| {
+        let mode = Mode { log: true, journal: Some(journal.clone()), ..Mode::default() };
+        run_mode(src, Scripted::new(replies), &[], &[], mode)
+    };
+    let first = run(vec![Response::text_reply("a")]);
+    assert!(first.output.contains("early a\n") && first.output.contains("from the step\n"), "{}", first.output);
+    assert_eq!(first.requests.len(), 1);
+    // run again: both results replayed, no model called
+    let second = run(vec![]);
+    assert!(second.output.contains("early a\n") && second.output.contains("from the step\n"), "{}", second.output);
+    assert_eq!(second.output.matches("completed earlier, result replayed").count(), 2, "{}", second.output);
+    assert!(second.requests.is_empty());
+}

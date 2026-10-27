@@ -42,6 +42,7 @@ mod folds;
 mod formatting;
 mod functions;
 mod http_options;
+mod jobs;
 mod limits;
 mod methods;
 mod model_options;

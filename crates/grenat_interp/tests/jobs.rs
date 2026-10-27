@@ -91,3 +91,68 @@ end
         "{results:?}"
     );
 }
+
+const WEEKLY: &str = "\
+model :fast, provider: :anthropic, name: \"claude-haiku-4-5\"
+
+prompt digest(monday: String, repos: Array(String)) -> ~String using :fast
+  user \"digest of #{monday}: #{repos.join(\", \")}\"
+end
+
+workflow weekly(monday: String, repos: Array(String) = [\"rust-lang/rust\"], tone: String = \"plain\") -> String
+  step(:digest) { digest(monday, repos).trust! } + \" (#{tone})\"
+end
+";
+
+#[test]
+fn a_job_keeps_its_keyword_arguments() {
+    let results = results(&format!(
+        "{WEEKLY}
+test \"keywords\" do
+  mock :fast, replies: [\"d1\"]
+  enqueue(:weekly, \"2026-09-28\", tone: \"warm\", in: 1.hour)
+  assert_equal [[:weekly, [\"2026-09-28\", {{tone: \"warm\"}}]]], Jobs.enqueued
+  assert_equal 1, Jobs.perform
+  assert_equal [], Jobs.failed
+  assert_equal \"d1 (warm)\", weekly(\"2026-09-28\", tone: \"warm\")
+end
+test \"keywords only\" do
+  mock :fast, replies: [\"d2\"]
+  enqueue(:weekly, monday: \"2026-10-05\")
+  Jobs.perform
+  assert_equal [], Jobs.failed
+  assert_equal \"d2 (plain)\", weekly(monday: \"2026-10-05\")
+end
+test \"an untrusted keyword is refused\" do
+  mock_http \"GET https://x.io/\", json: {{m: \"2026-10-05\"}}
+  assert_raises TaintError {{ enqueue(:weekly, monday: Http.get(\"https://x.io/\").json[\"m\"]) }}
+  assert_equal [], Jobs.enqueued
+end
+test \"an unknown keyword fails the job\" do
+  enqueue(:weekly, mondy: \"2026-10-05\")
+  Jobs.perform
+  assert_equal [[\"weekly\", \"ArgumentError: missing argument `monday` for `weekly`\"]], Jobs.failed
+end
+"
+    ));
+    assert!(results.iter().all(|(_, e)| e.is_none()), "{results:?}");
+}
+
+#[test]
+fn a_run_is_its_arguments_however_they_are_written() {
+    let results = results(&format!(
+        "{WEEKLY}
+test \"positional, keyword, reordered: one run\" do
+  mock :fast, replies: [\"d1\", \"d2\"]
+  assert_equal \"d1 (plain)\", weekly(\"2026-09-28\", [\"a/b\"])
+  assert_equal \"d1 (plain)\", weekly(monday: \"2026-09-28\", repos: [\"a/b\"])
+  assert_equal \"d1 (plain)\", weekly(repos: [\"a/b\"], monday: \"2026-09-28\")
+  assert_equal \"d1 (plain)\", weekly(\"2026-09-28\", repos: [\"a/b\"])
+  # a keyword after a default: still one run however it is written
+  assert_equal \"d2 (warm)\", weekly(\"2026-09-28\", tone: \"warm\")
+  assert_equal \"d2 (warm)\", weekly(tone: \"warm\", monday: \"2026-09-28\")
+end
+"
+    ));
+    assert!(results.iter().all(|(_, e)| e.is_none()), "{results:?}");
+}

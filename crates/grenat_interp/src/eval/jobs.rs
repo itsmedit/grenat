@@ -3,6 +3,7 @@
 //!
 //! ```ruby
 //! enqueue(:process_ticket, ticket.id)        # or: enqueue(:digest, in: 1.hour)
+//! enqueue(:weekly, monday: "2026-09-28")      # keywords, as in a call
 //!
 //! def process_ticket(id: Int) uses llm, db   # any function; a workflow is durable
 //!   …
@@ -30,7 +31,8 @@ const ATTEMPTS: i64 = 3;
 const POLL: Duration = Duration::from_secs(1);
 
 impl<'p> Interp<'p> {
-    /// `enqueue(:name, args…, in: 1.hour)`.
+    /// `enqueue(:name, args…, keyword: value…, in: 1.hour)`: the function is
+    /// later called with these arguments, positional and keyword.
     pub(crate) fn enqueue(&mut self, args: &Args<'p>) -> R<'p> {
         let Some(Value::Symbol(name)) = args.pos.first().map(Value::untainted) else {
             return raise("ArgumentError", "`enqueue` expects a function: `enqueue(:process, 42)`");
@@ -39,7 +41,9 @@ impl<'p> Interp<'p> {
         if !self.fns.contains_key(name.as_str()) {
             return raise("NameError", format!("`enqueue`: unknown function `{name}`"));
         }
-        if args.pos.iter().any(Value::contains_taint) {
+        // the call's keywords, `in:` (when to run) aside
+        let keywords: Vec<&(String, Value<'p>)> = args.named.iter().filter(|(n, _)| n != "in").collect();
+        if args.pos.iter().chain(keywords.iter().map(|(_, v)| v)).any(Value::contains_taint) {
             return raise(
                 "TaintError",
                 format!("an untrusted value reaches the job `{name}` (effect `db.write`) without validation"),
@@ -52,11 +56,17 @@ impl<'p> Interp<'p> {
             Some(Value::Int(n)) => n as f64,
             Some(other) => return raise("TypeError", format!("`in:` expects a duration, got {}", other.inspect())),
         };
-        let values: Vec<serde_json::Value> = args.pos[1..]
-            .iter()
-            .map(codec::encode)
-            .collect::<Result<_, _>>()
-            .or_else(|e| raise("TypeError", format!("a job's arguments are data: {e}")))?;
+        let data = |v: &Value<'p>| {
+            codec::encode(v).or_else(|e| raise("TypeError", format!("a job's arguments are data: {e}")))
+        };
+        let mut values: Vec<serde_json::Value> = args.pos[1..].iter().map(data).collect::<Result<_, _>>()?;
+        if !keywords.is_empty() {
+            let mut named = serde_json::Map::new();
+            for (n, v) in &keywords {
+                named.insert(n.clone(), data(v)?);
+            }
+            values.push(serde_json::json!({ NAMED: named }));
+        }
         let encoded = serde_json::Value::Array(values).to_string();
         let now = now();
         self.store("jobs", |db| jobs::enqueue(db, &name, &encoded, now + delay, now))?;
@@ -69,7 +79,12 @@ impl<'p> Interp<'p> {
         let mut items = Vec::new();
         for job in queued {
             let args = decode_args(&job.args)?;
-            items.push(Value::array(vec![Value::Symbol(job.name.into()), Value::array(args)]));
+            let mut values = args.pos;
+            if !args.named.is_empty() {
+                let pairs = args.named.into_iter().map(|(n, v)| (Value::Symbol(n.into()), v)).collect();
+                values.push(Value::Hash(Arc::new(Mutex::new(pairs))));
+            }
+            items.push(Value::array(vec![Value::Symbol(job.name.into()), Value::array(values)]));
         }
         Ok(Value::array(items))
     }
@@ -95,7 +110,7 @@ impl<'p> Interp<'p> {
         };
         let outcome =
             self.traced(start, |interp| match (interp.fns.get(job.name.as_str()).copied(), decode_args(&job.args)) {
-                (Some(def), Ok(values)) => interp.call_fn(def, Args { pos: values, ..Args::default() }, None).map(drop),
+                (Some(def), Ok(args)) => interp.call_fn(def, args, None).map(drop),
                 (None, _) => raise("NameError", format!("unknown function `{}`", job.name)),
                 (_, Err(ctrl)) => Err(ctrl),
             });
@@ -167,13 +182,23 @@ impl<'p> Interp<'p> {
     }
 }
 
-fn decode_args<'p>(text: &str) -> Result<Vec<Value<'p>>, Ctrl<'p>> {
+/// The key of the object, last in a job's arguments, holding its keywords
+/// (`enqueue(:weekly, monday: "2026-09-28")`); never a key of encoded data.
+const NAMED: &str = "$named";
+
+/// A job's arguments: its positional values, then its keywords if any.
+fn decode_args<'p>(text: &str) -> Result<Args<'p>, Ctrl<'p>> {
     let json: serde_json::Value =
         serde_json::from_str(text).or_else(|e| raise("ParseError", format!("a job's arguments: {e}")))?;
-    json.as_array()
-        .cloned()
-        .unwrap_or_default()
-        .iter()
-        .map(|a| codec::decode(a).or_else(|e| raise("ParseError", e)))
-        .collect()
+    let decode = |a: &serde_json::Value| codec::decode(a).or_else(|e| raise("ParseError", e));
+    let mut items = json.as_array().cloned().unwrap_or_default();
+    let mut args = Args::default();
+    if let Some(named) = items.last().and_then(|last| last.get(NAMED)).and_then(serde_json::Value::as_object) {
+        for (n, v) in named {
+            args.named.push((n.clone(), decode(v)?));
+        }
+        items.pop();
+    }
+    args.pos = items.iter().map(decode).collect::<Result<_, _>>()?;
+    Ok(args)
 }

@@ -364,15 +364,7 @@ impl<'p> Checker<'p> {
             }
             "expose" => V::new(Ty::Nil),
             // a job: its arguments are written to the database
-            "enqueue" => {
-                cx.add_effect(Eff { path: "db.write".into(), arg: None, origin: span });
-                for arg in argv {
-                    if let Some(origin) = arg.v.taint {
-                        self.taint_violation(arg.span, origin, "enqueue", "db.write");
-                    }
-                }
-                V::new(Ty::Nil)
-            }
+            "enqueue" => self.enqueue_call(cx, span, argv),
             "migration" => {
                 self.walk_block(cx, block, &[V::new(Ty::User(builtins::DATABASE.into()))]);
                 V::new(Ty::Nil)

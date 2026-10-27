@@ -114,6 +114,7 @@ impl<'p> Ctx<'p> {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct ArgV {
     pub(crate) name: Option<String>,
     pub(crate) v: V,

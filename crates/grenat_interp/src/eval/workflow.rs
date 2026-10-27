@@ -49,8 +49,9 @@ impl WorkflowRun {
 impl<'p> Interp<'p> {
     /// The run of `def` for these arguments (resumed if journaled).
     pub(crate) fn open_workflow(&mut self, def: &'p FnDef, args: &Args<'p>) -> Result<Arc<WorkflowRun>, Ctrl<'p>> {
+        let (values, names) = run_key(def, args);
         let mut key = Vec::new();
-        for value in args.pos.iter().chain(args.named.iter().map(|(_, v)| v)) {
+        for value in values {
             match codec::encode(value) {
                 Ok(json) => key.push(json),
                 Err(why) => {
@@ -61,7 +62,6 @@ impl<'p> Interp<'p> {
                 }
             }
         }
-        let names: Vec<&str> = args.named.iter().map(|(n, _)| n.as_str()).collect();
         let path = journal::path(&self.journal_dir.borrow(), &def.name.name, &key, &names);
         match WorkflowRun::open(&def.name.name, path) {
             Ok(run) => Ok(Arc::new(run)),
@@ -149,4 +149,44 @@ impl<'p> Interp<'p> {
         journal::append_step(&run.path, name, n, &json).or_else(|e| raise("JournalError", e))?;
         Ok(value)
     }
+}
+
+/// What identifies a run: its arguments in the order of the parameters, as
+/// they bind, so that `weekly("2026-09-28")`, `weekly(monday: "2026-09-28")`
+/// and a job queued either way are one run, whatever the keywords' order.
+/// Values for the parameters up to the first left to its default are
+/// positional, unnamed — a call written positionally keeps the key it always
+/// had; those after it are named. What binds to no parameter (an error when
+/// the body runs) follows, as written.
+fn run_key<'a, 'p>(def: &'a FnDef, args: &'a Args<'p>) -> (Vec<&'a Value<'p>>, Vec<&'a str>) {
+    let mut pos = args.pos.iter();
+    let mut used = vec![false; args.named.len()];
+    let (mut values, mut names) = (Vec::new(), Vec::new());
+    let mut gap = false;
+    for param in &def.params {
+        let named = args.named.iter().position(|(n, _)| *n == param.name.name);
+        let value = match named {
+            Some(i) => {
+                used[i] = true;
+                Some(&args.named[i].1)
+            }
+            None => pos.next(),
+        };
+        match value {
+            Some(v) if gap => {
+                values.push(v);
+                names.push(param.name.name.as_str());
+            }
+            Some(v) => values.push(v),
+            None => gap = true,
+        }
+    }
+    values.extend(pos);
+    for (i, (n, v)) in args.named.iter().enumerate() {
+        if !used[i] {
+            values.push(v);
+            names.push(n.as_str());
+        }
+    }
+    (values, names)
 }
