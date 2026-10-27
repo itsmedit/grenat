@@ -1,0 +1,6 @@
+# Inside this checkout, the facets' crates build against its own grenat_ext
+# (they depend on it by version, from crates.io): for cargo run by hand from
+# facets/ (`cd facets/sheets && cargo test --manifest-path native/Cargo.toml`).
+# `setter install` passes the same patch itself, wherever it is run from.
+[patch.crates-io]
+grenat_ext = { path = "../crates/grenat_ext" }

@@ -20,6 +20,18 @@ facet "sheets", path: "../grenat/facets/sheets", native: true   # or from a chec
 toolchain is needed) and writes the declarations of its functions. Without
 `native: true`, the install is refused, and says how to trust the facet.
 
+The crate depends on `grenat_ext`, the SDK of native facets, by version
+(`grenat_ext = "0.1"`), from crates.io: a copy of the facet fetched from an
+index or a git repository builds anywhere once `grenat_ext` is published.
+Inside a Grenat checkout, the build uses the checkout's own `grenat_ext`
+(offline, and before a release is published); `GRENAT_EXT_PATH=<a Grenat
+checkout>` points a copy elsewhere at one, and `GRENAT_EXT_PATH=` (empty)
+insists on crates.io. A library prebuilt for the platform
+(`native/prebuilt/<arch>-<os>/libsheets.so|.dylib`) is taken instead of
+building. The facet is not in an index yet (see
+[`facets/index`](../index/README.md)): until it is, install it from a
+checkout.
+
 ```ruby
 require "sheets"
 
@@ -192,6 +204,7 @@ cargo test --manifest-path native/Cargo.toml    # the Rust tests
 ```
 
 The crate is not a member of Grenat's workspace (its `Cargo.toml` has a
-`[workspace]` of its own, and its own `Cargo.lock`). Grenat's test suite
+`[workspace]` of its own, and its own `Cargo.lock`); `facets/.cargo/config.toml`
+patches in the checkout's `grenat_ext` for cargo run from `facets/`. Grenat's test suite
 builds it once and runs all of the above
 (`crates/grenat_cli/tests/facet_sheets.rs`).

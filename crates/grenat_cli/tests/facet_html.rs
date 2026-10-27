@@ -322,20 +322,18 @@ fn a_hostile_selector_or_page_is_an_error_the_program_rescues() {
 }
 
 /// Installing by version needs a crate that builds outside this checkout:
-/// while it depends on `grenat_ext` by a path into it, the README installs
-/// the facet by path only.
+/// it depends on `grenat_ext` by version (crates.io), never by a path into
+/// the checkout, and the README says how to install it both ways.
 #[test]
-fn the_readme_installs_the_facet_only_as_its_crate_builds() {
+fn the_crate_depends_on_the_sdk_by_version() {
     let manifest = std::fs::read_to_string(source().join("native/Cargo.toml")).unwrap();
+    let sdk: Vec<&str> = manifest.lines().filter(|l| l.starts_with("grenat_ext ")).collect();
+    assert_eq!(sdk, ["grenat_ext = \"0.1\""], "{manifest}");
     let readme = std::fs::read_to_string(source().join("README.md")).unwrap();
-    let sdk_by_path = manifest.lines().any(|l| l.starts_with("grenat_ext ") && l.contains("path ="));
     let installs: Vec<&str> = readme.lines().filter(|l| l.trim_start().starts_with("facet \"html\"")).collect();
-    assert!(!installs.is_empty(), "{readme}");
-    if sdk_by_path {
-        for line in installs {
-            assert!(line.contains(" path: ") && line.contains("native: true"), "{line}");
-        }
-    }
+    assert!(installs.iter().all(|line| line.contains("native: true")), "{installs:?}");
+    assert!(installs.iter().any(|line| line.contains("\"~> 0.1\"")), "{installs:?}");
+    assert!(installs.iter().any(|line| line.contains(" path: ")), "{installs:?}");
 }
 
 #[test]
@@ -372,6 +370,7 @@ fn the_native_crate_passes_its_own_tests() {
         .arg(source().join("native/Cargo.toml"))
         .arg("--target-dir")
         .arg(target_dir())
+        .args(grenat_native::sdk::cargo_args(&source().join("native")).unwrap())
         .output()
         .unwrap();
     let report = format!("{}{}", text(&out.stdout), text(&out.stderr));

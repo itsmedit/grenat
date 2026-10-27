@@ -12,7 +12,10 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-grenat_ext = { path = "../../../crates/grenat_ext" }
+# the SDK of native facets, from crates.io; inside a Grenat checkout, the
+# checkout's own (patched in by `setter install`, and by facets/.cargo/config.toml
+# for cargo run by hand)
+grenat_ext = "0.1"
 serde = { version = "1", features = ["derive"] }
 calamine = { version = "0.36", features = ["dates"] }
 rust_xlsxwriter = "0.99"

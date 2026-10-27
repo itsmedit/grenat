@@ -655,6 +655,13 @@ end
 Types and effects are checked like any call's; the result is untrusted unless the function is
 `pure`, and no secret is ever handed to native code (see `SPEC.md`, phase 12).
 
+The crate depends on the SDK by version (`grenat_ext = "0.1"`, from crates.io), so a facet
+fetched from an index or a git repository builds anywhere; inside a Grenat checkout,
+`setter install` builds it against the checkout's own `grenat_ext` instead (offline, and before a
+release is published), and `GRENAT_EXT_PATH` names another checkout. A facet may ship its library
+prebuilt per platform (`native/prebuilt/<arch>-<os>/`), taken instead of building. See
+[`crates/grenat_ext`](crates/grenat_ext/README.md) and [`RELEASING.md`](RELEASING.md).
+
 ## Bridge facets
 
 A facet can also ship Ruby or Python functions — no interpreter is embedded in Grenat: the

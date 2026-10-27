@@ -614,6 +614,18 @@ A tool keeps its name, its `##` description and the schema of its parameters; it
 - **Taint.** Arguments are checked against the schema. A tool is the trust boundary, as when a model calls it; an agent's message arrives untrusted, as a model's answer would, so a handler cannot put it in a page or a command unchecked (checked at run time).
 - **Tests.** `request :post, "/mcp", json: {…}, headers: {…}` speaks to an exposure without a server.
 
+### Phase 18 status: grenat_ext on crates.io
+
+A native facet's crate depended on `grenat_ext`, the SDK of native facets, by a path into the Grenat checkout, so a copy fetched from an index or a git repository could not build — only a library prebuilt for the platform (`native/prebuilt/<arch>-<os>/`) got it installed. `grenat_ext` and `grenat_ext_macros` are now publishable on crates.io (metadata, README, licenses, only `src/` shipped; `grenat_ext` requires exactly its macros' version), and the facets' crates depend on the SDK by version, `grenat_ext = "0.1"`. Where a Grenat checkout is at hand, `setter install` builds against the checkout's own crate instead — offline, before a release is published, at this Grenat's version — by passing cargo a patch of crates.io (`--config 'patch.crates-io.grenat_ext.path="…"'`): the checkout `GRENAT_EXT_PATH` names (set but empty: crates.io), else the checkout the facet's crate lies in, else the one this Grenat was built from. Elsewhere cargo fetches the published crate; a prebuilt library is still taken first.
+
+```ruby
+# Facetfile, once grenat_ext is on crates.io and the facet in an index
+facet "html", "~> 0.1", native: true
+facet "sheets", path: "../grenat/facets/sheets", native: true   # from a checkout, as before
+```
+
+A release checks that both crates still package (`cargo publish --dry-run` of the two, in `release.yml`); publishing is a manual step (`RELEASING.md`). The index format is described in `facets/index/README.md`: an entry names a git repository whose root is the facet, so the official facets, which live in `facets/` of this repository, are not listed yet.
+
 ### Phase 17 status: blocks followed by ? or a method
 
 `x.check do |a| … end?` did not parse: the lexer read `end?` as one name, a method ending in `?`, so the block stayed open and the error came at the end of the file, or at the next `def` — found by a model writing Grenat from `llms.txt`. A keyword never takes a `?` or a `!` (keywords are not names), except where a method name is expected: after `.`, `&.` and `def` (`x.nil?`, `def end?`). So `end?` is the block, then the `?` postfix, and a `do … end` block is followed by what follows `{ … }`: `?`, `.method`, `&.method`, `[i]`.

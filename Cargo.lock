@@ -1403,9 +1403,11 @@ name = "grenat_ext_macros"
 version = "0.1.5"
 dependencies = [
  "grenat_ast",
+ "grenat_ext",
  "grenat_lexer",
  "proc-macro2",
  "quote",
+ "serde",
  "syn 2.0.119",
 ]
 

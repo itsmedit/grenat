@@ -27,17 +27,11 @@ pub fn target_dir() -> PathBuf {
 }
 
 /// A copy of the facet `sheets` in `into` (`into/sheets`), its crate
-/// depending on this checkout's `grenat_ext`.
+/// depending on `grenat_ext` by version: built against this checkout's
+/// (see [`crate::sdk`]).
 pub fn copy_facet(into: &Path) -> PathBuf {
     let to = into.join(FACET);
     copy_dir(&fixtures().join(FACET), &to);
-    let manifest = to.join("native/Cargo.toml");
-    let sdk = Path::new(env!("CARGO_MANIFEST_DIR")).join("../grenat_ext").canonicalize().expect("grenat_ext");
-    let text = std::fs::read_to_string(&manifest).expect("the fixture's Cargo.toml").replace(
-        "path = \"../../../../grenat_ext\"",
-        &format!("path = {}", serde_json::to_string(&sdk.to_string_lossy()).expect("a path")),
-    );
-    std::fs::write(&manifest, text).expect("the copy's Cargo.toml");
     to
 }
 

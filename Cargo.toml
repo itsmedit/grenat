@@ -41,8 +41,9 @@ grenat_imap = { path = "crates/grenat_imap" }
 grenat_limits = { path = "crates/grenat_limits" }
 grenat_otel = { path = "crates/grenat_otel" }
 grenat_watch = { path = "crates/grenat_watch", default-features = false }
-grenat_ext = { path = "crates/grenat_ext" }
-grenat_ext_macros = { path = "crates/grenat_ext_macros" }
+# published on crates.io (version and path): see RELEASING.md
+grenat_ext = { version = "0.1.5", path = "crates/grenat_ext" }
+grenat_ext_macros = { version = "=0.1.5", path = "crates/grenat_ext_macros" }
 grenat_native = { path = "crates/grenat_native" }
 grenat_sandbox = { path = "crates/grenat_sandbox" }
 grenat_bridge = { path = "crates/grenat_bridge" }

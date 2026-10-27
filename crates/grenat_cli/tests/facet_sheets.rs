@@ -29,7 +29,7 @@ fn target_dir() -> PathBuf {
 }
 
 /// The facet's library, built once per test binary from the repository's
-/// crate (which depends on this checkout's `grenat_ext`).
+/// crate (built against this checkout's `grenat_ext`).
 fn library() -> &'static Path {
     static BUILT: OnceLock<PathBuf> = OnceLock::new();
     BUILT.get_or_init(|| {
@@ -407,6 +407,7 @@ fn the_facet_crate_passes_its_own_rust_tests() {
         .arg(source().join("native/Cargo.toml"))
         .arg("--target-dir")
         .arg(target_dir())
+        .args(grenat_native::sdk::cargo_args(&source().join("native")).unwrap())
         .env("TMPDIR", &tmp.0)
         .output()
         .unwrap();

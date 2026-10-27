@@ -6,15 +6,18 @@ It is a **native facet**: its functions are Rust code (`native/`, a crate depend
 
 ## Installing
 
-Native code runs outside Grenat's sandbox, so the application trusts it explicitly, in its `Facetfile`. The facet is installed from a checkout of Grenat, by its path:
+Native code runs outside Grenat's sandbox, so the application trusts it explicitly, in its `Facetfile`:
 
 ```ruby
-facet "html", path: "../grenat/facets/html", native: true
+facet "html", "~> 0.1", native: true                          # by version, from an index
+facet "html", path: "../grenat/facets/html", native: true     # or from a checkout of Grenat
 ```
 
 `setter install` then builds the crate (`cargo build --release`: a Rust toolchain is needed) and writes the Grenat declarations of its functions. Without `native: true`, `setter install` refuses, and says how to trust it.
 
-Not by version yet (`facet "html", "~> 0.1"`): its crate depends on `grenat_ext`, the SDK of native facets, by a path inside the Grenat checkout (`native/Cargo.toml`), which a copy of the facet fetched from an index or a git repository does not have — its build would fail. Once `grenat_ext` is published, the crate will depend on it by version, and the facet will install as any other. Until then, a copy outside the checkout installs only with its library prebuilt for the platform (`native/prebuilt/<arch>-<os>/libhtml.so|.dylib`), which `setter install` takes instead of building.
+The crate depends on `grenat_ext`, the SDK of native facets, by version (`grenat_ext = "0.1"` in `native/Cargo.toml`), from crates.io: a copy of the facet fetched from an index or a git repository builds anywhere, once `grenat_ext` is published. Inside a Grenat checkout, the build uses the checkout's own `grenat_ext` instead (offline, and before a release is published); `GRENAT_EXT_PATH=<a Grenat checkout>` says where it is for a copy elsewhere, and `GRENAT_EXT_PATH=` (empty) insists on crates.io. A copy may also ship its library prebuilt for the platform (`native/prebuilt/<arch>-<os>/libhtml.so|.dylib`), which `setter install` takes instead of building: no Rust toolchain needed then.
+
+The facet is not in an index yet: an index entry names a git repository, whose root is the facet, and this facet lives in a directory of Grenat's (see [`facets/index`](../index/README.md)).
 
 ```ruby
 require "html"
@@ -111,4 +114,4 @@ cargo test --manifest-path native/Cargo.toml   # the Rust unit tests
 setter install && grenat test                   # the Grenat tests (tests/*.grn)
 ```
 
-The crate is not a member of Grenat's workspace (its own `[workspace]` and `Cargo.lock`); Grenat's test suite builds it, installs it into an application and runs both (`crates/grenat_cli/tests/facet_html.rs`).
+The crate is not a member of Grenat's workspace (its own `[workspace]` and `Cargo.lock`); run from `facets/html`, cargo builds it against the checkout's `grenat_ext` (`facets/.cargo/config.toml`). Grenat's test suite builds it, installs it into an application and runs both (`crates/grenat_cli/tests/facet_html.rs`).

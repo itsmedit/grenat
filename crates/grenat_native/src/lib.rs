@@ -1,7 +1,9 @@
 //! **Native facets**, Grenat's side: a facet ships Rust code (a crate
 //! depending on `grenat_ext`), which Grenat builds, describes and calls.
 //!
-//! - [`build`]: `cargo build --release` of the facet's crate, a `cdylib`;
+//! - [`build`]: `cargo build --release` of the facet's crate, a `cdylib`,
+//!   against the local `grenat_ext` in a Grenat checkout ([`sdk`]), else
+//!   the published one;
 //! - [`install`]: the library copied into the installed facet
 //!   ([`layout`]), its manifest read by loading it once, and the Grenat
 //!   declarations it stands for written next to it ([`declarations`]):
@@ -23,6 +25,7 @@ pub mod install;
 pub mod layout;
 pub mod library;
 pub mod registry;
+pub mod sdk;
 
 pub use grenat_ext::manifest::{Field, Function, Manifest, Struct};
 pub use install::{Installed, install};

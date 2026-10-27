@@ -1,11 +1,18 @@
 [package]
 name = "grenat_ext"
-description = "The SDK of native facets: Rust functions a Grenat program calls, behind a stable JSON ABI"
+description = "The SDK of Grenat's native facets: Rust functions a Grenat program calls, behind a stable JSON ABI"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+homepage = "https://github.com/itsmedit/grenat"
+documentation = "https://docs.rs/grenat_ext"
+readme = "README.md"
+keywords = ["grenat", "ffi", "plugin", "native", "abi"]
+categories = ["development-tools::ffi"]
+# what crates.io ships: the code, its README and the licenses (not the tests)
+include = ["src/**/*.rs", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
 
 [dependencies]
 grenat_ext_macros.workspace = true

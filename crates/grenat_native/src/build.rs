@@ -1,6 +1,7 @@
 //! Building a facet's crate: `cargo build --release`, and the `cdylib` it
 //! produced, found in cargo's own report (`--message-format=json`) rather
-//! than guessed from a target directory.
+//! than guessed from a target directory. The SDK is the checkout's own
+//! where there is one ([`crate::sdk`]), else the published crate.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -21,6 +22,7 @@ pub fn build(crate_dir: &Path, target_dir: Option<&Path>) -> Result<PathBuf, Str
     if let Some(dir) = target_dir {
         command.arg("--target-dir").arg(dir);
     }
+    command.args(crate::sdk::cargo_args(crate_dir)?);
     let out = command.output().map_err(|e| format!("cannot run cargo (is Rust installed? https://rustup.rs): {e}"))?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);

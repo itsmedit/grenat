@@ -1,11 +1,18 @@
 [package]
 name = "grenat_ext_macros"
-description = "The macros of grenat_ext: `#[export]` and `#[derive(GrenatType)]` for native facets"
+description = "The macros of grenat_ext: `#[export]` and `#[derive(GrenatType)]` for Grenat's native facets"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+homepage = "https://github.com/itsmedit/grenat"
+documentation = "https://docs.rs/grenat_ext_macros"
+readme = "README.md"
+keywords = ["grenat", "ffi", "plugin", "macros", "abi"]
+categories = ["development-tools::ffi", "development-tools::procedural-macro-helpers"]
+# what crates.io ships: the code, its README and the licenses
+include = ["src/**/*.rs", "README.md", "LICENSE-MIT", "LICENSE-APACHE"]
 
 [lib]
 proc-macro = true
@@ -15,7 +22,11 @@ proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
 
+# path-only: cargo leaves them out of the published crate
 [dev-dependencies]
 # the lists of `grenat.rs` are compared with Grenat's own
-grenat_ast.workspace = true
-grenat_lexer.workspace = true
+grenat_ast = { path = "../grenat_ast" }
+grenat_lexer = { path = "../grenat_lexer" }
+# the crate-level example
+grenat_ext = { path = "../grenat_ext" }
+serde = { version = "1", features = ["derive"] }

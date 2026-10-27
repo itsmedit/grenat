@@ -3,7 +3,9 @@ name: Release
 # A `v*` tag: the binaries of each platform, packaged with the runtime
 # libraries `grenat build` links; Linux packages (.deb, .rpm); the install
 # script; the VS Code extension (.vsix); a GitHub release; then the Docker
-# image, built from that release.
+# image, built from that release. The SDK of native facets (grenat_ext,
+# grenat_ext_macros) is checked publishable here, not published: that is a
+# manual step (RELEASING.md).
 on:
   push:
     tags: ["v*"]
@@ -61,8 +63,24 @@ jobs:
           name: ${{ matrix.target }}
           path: dist/*
 
+  # grenat_ext and grenat_ext_macros still package and build as crates.io
+  # would have them (a dry run, nothing uploaded): the release fails early
+  # otherwise. The two in one command: grenat_ext is verified against the
+  # macros just packaged, even before they are on crates.io.
+  crates:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: The SDK's packages
+        run: |
+          cargo package --list -p grenat_ext_macros
+          cargo package --list -p grenat_ext
+      - name: Dry run of the SDK's publication
+        run: cargo publish --dry-run -p grenat_ext_macros -p grenat_ext
+
   release:
-    needs: [macos, linux]
+    needs: [macos, linux, crates]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

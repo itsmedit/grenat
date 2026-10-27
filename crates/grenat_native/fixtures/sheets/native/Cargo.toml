@@ -8,7 +8,8 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-grenat_ext = { path = "../../../../grenat_ext" }
+# by version; the tests build it against this checkout's grenat_ext
+grenat_ext = "0.1"
 serde = { version = "1", features = ["derive"] }
 
 # a crate of its own, not a member of Grenat's workspace
