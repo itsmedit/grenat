@@ -47,3 +47,41 @@ build; a 0.2 needs their `Cargo.toml` updated.
 git tag vX.Y.Z
 git push origin main vX.Y.Z
 ```
+
+# Releasing a facet
+
+The official facets (`facets/html`, `facets/sheets`) have versions of their own, released apart
+from Grenat's: the index lists them by tags with a prefix of their own
+(`facets/index/facets/html.toml`: `path = "facets/html"`, `tag_prefix = "html-v"`), so a
+facet's release is a tag `html-vX.Y.Z` (or `sheets-vX.Y.Z`) in this repository.
+
+1. Bump `[package] version` in the facet's `grenat.toml` (`facets/html/grenat.toml`), and its
+   crate's `version` in `facets/html/native/Cargo.toml` with it; run the full test suite
+   (`crates/grenat_cli/tests/facet_html.rs` and `facet_sheets.rs` test the facets); commit.
+2. Tag the commit and push the tag:
+
+   ```sh
+   git tag -a html-vX.Y.Z -m "html X.Y.Z"
+   git push origin main html-vX.Y.Z
+   ```
+
+`setter install` sees the new version at once (`git ls-remote --tags`); no change to the index
+is needed. A tag cannot be moved once applications have locked its commit: a fix is a new
+version.
+
+This does **not** start a Grenat release. `release.yml` runs on `tags: ["v*"]`, and GitHub's
+filter patterns match the whole tag name, `*` standing for any characters except `/`: `v*`
+matches only the tags that start with `v` (`v0.1.5`), never `html-v0.1.0` or `sheets-v0.1.0`.
+(`ci.yml` runs on pushes to `main` and on pull requests only, never on tags.) Conversely, never
+tag a facet `vX.Y.Z`: that is a Grenat release, and the index ignores it.
+
+`setter publish` tags `v<version>` in a facet that is its own repository: it is not for these
+facets, which are tagged by hand as above.
+
+The index itself (`facets/index/`) is published as its own repository once, and again only when
+an entry changes:
+
+```sh
+git subtree split --prefix facets/index -b index
+git push git@github.com:itsmedit/grenat-facets.git index:main
+```

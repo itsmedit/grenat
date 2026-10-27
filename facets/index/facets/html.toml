@@ -1,6 +1,6 @@
 # Grenat's official facet `html`: CSS selectors on HTML (native: trust it with `native: true`).
 git = "https://github.com/itsmedit/grenat"
-# the facet's directory in that repository (not read by setter yet: see ../README.md)
+# the facet's directory in that repository
 path = "facets/html"
-# its versions: the tags html-v0.1.0… (not read by setter yet either)
+# its versions: the tags html-v0.1.0… (the repository's v* tags are Grenat's releases)
 tag_prefix = "html-v"

@@ -629,6 +629,11 @@ end
 ```
 
 See [`facets/sheets`](facets/sheets/README.md) and [`facets/html`](facets/html/README.md).
+Each is versioned apart from Grenat, by tags of its own (`html-v0.1.0`, `sheets-v0.1.0`), and
+listed in an index ([`facets/index`](facets/index/README.md)) whose entries name the facet's
+directory in this repository and its tag prefix (`path = "facets/html"`,
+`tag_prefix = "html-v"`), so an application outside a checkout asks for it by version:
+`source "https://github.com/itsmedit/grenat-facets"` then `facet "html", "~> 0.1", native: true`.
 
 ## Native facets
 

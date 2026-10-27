@@ -3,8 +3,12 @@
 //!
 //! An index is a git repository with a `facets/<name>.toml` per facet
 //! (`git = "<repository>"`); a facet's versions are its repository's tags
-//! (`v1.2.3`). A facet's own `Facetfile` adds its facets, all of them in
-//! one namespace: two requirements on a facet must agree on one version.
+//! (`v1.2.3`). An entry may also name the facet's directory in the
+//! repository (`path = "facets/html"`) and what its tags start with
+//! (`tag_prefix = "html-v"`: the tags `html-v0.1.0`…), for a facet that
+//! shares its repository. A facet's own `Facetfile` adds its facets, all
+//! of them in one namespace: two requirements on a facet must agree on one
+//! version.
 //! A facet that ships Rust code is built too, and one that ships a bridge
 //! asked to describe itself, if the application trusts it (see
 //! [`crate::trust`], [`crate::native`], [`crate::bridge`]).
@@ -150,19 +154,22 @@ fn fetch(
             let dir = relative(&root.canonicalize().unwrap_or(root.to_path_buf()), &dir);
             Ok(Installed { name: name.into(), version, source: format!("path:{}", dir.display()), commit: None, dir })
         }
-        Origin::Git { url, reference } => {
-            let dir = facets_dir.join(format!("{name}-{}", slug(&reference.describe())));
+        Origin::Git { url, reference, path } => {
+            let clone = facets_dir.join(format!("{name}-{}", slug(&reference.describe())));
             let pinned = locked.filter(|l| l.source == format!("git:{url}")).and_then(|l| l.commit.clone());
-            let commit = git::fetch(url, reference, pinned.as_deref(), &root.join(&dir))?;
+            let commit = git::fetch(url, reference, pinned.as_deref(), &root.join(&clone))?;
+            let dir = inside(root, &clone, path.as_deref(), || {
+                format!("facet `{name}`: {} of {url} (commit {})", reference.describe(), short(&commit))
+            })?;
             let version = Manifest::load(&root.join(&dir)).ok().and_then(|m| Version::parse(&m.version));
             Ok(Installed { name: name.into(), version, source: format!("git:{url}"), commit: Some(commit), dir })
         }
         Origin::Index => {
-            let url = index_entry(root, name, sources)?;
-            let tags: Vec<(Version, String, String)> = git::tags(&url)?
-                .into_iter()
-                .filter_map(|(tag, commit)| Some((Version::parse(&tag)?, tag, commit)))
-                .collect();
+            let entry = index_entry(root, name, sources)?;
+            let tags = entry.versions()?;
+            if tags.is_empty() {
+                return Err(entry.no_version(name));
+            }
             let preferred = locked.and_then(|l| l.version).filter(|v| requirements.iter().all(|r| r.matches(v)));
             let version = match preferred.filter(|v| tags.iter().any(|(t, ..)| t == v)) {
                 Some(v) => v,
@@ -172,14 +179,17 @@ fn fetch(
                 })?,
             };
             let (_, tag, commit) = tags.iter().find(|(v, ..)| *v == version).expect("chosen among them");
-            let dir = facets_dir.join(format!("{name}-{version}"));
-            if !root.join(&dir).join(".git").is_dir() {
-                git::fetch(&url, &Reference::Tag(tag.clone()), Some(commit), &root.join(&dir))?;
+            let clone = facets_dir.join(format!("{name}-{version}"));
+            if !root.join(&clone).join(".git").is_dir() {
+                git::fetch(&entry.git, &Reference::Tag(tag.clone()), Some(commit), &root.join(&clone))?;
             }
+            let dir = inside(root, &clone, entry.path.as_deref(), || {
+                format!("facet `{name}`: {tag} of {} (commit {}), as {} says,", entry.git, short(commit), entry.shown)
+            })?;
             Ok(Installed {
                 name: name.into(),
                 version: Some(version),
-                source: format!("index:{url}"),
+                source: format!("index:{}", entry.git),
                 commit: Some(commit.clone()),
                 dir,
             })
@@ -187,31 +197,120 @@ fn fetch(
     }
 }
 
+/// The facet's directory: the clone, or the directory `path` in it, which
+/// must exist (`what` names the clone in the error).
+fn inside(root: &Path, clone: &Path, path: Option<&Path>, what: impl Fn() -> String) -> Result<PathBuf, String> {
+    let Some(path) = path else { return Ok(clone.to_path_buf()) };
+    let dir = clone.join(path);
+    if root.join(&dir).is_dir() { Ok(dir) } else { Err(format!("{} has no directory `{}`", what(), path.display())) }
+}
+
+/// A commit's first characters.
+fn short(commit: &str) -> &str {
+    commit.get(..12).unwrap_or(commit)
+}
+
 /// The latest version of `name` in the indexes of the package in `root`.
 pub fn latest(root: &Path, name: &str) -> Result<Version, String> {
     let sources = Facetfile::load(root)?.map(|f| f.sources).unwrap_or_default();
-    let url = index_entry(root, name, &sources)?;
-    git::tags(&url)?
-        .iter()
-        .filter_map(|(tag, _)| Version::parse(tag))
-        .max()
-        .ok_or_else(|| format!("facet `{name}` has no version (no tag such as v1.0.0)"))
+    let entry = index_entry(root, name, &sources)?;
+    entry.versions()?.into_iter().map(|(v, ..)| v).max().ok_or_else(|| entry.no_version(name))
 }
 
-/// The repository of `name`, from the first index that lists it.
-fn index_entry(root: &Path, name: &str, sources: &[String]) -> Result<String, String> {
+/// A facet's entry in an index: `facets/<name>.toml`.
+struct Entry {
+    /// The facet's repository (`git = "…"`).
+    git: String,
+    /// Its directory in the repository (`path = "facets/html"`), or its root.
+    path: Option<PathBuf>,
+    /// What its version tags start with (`tag_prefix = "html-v"`); without
+    /// one, `v1.2.3` (or `1.2.3`).
+    tag_prefix: Option<String>,
+    /// The entry, for errors: `facets/html.toml of <index>`.
+    shown: String,
+}
+
+impl Entry {
+    fn parse(table: &Table, shown: String) -> Result<Option<Entry>, String> {
+        let text = |key: &str| -> Result<Option<String>, String> {
+            match table.get(key) {
+                None => Ok(None),
+                Some(Value::String(s)) => Ok(Some(s.clone())),
+                Some(_) => Err(format!("{shown}: `{key}` must be a string")),
+            }
+        };
+        let Some(git) = text("git")? else { return Ok(None) };
+        let path = text("path")?.map(|p| subdirectory(&p).map_err(|e| format!("{shown}: `path` {e}"))).transpose()?;
+        let tag_prefix = text("tag_prefix")?;
+        if let Some(prefix) = &tag_prefix
+            && (prefix.is_empty() || prefix.chars().any(char::is_whitespace))
+        {
+            return Err(format!("{shown}: `tag_prefix` must be non-empty and without spaces (`{prefix}`)"));
+        }
+        Ok(Some(Entry { git, path, tag_prefix, shown }))
+    }
+
+    /// The facet's versions: (version, tag, commit), from the repository's
+    /// tags with the entry's prefix (others ignored).
+    fn versions(&self) -> Result<Vec<(Version, String, String)>, String> {
+        Ok(git::tags(&self.git)?
+            .into_iter()
+            .filter_map(|(tag, commit)| Some((self.version(&tag)?, tag, commit)))
+            .collect())
+    }
+
+    fn version(&self, tag: &str) -> Option<Version> {
+        match &self.tag_prefix {
+            None => Version::parse(tag),
+            // the version right after the prefix: `html-v0.1.0`, not `html-vv0.1.0`
+            Some(prefix) => tag
+                .strip_prefix(prefix.as_str())
+                .filter(|v| v.starts_with(|c: char| c.is_ascii_digit()))
+                .and_then(Version::parse),
+        }
+    }
+
+    fn no_version(&self, name: &str) -> String {
+        let prefix = self.tag_prefix.as_deref().unwrap_or("v");
+        format!("facet `{name}` has no version: no tag of {} such as {prefix}1.0.0 ({})", self.git, self.shown)
+    }
+}
+
+/// A directory inside a repository, as an index entry or a `Facetfile`
+/// writes it: relative, without `..`.
+pub(crate) fn subdirectory(text: &str) -> Result<PathBuf, String> {
+    use std::path::Component;
+    let path = PathBuf::from(text);
+    if text.trim().is_empty() {
+        return Err("must name a directory (it is empty)".into());
+    }
+    for part in path.components() {
+        match part {
+            Component::Normal(_) | Component::CurDir => {}
+            Component::ParentDir => return Err(format!("must stay inside the repository: no `..` (`{text}`)")),
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("must be relative to the repository's root (`{text}`)"));
+            }
+        }
+    }
+    Ok(path)
+}
+
+/// The entry of `name`, from the first index that lists it.
+fn index_entry(root: &Path, name: &str, sources: &[String]) -> Result<Entry, String> {
     if sources.is_empty() {
         return Err(format!("facet `{name}` has no `path:` nor `git:`, and the Facetfile has no `source`"));
     }
     for source in sources {
         let dir = root.join(".grenat").join("index").join(slug(source));
         git::sync(source, &dir)?;
-        let entry = dir.join("facets").join(format!("{name}.toml"));
+        let file = format!("facets/{name}.toml");
+        let entry = dir.join(&file);
         if let Ok(text) = std::fs::read_to_string(&entry) {
             let table: Table =
                 text.parse().map_err(|e: toml::de::Error| format!("{}: {}", entry.display(), e.message()))?;
-            if let Some(url) = table.get("git").and_then(Value::as_str) {
-                return Ok(url.to_string());
+            if let Some(entry) = Entry::parse(&table, format!("the index entry {file} of {source}"))? {
+                return Ok(entry);
             }
         }
     }
@@ -248,4 +347,54 @@ fn relative(from: &Path, to: &Path) -> PathBuf {
 /// A name safe for a directory.
 fn slug(text: &str) -> String {
     text.chars().map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '_' }).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(text: &str) -> Result<Option<Entry>, String> {
+        Entry::parse(&text.parse().unwrap(), "the entry".into())
+    }
+
+    #[test]
+    fn the_official_entries_name_a_directory_and_a_prefix() {
+        for (name, text) in [
+            ("html", include_str!("../../../facets/index/facets/html.toml")),
+            ("sheets", include_str!("../../../facets/index/facets/sheets.toml")),
+        ] {
+            let e = entry(text).unwrap().unwrap();
+            assert_eq!(e.git, "https://github.com/itsmedit/grenat");
+            assert_eq!(e.path, Some(PathBuf::from(format!("facets/{name}"))));
+            assert_eq!(e.version(&format!("{name}-v0.1.0")).map(|v| v.to_string()).as_deref(), Some("0.1.0"));
+            // Grenat's own releases are not the facet's versions
+            assert_eq!(e.version("v0.1.5"), None);
+            assert_eq!(e.version(&format!("{name}-vv0.1.0")), None);
+        }
+    }
+
+    #[test]
+    fn an_entry_is_checked() {
+        assert!(entry("path = \"x\"\n").unwrap().is_none());
+        let plain = entry("git = \"r\"\n").unwrap().unwrap();
+        assert_eq!(plain.path, None);
+        // without a prefix, as before: v1.2.0 or 1.2.0
+        assert_eq!(plain.version("v1.2.0"), Version::parse("1.2.0"));
+        assert_eq!(plain.version("1.2.0"), Version::parse("1.2.0"));
+        let err = |text: &str| entry(text).err().unwrap();
+        assert_eq!(err("git = \"r\"\npath = 3\n"), "the entry: `path` must be a string");
+        assert_eq!(err("git = \"r\"\npath = \"\"\n"), "the entry: `path` must name a directory (it is empty)");
+        assert_eq!(
+            err("git = \"r\"\npath = \"a/../../b\"\n"),
+            "the entry: `path` must stay inside the repository: no `..` (`a/../../b`)"
+        );
+        assert_eq!(
+            err("git = \"r\"\npath = \"/a\"\n"),
+            "the entry: `path` must be relative to the repository's root (`/a`)"
+        );
+        assert_eq!(
+            err("git = \"r\"\ntag_prefix = \"\"\n"),
+            "the entry: `tag_prefix` must be non-empty and without spaces (``)"
+        );
+    }
 }

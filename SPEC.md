@@ -624,7 +624,24 @@ facet "html", "~> 0.1", native: true
 facet "sheets", path: "../grenat/facets/sheets", native: true   # from a checkout, as before
 ```
 
-A release checks that both crates still package (`cargo publish --dry-run` of the two, in `release.yml`); publishing is a manual step (`RELEASING.md`). The index format is described in `facets/index/README.md`: an entry names a git repository whose root is the facet, so the official facets, which live in `facets/` of this repository, are not listed yet.
+A release checks that both crates still package (`cargo publish --dry-run` of the two, in `release.yml`); publishing is a manual step (`RELEASING.md`).
+
+**A facet in a directory of a repository.** An index entry (`facets/<name>.toml`, described in `facets/index/README.md`) named only a repository, whose root was the facet and whose `v*` tags its versions — no place for the official facets, which live in `facets/` of this repository, whose `v*` tags are Grenat's releases (and pushing one starts a release). An entry now takes two optional keys next to `git`:
+
+- `path = "facets/html"`: the facet's directory in the repository — relative, without `..`;
+- `tag_prefix = "html-v"`: its versions are the tags `html-v0.1.0`, `html-v0.2.0`… — non-empty, without spaces; every other tag is ignored (the repository's `v0.1.5`, another facet's `sheets-v0.1.0`). Without it, `v1.2.3` (or `1.2.3`) as before.
+
+Resolution lists the remote's tags with the prefix and parses the version after it (`setter add html` writes `"~> 0.2"` when `html-v0.2.0` is the highest); install clones the tag's commit into `.grenat/facets/html-0.1.0/` and records the facet's directory, `dir = ".grenat/facets/html-0.1.0/facets/html"`, in `Facetfile.lock`, where `require "html"` loads it; the facet's own `Facetfile` is read from that directory, and a native facet's crate, inside a clone of the Grenat repository, builds against that clone's `grenat_ext`. An invalid key fails with the entry named (``the index entry facets/html.toml of https://github.com/itsmedit/grenat-facets: `path` must stay inside the repository: no `..` (`../html`)``), as does a version whose commit has no such directory or a repository with no tag of that prefix. A `git:` facet in a `Facetfile` takes `path:` the same way, with `tag:` (or `branch:`, `rev:`). The official entries are in `facets/index/facets/` (`html-v`, `sheets-v`); a facet is released by tagging `html-vX.Y.Z`, which `release.yml`'s `v*` filter does not match (`RELEASING.md`).
+
+```ruby
+# Facetfile: the official facets, from the index (tags html-v…, sheets-v…)
+source "https://github.com/itsmedit/grenat-facets"
+facet "html", "~> 0.1", native: true
+facet "sheets", "~> 0.1", native: true
+
+# or one of them straight from the repository, without an index
+# facet "html", git: "https://github.com/itsmedit/grenat", tag: "html-v0.1.0", path: "facets/html", native: true
+```
 
 ### Phase 17 status: blocks followed by ? or a method
 

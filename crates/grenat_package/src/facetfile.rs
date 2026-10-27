@@ -5,6 +5,7 @@
 //! facet "http_tools", "~> 0.3"                     # from the index, by version
 //! facet "utils", path: "../utils"                  # a directory
 //! facet "greet", git: "https://github.com/x/greet", tag: "v1.0.0"
+//! facet "html", git: "https://github.com/x/tools", tag: "html-v0.1.0", path: "facets/html"
 //! facet "sheets", "~> 0.1", native: true           # trusted to ship Rust code
 //! facet "texts", "~> 0.2", bridge: true            # trusted to ship a Ruby or Python bridge
 //! ```
@@ -48,8 +49,9 @@ pub enum Origin {
     Index,
     /// A directory, relative to the package.
     Path(PathBuf),
-    /// A repository, at a reference.
-    Git { url: String, reference: Reference },
+    /// A repository, at a reference; the facet is its root, or the
+    /// directory `path` in it.
+    Git { url: String, reference: Reference, path: Option<PathBuf> },
 }
 
 impl Facetfile {
@@ -105,7 +107,12 @@ impl Facetfile {
                     };
                     let origin = match (named("path")?, named("git")?) {
                         (Some(path), None) => Origin::Path(path.into()),
-                        (None, Some(url)) => {
+                        (path, Some(url)) => {
+                            // with `git:`, `path:` is the facet's directory in the repository
+                            let path = path
+                                .map(|p| crate::facets::subdirectory(&p))
+                                .transpose()
+                                .map_err(|e| format!("facet `{facet}`: `path:` {e}"))?;
                             let reference = match (named("branch")?, named("tag")?, named("rev")?) {
                                 (Some(b), None, None) => Reference::Branch(b),
                                 (None, Some(t), None) => Reference::Tag(t),
@@ -113,10 +120,9 @@ impl Facetfile {
                                 (None, None, None) => Reference::Default,
                                 _ => return Err(format!("facet `{facet}`: give one of `branch:`, `tag:` or `rev:`")),
                             };
-                            Origin::Git { url, reference }
+                            Origin::Git { url, reference, path }
                         }
                         (None, None) => Origin::Index,
-                        _ => return Err(format!("facet `{facet}`: give either `path:` or `git:`")),
                     };
                     if file.facets.iter().any(|f| f.name == facet) {
                         return Err(format!("facet `{facet}` is listed twice"));
@@ -175,16 +181,40 @@ mod tests {
         assert_eq!(file.facets[1].origin, Origin::Path("../utils".into()));
         assert_eq!(
             file.facets[2].origin,
-            Origin::Git { url: "https://x.io/greet".into(), reference: Reference::Tag("v1.0.0".into()) }
+            Origin::Git { url: "https://x.io/greet".into(), reference: Reference::Tag("v1.0.0".into()), path: None }
         );
         assert_eq!(file.facets[3].requirement, Requirement::any());
         assert_eq!(file.facets[2].written, "facet \"greet\", git: \"https://x.io/greet\", tag: \"v1.0.0\"");
         let err = |text: &str| Facetfile::parse(text).unwrap_err();
         assert_eq!(err("facet \"a\"\nfacet \"a\"\n"), "facet `a` is listed twice");
         assert_eq!(err("gem \"rails\"\n"), "unknown Facetfile directive `gem`");
-        assert_eq!(err("facet \"a\", path: \"x\", git: \"y\"\n"), "facet `a`: give either `path:` or `git:`");
         assert!(err("facet \"a\", \"latest\"\n").contains("expected a version"));
         assert_eq!(err("facet \"a\", native: \"yes\"\n"), "facet `a`: `native:` is `true` or `false`");
+    }
+
+    #[test]
+    fn a_git_facet_may_live_in_a_directory_of_its_repository() {
+        let file = Facetfile::parse(
+            "facet \"html\", git: \"https://x.io/tools\", tag: \"html-v0.1.0\", path: \"facets/html\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            file.facets[0].origin,
+            Origin::Git {
+                url: "https://x.io/tools".into(),
+                reference: Reference::Tag("html-v0.1.0".into()),
+                path: Some("facets/html".into())
+            }
+        );
+        let err = |text: &str| Facetfile::parse(text).unwrap_err();
+        assert_eq!(
+            err("facet \"a\", git: \"y\", path: \"../x\"\n"),
+            "facet `a`: `path:` must stay inside the repository: no `..` (`../x`)"
+        );
+        assert_eq!(
+            err("facet \"a\", git: \"y\", path: \"/x\"\n"),
+            "facet `a`: `path:` must be relative to the repository's root (`/x`)"
+        );
     }
 
     #[test]

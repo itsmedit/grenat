@@ -160,3 +160,41 @@ fn a_trusted_bridge_facet_describes_itself_at_install() {
     let list = setter(&app, &["list"]);
     assert!(text(&list.stderr).contains(&line), "{}", text(&list.stderr));
 }
+
+#[test]
+fn a_facet_in_a_directory_of_a_larger_repository_is_added_by_its_prefixed_tags() {
+    let dir = temp_dir("monorepo");
+    // a repository whose facet `html` lives in facets/html, tagged html-v…, beside its own v… tags
+    let repo = dir.join("tools");
+    std::fs::create_dir_all(repo.join("facets/html/src")).unwrap();
+    for version in ["0.1.0", "0.2.0"] {
+        std::fs::write(
+            repo.join("facets/html/grenat.toml"),
+            format!("[package]\nname = \"html\"\nversion = \"{version}\"\n"),
+        )
+        .unwrap();
+        std::fs::write(repo.join("facets/html/src/lib.grn"), format!("def html = \"html {version}\"\n")).unwrap();
+        commit(&repo, version);
+        git(&repo, &["tag", &format!("html-v{version}")]);
+    }
+    git(&repo, &["tag", "v0.9.0"]);
+    let index = dir.join("index");
+    std::fs::create_dir_all(index.join("facets")).unwrap();
+    let entry = format!("git = \"{}\"\npath = \"facets/html\"\ntag_prefix = \"html-v\"\n", repo.display());
+    std::fs::write(index.join("facets/html.toml"), entry).unwrap();
+    commit(&index, "index");
+
+    let app = dir.join("app");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::write(app.join("grenat.toml"), "[package]\nname = \"app\"\n").unwrap();
+    std::fs::write(app.join("Facetfile"), format!("source \"{}\"\n", index.display())).unwrap();
+    let out = setter(&app, &["add", "html"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains("✓ added `facet \"html\", \"~> 0.2\"`"), "{}", text(&out.stderr));
+    let out = setter(&app, &["install"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(text(&out.stderr).contains("html 0.2.0 (index:"), "{}", text(&out.stderr));
+    let lock = std::fs::read_to_string(app.join("Facetfile.lock")).unwrap();
+    assert!(lock.contains("dir = \".grenat/facets/html-0.2.0/facets/html\""), "{lock}");
+    assert!(app.join(".grenat/facets/html-0.2.0/facets/html/src/lib.grn").is_file());
+}
